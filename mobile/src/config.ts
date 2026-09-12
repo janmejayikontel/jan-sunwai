@@ -10,11 +10,8 @@
 
 import { Platform } from 'react-native';
 
-export const DEFAULT_SERVER_URL = Platform.select({
-  android: 'http://10.0.2.2:3001',
-  ios: 'http://localhost:3001',
-  default: 'http://localhost:3001',
-});
+export const DEFAULT_SERVER_URL = 'https://display-filename-rapids-alberta.trycloudflare.com';
+
 
 export const CONFIG = {
   appName: 'Jan Sunwai',
