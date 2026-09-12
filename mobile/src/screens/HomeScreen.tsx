@@ -50,61 +50,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   onLogout,
 }) => {
   const [grievances, setGrievances] = useState<GrievanceItem[]>([]);
-  const [customCaseId, setCustomCaseId] = useState('RAJ-2024-88421');
+  const [customCaseId, setCustomCaseId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
-  // Fetch grievances from server
+  // Fetch grievances strictly for the authenticated user/officer
   const fetchGrievances = async () => {
+    setIsLoading(true);
     try {
-      const url = `${cleanServerUrl(serverUrl)}/api/sampark/grievances`;
+      const url = `${cleanServerUrl(serverUrl)}/api/sampark/by-phone/${encodeURIComponent(user.phone)}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         if (data.grievances && Array.isArray(data.grievances)) {
           setGrievances(data.grievances);
+          if (data.grievances.length > 0 && !customCaseId) {
+            setCustomCaseId(data.grievances[0].grievanceId);
+          }
           return;
         }
       }
+      setGrievances([]);
     } catch (e) {
-      console.log('Error fetching grievances, using fallback data:', e);
+      console.log('Error fetching user grievances:', e);
+      setGrievances([]);
+    } finally {
+      setIsLoading(false);
     }
-
-    // Fallback sample grievances if offline or network fails
-    setGrievances([
-      {
-        grievanceId: 'RAJ-2024-88421',
-        title: 'Water pipeline leak unresolved for 3 weeks — Sanganer, Jaipur',
-        category: 'Public Health Engineering (PHED) — Water Supply',
-        location: 'Ward 15, Sanganer, Jaipur',
-        status: 'Escalated to Higher Authority',
-        assignedEmployee: {
-          name: 'Chandan',
-          designation: 'Junior Engineer (JEn)',
-          phone: '+917749852013',
-        },
-      },
-      {
-        grievanceId: 'RAJ-2024-71205',
-        title: 'Old Age Pension disbursement delayed — Barmer',
-        category: 'Social Justice & Empowerment',
-        location: 'Panchayat Samiti, Barmer',
-        status: 'Scheduled for Hearing',
-        assignedEmployee: {
-          name: 'Sunita Meena',
-          designation: 'Social Welfare Officer',
-          phone: '+919876543212',
-        },
-      },
-    ]);
   };
 
   useEffect(() => {
     fetchGrievances();
-  }, [serverUrl]);
+  }, [serverUrl, user.phone]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -199,8 +179,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <View style={styles.topHeaderLeft}>
             <Text style={styles.topEmblem}>🏛️</Text>
             <View>
-              <Text style={styles.topTitleHindi}>जन सुनवाई</Text>
-              <Text style={styles.topTitleEnglish}>Govt of Rajasthan</Text>
+              <Text style={styles.topTitleHindi}>संपर्क लाइट</Text>
+              <Text style={styles.topTitleEnglish}>Sampark Lite — Rajasthan</Text>
             </View>
           </View>
 
@@ -279,57 +259,78 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         {/* Grievances List */}
         <View style={styles.listSection}>
           <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionHeading}>📋 Active Cases & Hearings</Text>
+            <Text style={styles.sectionHeading}>
+              📋 {user.role === 'officer' ? 'Jurisdiction Cases & Hearings' : user.role === 'employee' ? 'Assigned Cases' : 'My Filed Grievances'}
+            </Text>
             <TouchableOpacity onPress={fetchGrievances}>
               <Text style={styles.refreshLink}>Refresh ↻</Text>
             </TouchableOpacity>
           </View>
 
-          {grievances.map((item) => (
-            <View key={item.grievanceId} style={styles.caseCard}>
-              <View style={styles.caseHeader}>
-                <View style={styles.caseIdBadge}>
-                  <Text style={styles.caseIdText}>{item.grievanceId}</Text>
-                </View>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>{item.status}</Text>
-                </View>
-              </View>
-
-              <Text style={styles.caseTitle}>{item.title}</Text>
-
-              {item.category && (
-                <Text style={styles.caseCategory}>📁 {item.category}</Text>
-              )}
-
-              {item.location && (
-                <Text style={styles.caseLocation}>📍 {item.location}</Text>
-              )}
-
-              {item.assignedEmployee && (
-                <View style={styles.officerBox}>
-                  <Text style={styles.officerLabel}>Assigned Official:</Text>
-                  <Text style={styles.officerName}>
-                    {item.assignedEmployee.name} ({item.assignedEmployee.designation})
-                  </Text>
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={[styles.startHearingBtn, isJoining && styles.btnDisabled]}
-                onPress={() => handleConnectHearing(item.grievanceId)}
-                disabled={isJoining}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.startHearingBtnText}>🎥 Enter Video Hearing</Text>
-              </TouchableOpacity>
+          {isLoading && grievances.length === 0 ? (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator color="#38bdf8" size="small" />
+              <Text style={styles.loadingText}>Loading grievances...</Text>
             </View>
-          ))}
+          ) : grievances.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyIcon}>📂</Text>
+              <Text style={styles.emptyTitle}>
+                {user.role === 'citizen' ? 'No Grievances Found' : 'No Active Cases Assigned'}
+              </Text>
+              <Text style={styles.emptyDesc}>
+                {user.role === 'citizen'
+                  ? `There are no grievances registered under +91 ${user.phone.slice(-10)}. You can enter any Case ID above to join a hearing room.`
+                  : 'No active cases currently mapped to your jurisdiction. Enter a Case ID above to join a hearing room directly.'}
+              </Text>
+            </View>
+          ) : (
+            grievances.map((item) => (
+              <View key={item.grievanceId} style={styles.caseCard}>
+                <View style={styles.caseHeader}>
+                  <View style={styles.caseIdBadge}>
+                    <Text style={styles.caseIdText}>{item.grievanceId}</Text>
+                  </View>
+                  <View style={styles.statusBadge}>
+                    <Text style={styles.statusText}>{item.status}</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.caseTitle}>{item.title}</Text>
+
+                {item.category && (
+                  <Text style={styles.caseCategory}>📁 {item.category}</Text>
+                )}
+
+                {item.location && (
+                  <Text style={styles.caseLocation}>📍 {item.location}</Text>
+                )}
+
+                {item.assignedEmployee && (
+                  <View style={styles.officerBox}>
+                    <Text style={styles.officerLabel}>Assigned Official:</Text>
+                    <Text style={styles.officerName}>
+                      {item.assignedEmployee.name} ({item.assignedEmployee.designation})
+                    </Text>
+                  </View>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.startHearingBtn, isJoining && styles.btnDisabled]}
+                  onPress={() => handleConnectHearing(item.grievanceId)}
+                  disabled={isJoining}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.startHearingBtnText}>🎥 Enter Video Hearing</Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
         </View>
 
         {/* Sampark Helpline Info */}
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>🏛️ Rajasthan Sampark Portal</Text>
+          <Text style={styles.infoTitle}>🏛️ Sampark Lite — Rajasthan</Text>
           <Text style={styles.infoDesc}>
             Citizen Grievance Redressal & Live Video Hearing Platform. Native screen sharing and WebRTC video call enabled.
           </Text>
@@ -646,5 +647,41 @@ const styles = StyleSheet.create({
     color: '#f59e0b',
     fontSize: 12,
     fontWeight: '700',
+  },
+  loadingBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    gap: 8,
+  },
+  loadingText: {
+    color: '#94a3b8',
+    fontSize: 13,
+  },
+  emptyCard: {
+    backgroundColor: '#0f172a',
+    borderRadius: 14,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    borderStyle: 'dashed',
+    marginBottom: 16,
+  },
+  emptyIcon: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    color: '#f1f5f9',
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  emptyDesc: {
+    color: '#94a3b8',
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
   },
 });

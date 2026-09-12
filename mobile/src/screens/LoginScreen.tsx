@@ -94,7 +94,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       console.error('OTP send error:', err);
       Alert.alert(
         'Connection Error',
-        `Unable to reach Jan Sunwai server at:\n${serverBase}\n\n${err?.message || 'Network request failed'}`
+        `Unable to reach Sampark Lite server at:\n${serverBase}\n\n${err?.message || 'Network request failed'}`
       );
     } finally {
       setIsLoading(false);
@@ -168,9 +168,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             <View style={styles.emblemContainer}>
               <Text style={styles.emblemIcon}>🏛️</Text>
             </View>
-            <Text style={styles.hindiTitle}>जन सुनवाई पोर्टल</Text>
-            <Text style={styles.englishTitle}>Jan Sunwai Rajasthan</Text>
-            <Text style={styles.subtitle}>Department of Administrative Reforms</Text>
+            <Text style={styles.hindiTitle}>संपर्क लाइट</Text>
+            <Text style={styles.englishTitle}>Sampark Lite</Text>
+            <Text style={styles.subtitle}>जन सुनवाई — Department of Administrative Reforms</Text>
           </View>
 
           {/* Login Card */}

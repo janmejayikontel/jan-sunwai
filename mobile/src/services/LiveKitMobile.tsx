@@ -153,7 +153,7 @@ export default function MobileVideoCallScreen({
         {/* Header Bar */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.headerTitle}>🏛️ Jan Sunwai Hearing</Text>
+            <Text style={styles.headerTitle}>🏛️ Sampark Lite Hearing</Text>
             <Text style={styles.headerSubtitle}>
               Grievance #{grievanceId}
             </Text>

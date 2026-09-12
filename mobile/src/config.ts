@@ -14,9 +14,10 @@ export const DEFAULT_SERVER_URL = 'https://display-filename-rapids-alberta.trycl
 
 
 export const CONFIG = {
-  appName: 'Jan Sunwai',
-  appTitleHindi: 'जन सुनवाई — राजस्थान सरकार',
+  appName: 'Sampark Lite',
+  appTitleHindi: 'संपर्क लाइट — राजस्थान सरकार',
   version: '1.0.0',
+
   defaultApiBase: DEFAULT_SERVER_URL,
   endpoints: {
     token: '/api/livekit/token',

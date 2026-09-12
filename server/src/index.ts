@@ -30,9 +30,11 @@ import { URL } from 'url';
 import authRoutes from './routes/auth';
 import samparkRoutes from './routes/sampark';
 import callRoutes from './routes/calls';
+import livekitService from './services/livekit';
 
 // Database
 import { initializeDatabase } from './db/database';
+
 
 // Services
 import callManager from './services/callManager';
@@ -68,6 +70,40 @@ app.use((req, _res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/sampark', samparkRoutes);
 app.use('/api/calls', callRoutes);
+
+// ─── LiveKit Token Endpoint (Web & Mobile Apps) ───────────────
+app.post('/api/livekit/token', async (req, res) => {
+  try {
+    const { roomName, participantName, participantRole, identity } = req.body;
+    if (!roomName || !participantName) {
+      res.status(400).json({ error: 'roomName and participantName are required' });
+      return;
+    }
+    const isHost = participantRole === 'officer' || participantRole === 'collector';
+    const userIdentity = identity || `${participantRole || 'user'}_${Date.now()}`;
+
+    const token = await livekitService.generateToken({
+      identity: userIdentity,
+      name: participantName,
+      roomName,
+      isHost,
+      ttl: '2h',
+    });
+
+    console.log(`[LiveKit] Issued token for ${participantName} (${participantRole || 'citizen'}) in room ${roomName}`);
+
+    res.json({
+      success: true,
+      token,
+      roomName,
+      serverUrl: process.env.LIVEKIT_URL || 'wss://jan-sunwai-demo-y7hrzb7k.livekit.cloud',
+    });
+  } catch (error: any) {
+    console.error('[LiveKit] Error generating token:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate token' });
+  }
+});
+
 
 // Health check
 app.get('/api/health', (_req, res) => {

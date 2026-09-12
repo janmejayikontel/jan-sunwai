@@ -10,7 +10,8 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import db from '../db/database';
+import db, { lookupUserByPhone } from '../db/database';
+
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -393,38 +394,83 @@ export async function findOfficerByPhone(phone: string): Promise<OfficerDirector
  * Get all grievances linked to a citizen or employee by phone.
  */
 export async function getGrievancesByPhone(phone: string): Promise<GrievanceDetails[]> {
-  const normalized = phone.replace(/[\s\-()]/g, '');
-  const barePhone = normalized.replace('+91', '');
+  const cleanPhone = phone.replace(/\D/g, '').slice(-10);
 
-  const rows = db.prepare(`
-    SELECT 
-      g.id as grievanceId,
-      g.title,
-      g.description,
-      g.category,
-      g.location,
-      g.district,
-      g.status,
-      g.filed_date as filedDate,
-      g.last_updated as lastUpdated,
-      c.name as citizenName,
-      c.phone as citizenPhone,
-      c.village as citizenVillage,
-      c.district as citizenDistrict,
-      c.tehsil as citizenTehsil,
-      e.name as employeeName,
-      e.phone as employeePhone,
-      e.designation as employeeDesignation,
-      e.department as employeeDepartment,
-      e.employee_code as employeeCode,
-      e.posting_location as employeePostingLocation
-    FROM grievances g
-    JOIN citizens c ON g.citizen_id = c.id
-    JOIN employees e ON g.assigned_employee_id = e.id
-    WHERE c.phone = ? OR c.phone = ? OR c.phone = ?
-       OR e.phone = ? OR e.phone = ? OR e.phone = ?
-    ORDER BY g.created_at DESC
-  `).all(normalized, barePhone, `+91${barePhone}`, normalized, barePhone, `+91${barePhone}`) as any[];
+  // Check what role this user has in SQLite
+  const user = lookupUserByPhone(phone);
+
+  let query = '';
+  let params: any[] = [];
+
+  if (user && user.role === 'officer') {
+    // District Collector or Administrative Officer:
+    // Show grievances in their assigned district (e.g. Jaipur Collector sees Jaipur grievances)
+    if (user.district && user.district !== 'Rajasthan') {
+      query = `
+        SELECT 
+          g.id as grievanceId, g.title, g.description, g.category, g.location, g.district, g.status,
+          g.filed_date as filedDate, g.last_updated as lastUpdated,
+          c.name as citizenName, c.phone as citizenPhone, c.village as citizenVillage, c.district as citizenDistrict, c.tehsil as citizenTehsil,
+          e.name as employeeName, e.phone as employeePhone, e.designation as employeeDesignation, e.department as employeeDepartment,
+          e.employee_code as employeeCode, e.posting_location as employeePostingLocation
+        FROM grievances g
+        JOIN citizens c ON g.citizen_id = c.id
+        JOIN employees e ON g.assigned_employee_id = e.id
+        WHERE g.district LIKE ?
+        ORDER BY g.created_at DESC
+      `;
+      params = [`%${user.district}%`];
+    } else {
+      query = `
+        SELECT 
+          g.id as grievanceId, g.title, g.description, g.category, g.location, g.district, g.status,
+          g.filed_date as filedDate, g.last_updated as lastUpdated,
+          c.name as citizenName, c.phone as citizenPhone, c.village as citizenVillage, c.district as citizenDistrict, c.tehsil as citizenTehsil,
+          e.name as employeeName, e.phone as employeePhone, e.designation as employeeDesignation, e.department as employeeDepartment,
+          e.employee_code as employeeCode, e.posting_location as employeePostingLocation
+        FROM grievances g
+        JOIN citizens c ON g.citizen_id = c.id
+        JOIN employees e ON g.assigned_employee_id = e.id
+        ORDER BY g.created_at DESC
+      `;
+      params = [];
+    }
+  } else if (user && user.role === 'employee') {
+    // Field Employee: ONLY see grievances assigned to them!
+    query = `
+      SELECT 
+        g.id as grievanceId, g.title, g.description, g.category, g.location, g.district, g.status,
+        g.filed_date as filedDate, g.last_updated as lastUpdated,
+        c.name as citizenName, c.phone as citizenPhone, c.village as citizenVillage, c.district as citizenDistrict, c.tehsil as citizenTehsil,
+        e.name as employeeName, e.phone as employeePhone, e.designation as employeeDesignation, e.department as employeeDepartment,
+        e.employee_code as employeeCode, e.posting_location as employeePostingLocation
+      FROM grievances g
+      JOIN citizens c ON g.citizen_id = c.id
+      JOIN employees e ON g.assigned_employee_id = e.id
+      WHERE e.phone LIKE ?
+      ORDER BY g.created_at DESC
+    `;
+    params = [`%${cleanPhone}`];
+  } else {
+    // Citizen: ONLY see their own filed grievances!
+    query = `
+      SELECT 
+        g.id as grievanceId, g.title, g.description, g.category, g.location, g.district, g.status,
+        g.filed_date as filedDate, g.last_updated as lastUpdated,
+        c.name as citizenName, c.phone as citizenPhone, c.village as citizenVillage, c.district as citizenDistrict, c.tehsil as citizenTehsil,
+        e.name as employeeName, e.phone as employeePhone, e.designation as employeeDesignation, e.department as employeeDepartment,
+        e.employee_code as employeeCode, e.posting_location as employeePostingLocation
+      FROM grievances g
+      JOIN citizens c ON g.citizen_id = c.id
+      JOIN employees e ON g.assigned_employee_id = e.id
+      WHERE c.phone LIKE ?
+      ORDER BY g.created_at DESC
+    `;
+    params = [`%${cleanPhone}`];
+  }
+
+  const rows = db.prepare(query).all(...params) as any[];
+
 
   return rows.map((row) => ({
     grievanceId: row.grievanceId,
