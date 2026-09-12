@@ -36,7 +36,7 @@ jobs:
 
       - name: Build Android APK
         working-directory: mobile/android
-        run: ./gradlew assembleRelease --no-daemon -Pandroid.minSdkVersion=24
+        run: ./gradlew assembleRelease --no-daemon -Pandroid.minSdkVersion=24 --stacktrace
 
       - name: Upload Jan Sunwai Mobile APK
         uses: actions/upload-artifact@v4
