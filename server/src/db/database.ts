@@ -122,8 +122,8 @@ function seedInitialData(): void {
     const officersSeed = [
       {
         id: 'off-001',
-        name: 'Sh. Alok Sharma, IAS',
-        phone: '+919414000001',
+        name: 'Vivek, IAS',
+        phone: '+919024594520',
         designation: 'District Collector & DM',
         department: 'District Administration & Collectorate',
         district: 'Jaipur',
@@ -132,8 +132,8 @@ function seedInitialData(): void {
       },
       {
         id: 'off-002',
-        name: 'Sh. Vikram Singh Rathore, RAS',
-        phone: '+919414000002',
+        name: 'Kalyan, RAS',
+        phone: '+919964235548',
         designation: 'Sub-Divisional Magistrate (SDM)',
         department: 'Revenue & Sub-Divisional Administration',
         district: 'Jaipur',
@@ -142,8 +142,8 @@ function seedInitialData(): void {
       },
       {
         id: 'off-003',
-        name: 'Smt. Tina Dabi, IAS',
-        phone: '+919414000003',
+        name: 'Jasobanta, IAS',
+        phone: '+918093868707',
         designation: 'District Collector & DM',
         department: 'District Administration & Collectorate',
         district: 'Barmer',
@@ -152,8 +152,8 @@ function seedInitialData(): void {
       },
       {
         id: 'off-004',
-        name: 'Sh. Anand Sharma, IPS',
-        phone: '+919414000004',
+        name: 'Sanjit, IPS',
+        phone: '+918249963060',
         designation: 'Superintendent of Police (SP)',
         department: 'Rajasthan Police (राजस्थान पुलिस)',
         district: 'Jaipur',
@@ -162,8 +162,8 @@ function seedInitialData(): void {
       },
       {
         id: 'off-005',
-        name: 'Sh. Gaurav Agrawal, IAS',
-        phone: '+919414000005',
+        name: 'Pragyan, IAS',
+        phone: '+917008318289',
         designation: 'District Collector & DM',
         department: 'District Administration & Collectorate',
         district: 'Jodhpur',
@@ -172,8 +172,8 @@ function seedInitialData(): void {
       },
       {
         id: 'off-006',
-        name: 'Sh. Rajesh Meena, IAS',
-        phone: '+919876543211',
+        name: 'Rajesh, IAS',
+        phone: '+911234567890',
         designation: 'District Collector & DM',
         department: 'District Administration',
         district: 'Jaipur',
@@ -182,8 +182,8 @@ function seedInitialData(): void {
       },
       {
         id: 'off-007',
-        name: 'Sh. Jitendra Kumar Soni, IAS',
-        phone: '+919414000006',
+        name: 'Ashok, IAS',
+        phone: '+919876543210',
         designation: 'Divisional Commissioner',
         department: 'General Administration Department',
         district: 'Jaipur',
@@ -192,8 +192,8 @@ function seedInitialData(): void {
       },
       {
         id: 'off-008',
-        name: 'Dr. Manjit Singh, IAS',
-        phone: '+919414000008',
+        name: 'Dharmendra, IAS',
+        phone: '+919876543211',
         designation: 'Chief Executive Officer (CEO), Zila Parishad',
         department: 'Rural Development & Panchayati Raj',
         district: 'Jaipur',
@@ -205,6 +205,18 @@ function seedInitialData(): void {
     for (const off of officersSeed) {
       insertOfficer.run(off);
     }
+
+    // Clean up any accidental citizen records for officer/employee phone numbers
+    try {
+      db.prepare(`
+        DELETE FROM citizens 
+        WHERE phone IN (SELECT phone FROM officers) 
+           OR phone IN (SELECT phone FROM employees)
+      `).run();
+    } catch (err) {
+      console.error('[SQLite] Error purging conflicting citizen records:', err);
+    }
+
 
     // 1. Citizen Ramesh
     insertCitizen.run({
