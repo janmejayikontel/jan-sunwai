@@ -14,6 +14,7 @@ interface ActiveHearingState {
   grievanceId: string;
   userName: string;
   role: string;
+  callId?: string;
 }
 
 export default function App() {
@@ -147,6 +148,7 @@ export default function App() {
           grievanceId: incomingCall.grievanceId,
           userName: currentUser.name || `User (${currentUser.phone.slice(-4)})`,
           role: currentUser.role || 'citizen',
+          callId: incomingCall.callId,
         });
       } else {
         Alert.alert('Unable to Join', data.error || 'Failed to accept call session.');
@@ -188,6 +190,8 @@ export default function App() {
           roomName={activeHearing.roomName}
           grievanceId={activeHearing.grievanceId}
           userName={activeHearing.userName}
+          role={activeHearing.role}
+          callId={activeHearing.callId}
           onLeave={() => setActiveHearing(null)}
         />
       ) : currentUser ? (

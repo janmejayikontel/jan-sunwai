@@ -8,7 +8,7 @@
  * - Hearing Call Records (call_id, grievance_id, host, status, duration, timestamps)
  */
 
-import Database from 'better-sqlite3';
+import Database, { Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
@@ -19,7 +19,7 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 const DB_PATH = path.join(DATA_DIR, 'jansunwai.db');
-export const db = new Database(DB_PATH);
+export const db: DatabaseType = new Database(DB_PATH);
 
 // Enable WAL mode for better concurrency and foreign keys
 db.pragma('journal_mode = WAL');

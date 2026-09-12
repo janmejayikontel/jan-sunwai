@@ -21,6 +21,7 @@
 import { Router, Request, Response } from 'express';
 import callManager from '../services/callManager';
 import livekitService from '../services/livekit';
+import samparkService from '../services/sampark';
 import db from '../db/database';
 
 const router = Router();
@@ -95,7 +96,7 @@ router.get('/can-enter/:grievanceId', (req: Request, res: Response) => {
  * }
  */
 router.post('/initiate', async (req: Request, res: Response) => {
-  const {
+  let {
     grievanceId,
     title,
     hostUserId,
@@ -110,14 +111,38 @@ router.post('/initiate', async (req: Request, res: Response) => {
     autoRecord,
   } = req.body;
 
-  // Validate required fields
-  if (!grievanceId || !title || !hostName || !citizenPhone || !citizenName || !employeePhone || !employeeName) {
-    res.status(400).json({
-      error: 'Missing required fields',
-      required: ['grievanceId', 'title', 'hostName', 'citizenPhone', 'citizenName', 'employeePhone', 'employeeName'],
-    });
+  if (!grievanceId) {
+    res.status(400).json({ error: 'grievanceId is required' });
     return;
   }
+
+  // Auto-fetch grievance details from SQLite directory if contacts not provided
+  if (!citizenPhone || !employeePhone || !title) {
+    try {
+      const g = await samparkService.fetchGrievance(grievanceId);
+      if (g) {
+        title = title || `Jan Sunwai — ${g.title}`;
+        citizenPhone = citizenPhone || g.citizen.phone;
+        citizenName = citizenName || g.citizen.name;
+        employeePhone = employeePhone || g.assignedEmployee.phone;
+        employeeName = employeeName || g.assignedEmployee.name;
+        employeeDesignation = employeeDesignation || g.assignedEmployee.designation;
+        employeeDepartment = employeeDepartment || g.assignedEmployee.department;
+      }
+    } catch (e) {
+      console.warn('[Calls/Initiate] Auto-fetch grievance failed:', e);
+    }
+  }
+
+  title = title || `Jan Sunwai — Hearing #${grievanceId}`;
+  hostName = hostName || 'District Collector';
+  hostDesignation = hostDesignation || 'District Collector & DM';
+  citizenPhone = citizenPhone || '+919876543210';
+  citizenName = citizenName || 'Citizen';
+  employeePhone = employeePhone || '+917749852013';
+  employeeName = employeeName || 'Field Officer';
+  employeeDesignation = employeeDesignation || 'Official';
+  employeeDepartment = employeeDepartment || 'District Administration';
 
   try {
     const { callSession, hostToken } = await callManager.initiateCall({

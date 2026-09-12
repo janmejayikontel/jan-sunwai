@@ -135,11 +135,11 @@ function getWsUrl(phone: string): string {
     return `${process.env.NEXT_PUBLIC_WS_URL}/ws?phone=${encodeURIComponent(phone)}`;
   }
   if (typeof window !== "undefined") {
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+      return `ws://${window.location.hostname}:3001/ws?phone=${encodeURIComponent(phone)}`;
+    }
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host =
-      window.location.port === "3000"
-        ? `${window.location.hostname}:3001`
-        : window.location.host;
+    const host = window.location.host;
     return `${proto}//${host}/ws?phone=${encodeURIComponent(phone)}`;
   }
   return `ws://localhost:3001/ws?phone=${encodeURIComponent(phone)}`;
@@ -437,11 +437,35 @@ export default function JanSunwaiPortalPage() {
 
     connectWs();
 
+    // Fast polling fallback: checks every 2.5s for any active call ringing for this phone
+    // Ensures incoming call is received on laptop browser even if WebSocket disconnected or had network error
+    const pollInterval = setInterval(async () => {
+      if (!active || !currentUser) return;
+      if (livekitConnection || incomingCall) return;
+      try {
+        const checkRes = await fetch(
+          `${API_BASE}/api/calls/check-incoming/${encodeURIComponent(currentUser.phone)}`
+        );
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData.hasIncomingCall && checkData.incomingCall) {
+            setIncomingCall((prev) => {
+              if (prev && prev.callId === checkData.incomingCall.callId) return prev;
+              return checkData.incomingCall;
+            });
+          }
+        }
+      } catch (err) {
+        // quiet
+      }
+    }, 2500);
+
     return () => {
       active = false;
+      clearInterval(pollInterval);
       wsRef.current?.close();
     };
-  }, [currentUser, showToast]);
+  }, [currentUser, showToast, livekitConnection, incomingCall]);
 
   // ─── Fetch Grievances for Citizen / Field Employee ──────────
   useEffect(() => {

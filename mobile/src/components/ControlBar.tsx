@@ -10,6 +10,7 @@ interface ControlBarProps {
   onFlipCamera?: () => void;
   onToggleScreenShare: () => void;
   onLeaveCall: () => void;
+  onAddParticipant?: () => void;
   isCollector?: boolean;
 }
 
@@ -22,6 +23,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   onFlipCamera,
   onToggleScreenShare,
   onLeaveCall,
+  onAddParticipant,
 }) => {
   return (
     <View style={styles.container}>
@@ -45,18 +47,6 @@ export const ControlBar: React.FC<ControlBarProps> = ({
         <Text style={styles.btnLabel}>{isCameraOff ? 'Cam On' : 'Cam Off'}</Text>
       </TouchableOpacity>
 
-      {/* Flip Camera Button */}
-      {onFlipCamera && (
-        <TouchableOpacity
-          style={[styles.btn, styles.btnDefault]}
-          onPress={onFlipCamera}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.btnIcon}>🔄</Text>
-          <Text style={styles.btnLabel}>Flip Cam</Text>
-        </TouchableOpacity>
-      )}
-
       {/* Screen Share Button (WhatsApp style native Android screen capture!) */}
       <TouchableOpacity
         style={[styles.btn, isScreenSharing ? styles.btnActiveShare : styles.btnDefault]}
@@ -65,9 +55,33 @@ export const ControlBar: React.FC<ControlBarProps> = ({
       >
         <Text style={styles.btnIcon}>{isScreenSharing ? '⏹️' : '📱'}</Text>
         <Text style={[styles.btnLabel, isScreenSharing && styles.btnLabelActive]}>
-          {isScreenSharing ? 'Stop Share' : 'Share Screen'}
+          {isScreenSharing ? 'Stop' : 'Share'}
         </Text>
       </TouchableOpacity>
+
+      {/* Add Participant / Official Button */}
+      {onAddParticipant && (
+        <TouchableOpacity
+          style={[styles.btn, styles.btnAddOfficial]}
+          onPress={onAddParticipant}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.btnIcon}>➕</Text>
+          <Text style={[styles.btnLabel, { color: '#38bdf8' }]}>Add Person</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Flip Camera Button */}
+      {onFlipCamera && (
+        <TouchableOpacity
+          style={[styles.btn, styles.btnDefault]}
+          onPress={onFlipCamera}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.btnIcon}>🔄</Text>
+          <Text style={styles.btnLabel}>Flip</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Leave / End Hearing Button */}
       <TouchableOpacity
@@ -112,6 +126,11 @@ const styles = StyleSheet.create({
   },
   btnEndCall: {
     backgroundColor: '#dc2626',
+  },
+  btnAddOfficial: {
+    backgroundColor: '#075985',
+    borderWidth: 1,
+    borderColor: '#38bdf8',
   },
   btnIcon: {
     fontSize: 20,

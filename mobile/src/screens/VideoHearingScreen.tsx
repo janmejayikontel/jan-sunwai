@@ -19,6 +19,7 @@ import {
 import { Track } from 'livekit-client';
 import { ParticipantView } from '../components/ParticipantView';
 import { ControlBar } from '../components/ControlBar';
+import { AddParticipantModal } from '../components/AddParticipantModal';
 
 interface VideoHearingScreenProps {
   serverUrl: string;
@@ -26,6 +27,8 @@ interface VideoHearingScreenProps {
   roomName: string;
   grievanceId: string;
   userName: string;
+  role?: string;
+  callId?: string;
   onLeave: () => void;
 }
 
@@ -35,13 +38,19 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  * Inner room component that has access to LiveKit context hooks
  */
 const RoomContent: React.FC<{
+  serverUrl: string;
   grievanceId: string;
+  callId?: string;
+  role?: string;
   onLeave: () => void;
-}> = ({ grievanceId, onLeave }) => {
+}> = ({ serverUrl, grievanceId, callId, role, onLeave }) => {
   const room = useRoomContext();
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [showAddParticipant, setShowAddParticipant] = useState(false);
+
+  const isOfficer = role === 'officer' || role === 'collector' || !role;
 
   // Subscribe to all camera feeds and screen share feeds
   const cameraTracks = useTracks([Track.Source.Camera]);
@@ -181,6 +190,16 @@ const RoomContent: React.FC<{
         onFlipCamera={handleFlipCamera}
         onToggleScreenShare={handleToggleScreenShare}
         onLeaveCall={onLeave}
+        onAddParticipant={isOfficer ? () => setShowAddParticipant(true) : undefined}
+      />
+
+      {/* Add Participant Modal for Officers */}
+      <AddParticipantModal
+        visible={showAddParticipant}
+        grievanceId={grievanceId}
+        callId={callId}
+        serverUrl={serverUrl}
+        onClose={() => setShowAddParticipant(false)}
       />
     </View>
   );
@@ -192,6 +211,8 @@ export const VideoHearingScreen: React.FC<VideoHearingScreenProps> = ({
   roomName,
   grievanceId,
   userName,
+  role,
+  callId,
   onLeave,
 }) => {
   const [isConnecting, setIsConnecting] = useState(true);
@@ -225,7 +246,13 @@ export const VideoHearingScreen: React.FC<VideoHearingScreenProps> = ({
             <Text style={styles.subLoadingText}>Room: {roomName}</Text>
           </View>
         ) : (
-          <RoomContent grievanceId={grievanceId} onLeave={onLeave} />
+          <RoomContent
+            serverUrl={serverUrl}
+            grievanceId={grievanceId}
+            callId={callId}
+            role={role}
+            onLeave={onLeave}
+          />
         )}
       </LiveKitRoom>
     </SafeAreaView>

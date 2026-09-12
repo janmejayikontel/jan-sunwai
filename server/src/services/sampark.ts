@@ -299,6 +299,24 @@ export async function searchOfficers(query: string, department?: string): Promis
   const digitsOnly = cleanQ.replace(/[^0-9]/g, '');
   const phonePattern = digitsOnly.length >= 6 ? `%${digitsOnly.slice(-10)}%` : lower;
 
+  // 1. Search officers table (Collectors, SDM, SP, etc.)
+  let offRows: any[] = [];
+  if (!department || department === 'ALL') {
+    let offSql = `
+      SELECT name, phone, designation, department, posting_location as postingDistrict, cadre as employeeCode
+      FROM officers
+      WHERE 1=1
+    `;
+    const offParams: any[] = [];
+    if (cleanQ) {
+      offSql += ` AND (LOWER(name) LIKE ? OR LOWER(designation) LIKE ? OR LOWER(department) LIKE ? OR phone LIKE ? OR phone LIKE ?)`;
+      offParams.push(lower, lower, lower, lower, phonePattern);
+    }
+    offSql += ` ORDER BY name ASC LIMIT 15`;
+    offRows = db.prepare(offSql).all(...offParams) as any[];
+  }
+
+  // 2. Search employees table
   let empSql = `
     SELECT name, phone, designation, department, posting_location as postingDistrict, employee_code as employeeCode
     FROM employees
@@ -319,7 +337,7 @@ export async function searchOfficers(query: string, department?: string): Promis
   empSql += ` ORDER BY name ASC LIMIT 30`;
   const empRows = db.prepare(empSql).all(...empParams) as any[];
 
-  // 2. Search citizens table if no department filter is specified
+  // 3. Search citizens table if no department filter is specified
   let citRows: any[] = [];
   if (!department || department === 'ALL') {
     if (cleanQ) {
@@ -335,7 +353,7 @@ export async function searchOfficers(query: string, department?: string): Promis
   const results: OfficerDirectoryEntry[] = [];
   const seenPhones = new Set<string>();
 
-  for (const r of [...empRows, ...citRows]) {
+  for (const r of [...offRows, ...empRows, ...citRows]) {
     const norm = r.phone.replace(/[^0-9]/g, '').slice(-10);
     if (!seenPhones.has(norm)) {
       seenPhones.add(norm);

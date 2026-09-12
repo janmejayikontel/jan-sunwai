@@ -198,6 +198,44 @@ export async function initiateCall(input: InitiateCallInput): Promise<{
   callSession: CallSession;
   hostToken: string;
 }> {
+  // Check if an active call session already exists for this grievance
+  for (const existing of activeCalls.values()) {
+    if (
+      existing.grievanceId.toUpperCase() === input.grievanceId.toUpperCase() &&
+      (existing.status === 'ringing' || existing.status === 'active')
+    ) {
+      console.log(`[CallManager] Call already active for ${input.grievanceId}: ${existing.id}. Re-ringing.`);
+      const incomingCallData = {
+        callId: existing.id,
+        grievanceId: existing.grievanceId,
+        title: existing.title,
+        callerName: existing.hostName,
+        callerDesignation: existing.hostDesignation,
+        roomName: existing.livekitRoomName,
+        participantCount: existing.participants.length,
+      };
+      sendToClient(input.citizenPhone, {
+        type: 'incoming_call',
+        callId: existing.id,
+        data: { ...incomingCallData, yourRole: 'citizen' },
+      });
+      sendToClient(input.employeePhone, {
+        type: 'incoming_call',
+        callId: existing.id,
+        data: { ...incomingCallData, yourRole: 'employee' },
+      });
+
+      const hostToken = await livekitService.generateToken({
+        identity: input.hostUserId,
+        name: `${input.hostName} (${input.hostDesignation})`,
+        roomName: existing.livekitRoomName,
+        isHost: true,
+      });
+
+      return { callSession: existing, hostToken };
+    }
+  }
+
   const callId = uuidv4();
   const roomName = `JS-${input.grievanceId}`;
 
@@ -393,13 +431,22 @@ export async function respondToCall(
  * Rings the new officer's phone and adds them to the session.
  */
 export async function addParticipantToCall(
-  callId: string,
+  callIdOrGrievance: string,
   phone: string,
   name: string,
   designation?: string,
   department?: string
 ): Promise<CallParticipant | null> {
-  const call = activeCalls.get(callId);
+  let call = activeCalls.get(callIdOrGrievance);
+  if (!call) {
+    const cleanGrievance = callIdOrGrievance.replace(/^hearing_/, '').trim().toUpperCase();
+    for (const c of activeCalls.values()) {
+      if (c.grievanceId.toUpperCase() === cleanGrievance || c.livekitRoomName === callIdOrGrievance) {
+        call = c;
+        break;
+      }
+    }
+  }
   if (!call) return null;
 
   const newParticipant: CallParticipant = {
@@ -418,9 +465,9 @@ export async function addParticipantToCall(
   // Ring the new participant
   sendToClient(phone, {
     type: 'incoming_call',
-    callId,
+    callId: call.id,
     data: {
-      callId,
+      callId: call.id,
       grievanceId: call.grievanceId,
       title: call.title,
       callerName: call.hostName,
@@ -432,7 +479,7 @@ export async function addParticipantToCall(
     },
   });
 
-  console.log(`[CallManager] Added ${name} (${phone}) to call ${callId}`);
+  console.log(`[CallManager] Added ${name} (${phone}) to call ${call.id}`);
   return newParticipant;
 }
 
@@ -671,7 +718,7 @@ export function getIncomingCallForPhone(phone: string): {
   for (const call of activeCalls.values()) {
     if (call.status === 'completed' || call.status === 'cancelled') continue;
     const participant = call.participants.find((p) => matchPhone(p.phone, phone));
-    if (participant && (participant.ringStatus === 'ringing' || (call.status === 'active' && participant.ringStatus !== 'declined'))) {
+    if (participant && participant.ringStatus === 'ringing') {
       return {
         callId: call.id,
         grievanceId: call.grievanceId,

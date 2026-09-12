@@ -22,10 +22,15 @@ interface GrievanceItem {
   location?: string;
   district?: string;
   status: string;
+  citizen?: {
+    name: string;
+    phone: string;
+  };
   assignedEmployee?: {
     name: string;
     designation: string;
     phone: string;
+    department?: string;
   };
 }
 
@@ -39,6 +44,7 @@ interface HomeScreenProps {
     grievanceId: string;
     userName: string;
     role: string;
+    callId?: string;
   }) => void;
   onLogout: () => void;
 }
@@ -104,6 +110,54 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     try {
       const base = cleanServerUrl(serverUrl);
 
+      // If user is District Collector or Officer: INITIATE THE CALL so employee & citizen are rung!
+      if (user.role === 'officer' || user.role === 'collector') {
+        const foundGrievance = grievances.find(
+          (g) => g.grievanceId.toUpperCase() === targetCaseId
+        );
+
+        const initiateRes = await fetch(`${base}/api/calls/initiate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            grievanceId: targetCaseId,
+            title: foundGrievance
+              ? `Jan Sunwai — ${foundGrievance.title}`
+              : `Jan Sunwai — Hearing #${targetCaseId}`,
+            hostUserId: user.id || user.phone || 'officer-001',
+            hostName: user.name || 'Vivek, IAS',
+            hostDesignation: user.designation || 'District Collector & DM',
+            citizenPhone: foundGrievance?.citizen?.phone,
+            citizenName: foundGrievance?.citizen?.name,
+            employeePhone: foundGrievance?.assignedEmployee?.phone,
+            employeeName: foundGrievance?.assignedEmployee?.name,
+            employeeDesignation: foundGrievance?.assignedEmployee?.designation,
+            employeeDepartment: foundGrievance?.assignedEmployee?.department,
+            autoRecord: true,
+          }),
+        });
+
+        if (!initiateRes.ok) {
+          const errData = await initiateRes.json().catch(() => null);
+          throw new Error(
+            errData?.error || `Failed to initiate hearing call (${initiateRes.status})`
+          );
+        }
+
+        const initiateData = await initiateRes.json();
+
+        onJoinHearing({
+          serverUrl: initiateData.livekit?.url || base,
+          token: initiateData.livekit?.token,
+          roomName: initiateData.livekit?.roomName || `JS-${targetCaseId}`,
+          grievanceId: targetCaseId,
+          userName: user.name || `Officer (${user.phone.slice(-4)})`,
+          role: user.role || 'officer',
+          callId: initiateData.call?.id,
+        });
+        return;
+      }
+
       // Access Control: Citizens & Employees can only enter if meeting is ongoing AND officer called them
       if (user.role !== 'officer' && user.role !== 'collector') {
         try {
@@ -130,7 +184,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          roomName: `hearing_${targetCaseId}`,
+          roomName: `JS-${targetCaseId}`,
           participantName: user.name || `User (${user.phone.slice(-4)})`,
           participantRole: user.role || 'citizen',
           phone: user.phone,
@@ -151,7 +205,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       onJoinHearing({
         serverUrl: data.serverUrl || data.url || base,
         token: data.token,
-        roomName: data.roomName || `hearing_${targetCaseId}`,
+        roomName: data.roomName || `JS-${targetCaseId}`,
         grievanceId: targetCaseId,
         userName: user.name || `User (${user.phone.slice(-4)})`,
         role: user.role || 'citizen',
