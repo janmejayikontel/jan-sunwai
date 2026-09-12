@@ -1,11 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { registerGlobals } from '@livekit/react-native';
 import { JoinHearingScreen } from './src/screens/JoinHearingScreen';
 import { VideoHearingScreen } from './src/screens/VideoHearingScreen';
-
-// Polyfill WebRTC and LiveKit native modules
-registerGlobals();
 
 interface ActiveHearingState {
   serverUrl: string;
