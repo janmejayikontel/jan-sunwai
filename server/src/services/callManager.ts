@@ -104,29 +104,50 @@ const RING_TIMEOUT_MS = 60_000;
 
 // ─── WebSocket Client Management ─────────────────────────────
 
+export function matchPhone(p1?: string, p2?: string): boolean {
+  if (!p1 || !p2) return false;
+  const d1 = p1.replace(/[^0-9]/g, '').slice(-10);
+  const d2 = p2.replace(/[^0-9]/g, '').slice(-10);
+  return d1.length >= 10 && d1 === d2;
+}
+
 /**
  * Register a WebSocket connection for a user (identified by phone).
  * A user may have multiple active connections (web + mobile).
  */
 export function registerClient(phone: string, ws: WebSocket) {
-  if (!connectedClients.has(phone)) {
-    connectedClients.set(phone, new Set());
-  }
-  connectedClients.get(phone)!.add(ws);
-  console.log(`[CallManager] Client registered: ${phone} (${connectedClients.get(phone)!.size} connections)`);
+  const digits = phone.replace(/[^0-9]/g, '');
+  const last10 = digits.slice(-10);
+  const withPrefix = `+91${last10}`;
+
+  [phone, last10, withPrefix, digits].forEach((key) => {
+    if (!key) return;
+    if (!connectedClients.has(key)) {
+      connectedClients.set(key, new Set());
+    }
+    connectedClients.get(key)!.add(ws);
+  });
+  console.log(`[CallManager] Client registered: ${phone} (mapped to ${last10}, ${withPrefix})`);
 }
 
 /**
  * Unregister a WebSocket connection when it closes.
  */
 export function unregisterClient(phone: string, ws: WebSocket) {
-  const clients = connectedClients.get(phone);
-  if (clients) {
-    clients.delete(ws);
-    if (clients.size === 0) {
-      connectedClients.delete(phone);
+  const digits = phone.replace(/[^0-9]/g, '');
+  const last10 = digits.slice(-10);
+  const withPrefix = `+91${last10}`;
+
+  [phone, last10, withPrefix, digits].forEach((key) => {
+    if (!key) return;
+    const clients = connectedClients.get(key);
+    if (clients) {
+      clients.delete(ws);
+      if (clients.size === 0) {
+        connectedClients.delete(key);
+      }
     }
-  }
+  });
   console.log(`[CallManager] Client unregistered: ${phone}`);
 }
 
@@ -300,7 +321,7 @@ export async function respondToCall(
     return null;
   }
 
-  const participant = call.participants.find((p) => p.phone === phone);
+  const participant = call.participants.find((p) => matchPhone(p.phone, phone));
   if (!participant) {
     console.log(`[CallManager] Participant ${phone} not in call ${callId}`);
     return null;
@@ -634,6 +655,98 @@ export function getAllCalls(): CallSession[] {
   return Array.from(activeCalls.values());
 }
 
+/**
+ * Check if there is an incoming or active call ringing/waiting for this phone number.
+ */
+export function getIncomingCallForPhone(phone: string): {
+  callId: string;
+  grievanceId: string;
+  title: string;
+  callerName: string;
+  callerDesignation: string;
+  roomName: string;
+  participantCount: number;
+  yourRole: string;
+} | null {
+  for (const call of activeCalls.values()) {
+    if (call.status === 'completed' || call.status === 'cancelled') continue;
+    const participant = call.participants.find((p) => matchPhone(p.phone, phone));
+    if (participant && (participant.ringStatus === 'ringing' || (call.status === 'active' && participant.ringStatus !== 'declined'))) {
+      return {
+        callId: call.id,
+        grievanceId: call.grievanceId,
+        title: call.title,
+        callerName: call.hostName,
+        callerDesignation: call.hostDesignation,
+        roomName: call.livekitRoomName,
+        participantCount: call.participants.length,
+        yourRole: participant.role,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Access Control Check: Can this user enter the meeting room?
+ * Rule: User & Employee can enter only if meeting is ongoing AND officer called him.
+ */
+export function checkCanEnterRoom(
+  caseOrRoomId: string,
+  phone: string,
+  role: string
+): {
+  allowed: boolean;
+  reason?: string;
+  message?: string;
+  callId?: string;
+  roomName?: string;
+} {
+  // District Collector / Officer is presiding host and can always start and enter
+  if (role === 'officer' || role === 'collector') {
+    return { allowed: true };
+  }
+
+  const cleanCaseId = caseOrRoomId.replace(/^hearing_/, '').trim().toUpperCase();
+
+  // Look for any active call matching this grievance ID
+  for (const call of activeCalls.values()) {
+    const callGrievanceClean = call.grievanceId.trim().toUpperCase();
+    if (callGrievanceClean === cleanCaseId || call.livekitRoomName === caseOrRoomId) {
+      if (call.status === 'completed' || call.status === 'cancelled') {
+        return {
+          allowed: false,
+          reason: 'hearing_ended',
+          message: 'The hearing session for this grievance has ended.',
+        };
+      }
+
+      // Check if this participant was invited / called by the Officer
+      const participant = call.participants.find((p) => matchPhone(p.phone, phone));
+      if (!participant) {
+        return {
+          allowed: false,
+          reason: 'not_invited',
+          message: 'You have not been called or invited into this hearing by the Presiding Officer.',
+        };
+      }
+
+      return {
+        allowed: true,
+        callId: call.id,
+        roomName: call.livekitRoomName,
+      };
+    }
+  }
+
+  // If no active call is found for this grievance:
+  return {
+    allowed: false,
+    reason: 'hearing_not_started',
+    message: 'The District Collector / Officer has not started this hearing yet or has not called you. You will receive an incoming call prompt on your screen when invited.',
+  };
+}
+
 // ─── Exports ──────────────────────────────────────────────────
 
 export const callManager = {
@@ -648,6 +761,9 @@ export const callManager = {
   getCall,
   getActiveCalls,
   getAllCalls,
+  getIncomingCallForPhone,
+  checkCanEnterRoom,
 };
 
 export default callManager;
+

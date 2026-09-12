@@ -103,6 +103,27 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     setIsJoining(true);
     try {
       const base = cleanServerUrl(serverUrl);
+
+      // Access Control: Citizens & Employees can only enter if meeting is ongoing AND officer called them
+      if (user.role !== 'officer' && user.role !== 'collector') {
+        try {
+          const canEnterUrl = `${base}/api/calls/can-enter/${encodeURIComponent(targetCaseId)}?phone=${encodeURIComponent(user.phone)}&role=${encodeURIComponent(user.role || 'citizen')}`;
+          const canEnterRes = await fetch(canEnterUrl);
+          if (canEnterRes.ok) {
+            const canEnterData = await canEnterRes.json();
+            if (!canEnterData.allowed) {
+              Alert.alert(
+                '🏛️ Hearing Not Active',
+                canEnterData.message || 'The District Collector / Officer has not started this hearing yet or has not called you. You will receive an incoming call prompt on your screen when invited.'
+              );
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('Can-enter check network error:', e);
+        }
+      }
+
       const tokenUrl = `${base}/api/livekit/token`;
 
       const response = await fetch(tokenUrl, {
@@ -112,11 +133,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           roomName: `hearing_${targetCaseId}`,
           participantName: user.name || `User (${user.phone.slice(-4)})`,
           participantRole: user.role || 'citizen',
+          phone: user.phone,
+          identity: user.phone,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.error || `Server returned ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();

@@ -43,6 +43,37 @@ router.get('/history', (_req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/calls/check-incoming/:phone
+ *
+ * Check if there is an active incoming call ringing or waiting for this phone number.
+ * Used by mobile app to catch incoming calls even if WebSocket reconnects or sleeps.
+ */
+router.get('/check-incoming/:phone', (req: Request, res: Response) => {
+  const { phone } = req.params;
+  const incomingCall = callManager.getIncomingCallForPhone(phone);
+  res.json({
+    success: true,
+    hasIncomingCall: !!incomingCall,
+    incomingCall,
+  });
+});
+
+/**
+ * GET /api/calls/can-enter/:grievanceId
+ *
+ * Access control check: Can this citizen/employee enter the hearing room?
+ * Enforces rule: Citizen & Employee can only enter if hearing is ongoing AND officer called them.
+ */
+router.get('/can-enter/:grievanceId', (req: Request, res: Response) => {
+  const { grievanceId } = req.params;
+  const phone = (req.query.phone as string) || '';
+  const role = (req.query.role as string) || 'citizen';
+
+  const check = callManager.checkCanEnterRoom(grievanceId, phone, role);
+  res.json(check);
+});
+
+/**
  * POST /api/calls/initiate
  *
  * Officer initiates a new Jan Sunwai multi-party video call.

@@ -81,6 +81,20 @@ app.post('/api/livekit/token', async (req, res) => {
     }
     const isHost = participantRole === 'officer' || participantRole === 'collector';
     const userIdentity = identity || `${participantRole || 'user'}_${Date.now()}`;
+    const userPhone = req.body.phone || identity || '';
+
+    // Enforce business rule: user and employee can enter ONLY if meeting is ongoing AND officer called him
+    if (!isHost) {
+      const check = callManager.checkCanEnterRoom(roomName, userPhone, participantRole || 'citizen');
+      if (!check.allowed) {
+        console.log(`[LiveKit/AccessDenied] Denied ${participantName} (${userPhone}) into ${roomName}: ${check.reason}`);
+        res.status(403).json({
+          error: check.message,
+          reason: check.reason,
+        });
+        return;
+      }
+    }
 
     const token = await livekitService.generateToken({
       identity: userIdentity,
