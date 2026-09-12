@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@livekit/react-native": "^2.3.0",
-    "@livekit/react-native-webrtc": "^144.1.2",
+    "@livekit/react-native-webrtc": "144.1.2",
     "expo": "~51.0.28",
     "expo-status-bar": "~1.12.1",
     "livekit-client": "^2.5.0",
