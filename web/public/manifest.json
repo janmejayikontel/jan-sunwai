@@ -1,0 +1,26 @@
+{
+  "name": "Jan Sunwai — Video Hearing Platform",
+  "short_name": "Jan Sunwai",
+  "description": "Government of Rajasthan — Direct Citizen-Officer Video Hearing & Grievance Redressal Portal",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#090d16",
+  "theme_color": "#0f172a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["government", "productivity", "utilities"]
+}

@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Jan Sunwai",
+    "slug": "jan-sunwai-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#020617"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "gov.rajasthan.jansunwai",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Jan Sunwai requires camera access for citizen-officer video hearings and document verification.",
+        "NSMicrophoneUsageDescription": "Jan Sunwai requires microphone access to speak during grievance hearings."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#020617"
+      },
+      "package": "gov.rajasthan.jansunwai",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.INTERNET",
+        "android.permission.WAKE_LOCK"
+      ]
+    }
+  }
+}

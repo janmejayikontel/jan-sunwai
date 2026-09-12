@@ -1,0 +1,19 @@
+# Jan Sunwai — Local Caddy Reverse Proxy
+# Combines Next.js (port 3000) and Express Backend + WebSockets (port 3001) into port 8080
+
+:8080 {
+    # 1. VoIP WebSocket Call Signaling (/ws)
+    handle /ws* {
+        reverse_proxy localhost:3001
+    }
+
+    # 2. REST API (/api)
+    handle /api/* {
+        reverse_proxy localhost:3001
+    }
+
+    # 3. Next.js Web Application (All other pages)
+    handle {
+        reverse_proxy localhost:3000
+    }
+}

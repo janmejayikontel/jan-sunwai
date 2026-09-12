@@ -1,0 +1,348 @@
+# 🏛️ Jan Sunwai Video Call Platform — Rajasthan Government
+## Mobile-Number-Based Multi-Party Video Calling with Native WhatsApp-Style Ringing
+
+---
+
+## 📌 Executive Summary & User Corrections
+
+> [!IMPORTANT]
+> ### The Core Correction
+> **Previous plan assumed:** Join links via SMS, meeting codes, and passive in-app notifications.
+> 
+> **Corrected requirement:**
+> 1. **Identity is 100% Mobile-Number-based**: All citizens, employees (subordinates/assigned officials), and higher officers have the app installed and log in using their **Mobile Number** (synced/verified with **Rajasthan Sampark**).
+> 2. **Select & Call from Sampark**: The Officer (Higher Authority) selects the **Employee** and the **Citizen** directly by their name and mobile number (fetched from the Sampark grievance record or directory).
+> 3. **Rings Suddenly Like WhatsApp**: When the Officer initiates the call:
+>    - The **Employee's phone RINGS SUDDENLY** (even if locked / in pocket / app closed) with native ringtone + full-screen caller ID ("District Collector Alok Sharma calling for Jan Sunwai - Grievance #12345").
+>    - The **Citizen's phone RINGS SUDDENLY** with native ringtone + full-screen caller ID.
+> 4. **All Three Connect & Talk**: Both pick up the call, and all three parties (Officer, Employee, Citizen) are immediately connected in a LiveKit multi-party video hearing to resolve the grievance on the spot.
+
+---
+
+## 1. How It Works (The Corrected Jan Sunwai Flow)
+
+```
+========================================================================================
+                      REAL-WORLD JAN SUNWAI SCENARIO
+========================================================================================
+
+1. Citizen registered a grievance on Sampark (e.g., Road Repair in Gram Panchayat X).
+2. Assigned Field Employee / Patwari marked it "Resolved" without visiting.
+3. Citizen files a complaint to Higher Authority (e.g., District Collector / SDM).
+4. District Collector opens Jan Sunwai Video Call app / Web portal.
+5. System pulls grievance details from Sampark:
+   ├── Citizen: Ramesh Kumar (📱 98765-43210)
+   └── Employee: Rajesh Sharma, JEn/Patwari (📱 91234-56789)
+6. District Collector taps: [ 📹 Call Both for Jan Sunwai ]
+7. SYSTEM RINGS BOTH PHONES SUDDENLY (LIKE WHATSAPP):
+   ├── Rajesh's phone rings with full screen: "Collector Jaipur Calling — Grievance #8821"
+   └── Ramesh's phone rings with full screen: "Collector Jaipur Calling — Grievance #8821"
+8. Rajesh & Ramesh swipe "Accept":
+   └── Instantly enters LiveKit video room.
+9. Collector, Employee, and Citizen are all on screen talking live!
+10. Collector questions the employee; employee provides clarification or promises resolution; citizen confirms.
+11. Collector can also tap [+ Add Officer] to dial Tehsildar (📱 94140-xxxxx) mid-call — his phone rings suddenly too!
+12. Call ends → Hearing recording and attendance log automatically linked back to Sampark grievance!
+========================================================================================
+```
+
+### Flow Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Officer as 🏛️ Higher Officer<br/>(District Collector)
+    participant Sampark as 🏛️ Sampark Portal<br/>(Grievance Data)
+    participant Backend as ⚙️ Backend API &<br/>VoIP Signaling
+    participant Push as 🔔 FCM / APNs<br/>(High Priority VoIP Push)
+    actor Employee as 👷 Assigned Employee<br/>(Phone in pocket/locked)
+    actor Citizen as 👤 Citizen<br/>(Phone in pocket/locked)
+    participant LiveKit as 📡 LiveKit SFU<br/>(Audio & Video)
+
+    Officer->>Sampark: Fetch Grievance #8821
+    Sampark-->>Officer: Citizen (9876543210), Employee (9123456789)
+    Officer->>Backend: POST /api/calls/initiate-group<br/>{title, citizenPhone, employeePhone}
+    Backend->>LiveKit: Create Room "JS-8821"
+    
+    par Signal Employee Device
+        Backend->>Push: Send VoIP Push (ConnectionService/CallKit)
+        Push->>Employee: 📱 WAKES SCREEN + RINGS LOUDLY<br/>"Collector Jaipur Calling"
+    and Signal Citizen Device
+        Backend->>Push: Send VoIP Push (ConnectionService/CallKit)
+        Push->>Citizen: 📱 WAKES SCREEN + RINGS LOUDLY<br/>"Collector Jaipur Calling"
+    end
+
+    Employee->>Backend: Swipes "Accept" (Green Button)
+    Backend-->>Employee: LiveKit Token
+    Employee->>LiveKit: Connects Audio/Video Stream
+
+    Citizen->>Backend: Swipes "Accept" (Green Button)
+    Backend-->>Citizen: LiveKit Token
+    Citizen->>LiveKit: Connects Audio/Video Stream
+
+    Officer->>LiveKit: Connects Audio/Video Stream
+    Note over Officer,Citizen: 📹 All 3 are now connected live and talking!
+```
+
+---
+
+## 2. The WhatsApp-Style Incoming Call Architecture
+
+To make a phone **ring suddenly** when the app is in the background or killed, we use OS-level VoIP and full-screen calling frameworks.
+
+### 2.1 Android Architecture (Native Full-Screen Call)
+- **Mechanism**: High-Priority Firebase Cloud Messaging (`priority: "high"`, `content_available: true`, `data`-only payload).
+- **Foreground Telecom Integration**: Uses Android **`ConnectionService`** (Android Telecom Framework) or **`NotificationCompat.Builder.setFullScreenIntent()`**.
+- **Behavior**:
+  - Wakes up the device CPU from Doze mode.
+  - Bypasses screen lock and shows full-screen incoming call UI.
+  - Plays continuous ringtone via `STREAM_RING` (vibration + sound).
+  - Displays Caller Name ("District Collector Alok Sharma"), Designation, and Hearing Subject.
+  - Action buttons: **Accept (Green)** and **Decline (Red)**.
+  - If answered, launches the LiveKit room directly without asking for password/PIN.
+
+### 2.2 iOS Architecture (Apple CallKit)
+- **Mechanism**: Apple **`PushKit`** (VoIP Push Notifications).
+- **Framework**: **`CallKit`** integration (`CXProvider`).
+- **Behavior**:
+  - Triggers the native iOS system incoming call screen (identical to a regular cellular or WhatsApp call).
+  - Shows custom caller name ("Jan Sunwai: District Collector").
+  - Seamless audio routing and system-level lock screen call answering.
+  - When unlocked/answered, transitions directly into the LiveKit video view.
+
+### 2.3 Web App Incoming Ringing (WhatsApp Web Style)
+- When an Officer or Employee is logged into the web portal (`web.jansunwai.rajasthan.gov.in`):
+  - Connected via persistent secure **WebSocket**.
+  - On incoming call signal, web browser plays a loud ringing audio loop (Web Audio API).
+  - Displays full-screen modal with ringing animation, caller profile, and Accept/Reject buttons.
+
+---
+
+## 3. User Roles & Identity Model (Mobile-Number Driven)
+
+Everyone logs in using their **Mobile Number** (verified via OTP), just like WhatsApp.
+
+| Role | Identity & Directory Source | What They See / Do | Calling Privileges |
+|------|----------------------------|--------------------|---------------------|
+| **Higher Officer** (e.g. Collector, SDM, HoD) | Mobile number registered as Higher Authority in Sampark | Searches/selects grievance or contacts; initiates 3-way or multi-party calls; host controls (mute, record, add participants) | **Can initiate calls** to any employee and citizen |
+| **Employee** (e.g. Patwari, JEn, Gram Sevak, BDO) | Mobile number mapped to Government Employee Code in Sampark | Profile shows department & designation; receives incoming calls from higher officers; can answer and testify | Can answer incoming calls; can call citizen if authorized |
+| **Citizen** | Mobile number registered on grievance in Sampark | Clean, simple app interface; views grievance status; receives sudden incoming hearing calls; talks to officer & employee | Receives incoming calls; cannot cold-dial collectors |
+| **Super Admin** | State IT / NIC Admin | Manages department hierarchies, officer privileges, monitors active calls, views audit trails | System administration |
+
+---
+
+## 4. UI / Screen Walkthroughs
+
+### 4.1 Officer Calling Screen (Initiator)
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 🏛️ Jan Sunwai — Initiate Hearing                           │
+├─────────────────────────────────────────────────────────────┤
+│ 🔍 Grievance ID: [ #RAJ-2024-88421 ]               [ Fetch ]│
+│                                                             │
+│ Grievance: "Water pipeline leak unresolved for 3 weeks"     │
+│ Location: Sanganer, Jaipur                                  │
+│                                                             │
+│ 👥 Parties Identified from Sampark:                         │
+│ ┌─────────────────────────────────────────────────────────┐ │
+│ │ 👤 CITIZEN:                                             │ │
+│ │    Name: Ramesh Kumar Sharma                            │ │
+│ │    Mobile: +91 98765-43210 (🟢 App Installed / Online)  │ │
+│ │    [✓ Include in Call]                                  │ │
+│ ├─────────────────────────────────────────────────────────┤ │
+│ │ 👷 ASSIGNED EMPLOYEE:                                   │ │
+│ │    Name: Rajesh Verma (Junior Engineer, PHED)           │ │
+│ │    Mobile: +91 91234-56789 (🟢 App Installed / Online)  │ │
+│ │    [✓ Include in Call]                                  │ │
+│ └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│ ➕ [+ Add Another Officer / Specialist by Mobile No.]        │
+│                                                             │
+│ ☑️ Auto-record this hearing for government records          │
+│                                                             │
+│ [ 📞 START JAN SUNWAI VIDEO CALL (RING BOTH) ]              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 The Incoming Call Screen (What Citizen & Employee See on Locked Phone)
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      🏛️ RAJASTHAN JAN SUNWAI                │
+│                                                             │
+│                         (( 🔔 RINGING ))                    │
+│                                                             │
+│                          [ 🏛️ IAS SEAL ]                    │
+│                                                             │
+│                    Sh. Alok Sharma, IAS                     │
+│               District Collector & DM, Jaipur               │
+│                                                             │
+│             Topic: Jan Sunwai Hearing — Road Grievance      │
+│             Participants: 3 (Collector + You + Citizen)     │
+│                                                             │
+│                                                             │
+│            [ 🔴 DECLINE ]               [ 🟢 ACCEPT ]        │
+│                                                             │
+│                         ( Swipe Up to Answer )              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 4.3 Active Video Hearing Screen (All 3 Connected)
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 🏛️ Jan Sunwai Hearing: Grievance #88421       🔴 REC [12:45]│
+├──────────────────────────────┬──────────────────────────────┤
+│                              │                              │
+│       🏛️ District Collector  │      👷 Rajesh Verma (JEn)   │
+│       Sh. Alok Sharma, IAS   │      Assigned Field Officer  │
+│                              │                              │
+├──────────────────────────────┼──────────────────────────────┤
+│                              │                              │
+│       👤 Ramesh Kumar        │      ➕ [+ Add Officer]      │
+│       Citizen (Complainant)  │      Tap to dial Tehsildar / │
+│                              │      BDO by mobile number    │
+├──────────────────────────────┴──────────────────────────────┤
+│  [ 🎤 Mute ]  [ 📷 Video ]  [ 👥 (3) ]  [ 📄 View Proof ]    │
+│  HOST CONTROLS: [ 🔇 Mute Employee ]  [ 🔴 End Hearing ]     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 5. System & Database Architecture
+
+### 5.1 Technology Stack
+- **Mobile Client**: React Native with:
+  - `@notifee/react-native` + Android `ConnectionService` (Full-screen ringing).
+  - `react-native-callkeep` (iOS CallKit integration).
+  - `@livekit/react-native` + `livekit-client` (WebRTC SFU Video/Audio).
+- **Web Client**: Next.js 14 + `@livekit/components-react` + Web Audio API.
+- **Backend**: Node.js + Fastify + TypeScript.
+- **Push Notification Service**: Firebase Cloud Messaging (FCM HTTP v1 API) for High-Priority VoIP data messages + Apple APNs.
+- **Video Engine**: Self-hosted LiveKit SFU + Egress service for MP4 call recordings.
+- **Database**: PostgreSQL (relational user/call records) + Redis (active call states, device socket connections, ring timeouts).
+
+### 5.2 Database Schema
+
+```sql
+-- Users (Citizens, Employees, Officers - Identified by Mobile Number)
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  phone VARCHAR(15) UNIQUE NOT NULL,            -- Primary identifier: +919876543210
+  name VARCHAR(255) NOT NULL,
+  role VARCHAR(50) NOT NULL,                     -- 'citizen', 'employee', 'officer', 'admin'
+  department VARCHAR(255),                      -- 'PHED', 'Revenue', 'PWD', etc.
+  designation VARCHAR(255),                     -- 'JEn', 'Patwari', 'Collector'
+  sampark_employee_id VARCHAR(100),             -- Mapped to Sampark system
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Devices & Push Tokens (For waking phone and ringing)
+CREATE TABLE user_devices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  platform VARCHAR(20) NOT NULL,                 -- 'android', 'ios', 'web'
+  fcm_token TEXT,                               -- For Android full-screen VoIP push
+  apns_voip_token TEXT,                         -- For iOS CallKit PushKit
+  is_app_installed BOOLEAN DEFAULT true,
+  last_active_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Jan Sunwai Call Sessions
+CREATE TABLE call_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  grievance_id VARCHAR(100),                    -- Sampark Grievance ID
+  title VARCHAR(500) NOT NULL,
+  host_user_id UUID REFERENCES users(id) NOT NULL, -- Officer initiating call
+  livekit_room_name VARCHAR(255) UNIQUE NOT NULL,
+  status VARCHAR(50) DEFAULT 'ringing',          -- 'ringing', 'in_progress', 'completed', 'missed'
+  started_at TIMESTAMP,
+  ended_at TIMESTAMP,
+  duration_seconds INT,
+  recording_url TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Call Participants & Ring States
+CREATE TABLE call_participants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  call_session_id UUID REFERENCES call_sessions(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id),
+  phone VARCHAR(15) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  participant_role VARCHAR(50) NOT NULL,        -- 'host', 'employee', 'citizen', 'guest_officer'
+  ring_status VARCHAR(50) DEFAULT 'ringing',    -- 'ringing', 'accepted', 'declined', 'timeout'
+  ring_started_at TIMESTAMP DEFAULT NOW(),
+  answered_at TIMESTAMP,
+  left_at TIMESTAMP
+);
+```
+
+---
+
+## 6. Core API Endpoints
+
+```
+=== AUTHENTICATION (MOBILE NUMBER + OTP) ===
+POST /api/auth/otp/send            # Send OTP to mobile number
+POST /api/auth/otp/verify          # Verify OTP -> Return JWT + user role
+
+=== DEVICE REGISTRATION (FOR RINGING) ===
+POST /api/devices/register         # Save FCM VoIP token / iOS PushKit token
+
+=== SAMPARK DIRECTORY INTEGRATION ===
+GET  /api/sampark/grievance/:id    # Auto-fetch Citizen & Assigned Employee contact details
+GET  /api/sampark/officers/search  # Search other department officers by name/dept/phone
+
+=== CALL DISPATCH & VOIP RINGING ===
+POST /api/calls/initiate-group     # Officer dials Citizen + Employee (triggers instant ringing)
+POST /api/calls/:id/respond        # Target user Accepts or Declines the call
+POST /api/calls/:id/add-officer    # Mid-call: Officer dials additional person by phone
+POST /api/calls/:id/end            # Host ends call for all parties
+GET  /api/calls/:id/livekit-token  # Get LiveKit room access token on call acceptance
+
+=== RECORDINGS & AUDIT ===
+GET  /api/calls/:id/recording      # View MP4 recording of the Jan Sunwai hearing
+POST /api/calls/:id/sync-sampark   # Push call summary and recording back to Sampark portal
+```
+
+---
+
+## 7. Implementation Roadmap
+
+### Phase 1: Core Calling Engine & Sampark Integration (Web & Backend)
+- Set up self-hosted LiveKit SFU with Redis and PostgreSQL.
+- Implement Mobile OTP Auth with phone-as-primary-key.
+- Implement Sampark Grievance API connector (fetch citizen + employee phone numbers).
+- Build Officer Web Dashboard with Grievance lookup and "Call Both" trigger.
+- Implement Web browser incoming call ringing (WhatsApp Web style).
+
+### Phase 2: React Native Mobile App with Native WhatsApp-Style Ringing
+- Implement Android `ConnectionService` / Full-Screen Intent high-priority VoIP push.
+- Implement iOS `CallKit` + `PushKit` provider.
+- Test sudden incoming call ring on locked Android and iOS devices.
+- Connect LiveKit WebRTC video stream immediately upon call acceptance.
+
+### Phase 3: Mid-Call Dialing, Egress Recording & Fallbacks
+- Support dialing extra officers by mobile number while call is already live.
+- LiveKit Egress pipeline: record multi-party hearing to MP4.
+- Automatic sync of video recording link to the Sampark grievance timeline.
+- Fallback SMS with direct join link if user has uninstalled the app or has poor network.
+
+### Phase 4: Production Deployment & Scale
+- Deploy on Rajasthan State Data Center (SDC) / NIC Indian Cloud infrastructure.
+- Load testing for 10,000+ simultaneous hearings across districts.
+- Security hardening (CERT-In compliance, end-to-end media encryption).
+
+---
+
+## 8. Summary of What Needs Your Approval
+
+Please review the revised plan:
+1. **Direct phone ringing like WhatsApp** is now the central architectural feature.
+2. **Phone numbers from Sampark** are used to look up and dial both Employee and Citizen.
+3. **No manual meeting codes or SMS links required** for normal app users — their phones ring immediately with Caller ID.
+4. **All 3 connect seamlessly** on LiveKit multi-party video call.
+
+Do you approve this corrected implementation plan? Once approved, we will proceed with the technical execution!

@@ -1,0 +1,653 @@
+/**
+ * Call Manager Service — Jan Sunwai Video Call Platform
+ *
+ * Manages the lifecycle of Jan Sunwai hearing call sessions:
+ * - Creating call sessions when an officer initiates a multi-party call
+ * - Tracking ring state for each participant (ringing, accepted, declined, timeout)
+ * - Coordinating WebSocket-based VoIP ring signals to connected clients
+ * - Session state transitions (ringing → active → completed)
+ * - Mid-call participant addition
+ *
+ * In production, call state is stored in Redis for cross-instance consistency.
+ * In development, uses in-memory Maps for simplicity.
+ */
+
+import { v4 as uuidv4 } from 'uuid';
+import { WebSocket } from 'ws';
+import livekitService from './livekit';
+import db from '../db/database';
+
+// ─── Types ────────────────────────────────────────────────────
+
+export type CallStatus = 'ringing' | 'active' | 'completed' | 'missed' | 'cancelled';
+export type ParticipantRingStatus = 'ringing' | 'accepted' | 'declined' | 'timeout' | 'missed';
+export type ParticipantRole = 'host' | 'employee' | 'citizen' | 'guest_officer';
+
+export interface CallParticipant {
+  id: string;
+  userId?: string;
+  phone: string;
+  name: string;
+  role: ParticipantRole;
+  designation?: string;
+  department?: string;
+  ringStatus: ParticipantRingStatus;
+  ringStartedAt: Date;
+  answeredAt?: Date;
+  leftAt?: Date;
+}
+
+export interface CallSession {
+  id: string;
+  grievanceId: string;
+  title: string;
+  hostUserId: string;
+  hostName: string;
+  hostDesignation: string;
+  livekitRoomName: string;
+  status: CallStatus;
+  participants: CallParticipant[];
+  autoRecord: boolean;
+  egressId?: string;
+  recordingUrl?: string;
+  createdAt: Date;
+  startedAt?: Date;
+  endedAt?: Date;
+  durationSeconds?: number;
+}
+
+export interface InitiateCallInput {
+  grievanceId: string;
+  title: string;
+  hostUserId: string;
+  hostName: string;
+  hostDesignation: string;
+  citizenPhone: string;
+  citizenName: string;
+  employeePhone: string;
+  employeeName: string;
+  employeeDesignation?: string;
+  employeeDepartment?: string;
+  autoRecord?: boolean;
+}
+
+// ─── WebSocket Event Types ────────────────────────────────────
+
+export interface CallEvent {
+  type:
+    | 'incoming_call'
+    | 'call_accepted'
+    | 'call_declined'
+    | 'call_started'
+    | 'call_ended'
+    | 'participant_joined'
+    | 'participant_left'
+    | 'participant_removed'
+    | 'participant_added';
+  callId: string;
+  data: Record<string, unknown>;
+}
+
+// ─── In-Memory State (Development) ───────────────────────────
+
+/** Active call sessions keyed by call ID */
+const activeCalls = new Map<string, CallSession>();
+
+/** WebSocket connections keyed by user phone number for VoIP signaling */
+const connectedClients = new Map<string, Set<WebSocket>>();
+
+/** Ring timeout handles for auto-declining unanswered calls */
+const ringTimeouts = new Map<string, NodeJS.Timeout>();
+
+// Ring timeout duration: 60 seconds (like WhatsApp)
+const RING_TIMEOUT_MS = 60_000;
+
+// ─── WebSocket Client Management ─────────────────────────────
+
+/**
+ * Register a WebSocket connection for a user (identified by phone).
+ * A user may have multiple active connections (web + mobile).
+ */
+export function registerClient(phone: string, ws: WebSocket) {
+  if (!connectedClients.has(phone)) {
+    connectedClients.set(phone, new Set());
+  }
+  connectedClients.get(phone)!.add(ws);
+  console.log(`[CallManager] Client registered: ${phone} (${connectedClients.get(phone)!.size} connections)`);
+}
+
+/**
+ * Unregister a WebSocket connection when it closes.
+ */
+export function unregisterClient(phone: string, ws: WebSocket) {
+  const clients = connectedClients.get(phone);
+  if (clients) {
+    clients.delete(ws);
+    if (clients.size === 0) {
+      connectedClients.delete(phone);
+    }
+  }
+  console.log(`[CallManager] Client unregistered: ${phone}`);
+}
+
+/**
+ * Send a VoIP call event to all connected WebSocket sessions for a phone number.
+ * In production, this is replaced by FCM/APNs high-priority push for mobile.
+ */
+function sendToClient(phone: string, event: CallEvent) {
+  const digits = phone.replace(/[^0-9]/g, '');
+  const last10 = digits.slice(-10);
+  const withPrefix = `+91${last10}`;
+
+  const targetSockets = new Set<WebSocket>();
+  [phone, last10, withPrefix, digits].forEach((key) => {
+    if (!key) return;
+    const clients = connectedClients.get(key);
+    if (clients) {
+      clients.forEach((ws) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          targetSockets.add(ws);
+        }
+      });
+    }
+  });
+
+  if (targetSockets.size > 0) {
+    const payload = JSON.stringify(event);
+    targetSockets.forEach((ws) => ws.send(payload));
+    console.log(`[CallManager] Sent ${event.type} to ${phone} (${targetSockets.size} connections)`);
+    return true;
+  }
+  console.log(`[CallManager] No connected client for ${phone} (tested ${last10}, ${withPrefix}), would send push notification`);
+  return false;
+}
+
+// ─── Call Lifecycle ───────────────────────────────────────────
+
+/**
+ * Initiate a new Jan Sunwai multi-party call.
+ *
+ * 1. Creates a LiveKit room for the hearing
+ * 2. Registers the call session with all participants
+ * 3. Sends VoIP ring signals to citizen and employee
+ * 4. Starts a ring timeout (60 seconds)
+ * 5. Returns the call session and host's LiveKit token
+ */
+export async function initiateCall(input: InitiateCallInput): Promise<{
+  callSession: CallSession;
+  hostToken: string;
+}> {
+  const callId = uuidv4();
+  const roomName = `JS-${input.grievanceId}`;
+
+  // 1. Create LiveKit room
+  await livekitService.createRoom({
+    name: roomName,
+    maxParticipants: 10,
+    emptyTimeout: 300,
+  });
+
+  // 2. Build participant list
+  const hostParticipant: CallParticipant = {
+    id: uuidv4(),
+    phone: '', // Host phone determined by auth context
+    name: input.hostName,
+    role: 'host',
+    designation: input.hostDesignation,
+    ringStatus: 'accepted', // Host is automatically "in"
+    ringStartedAt: new Date(),
+    answeredAt: new Date(),
+  };
+
+  const citizenParticipant: CallParticipant = {
+    id: uuidv4(),
+    phone: input.citizenPhone,
+    name: input.citizenName,
+    role: 'citizen',
+    ringStatus: 'ringing',
+    ringStartedAt: new Date(),
+  };
+
+  const employeeParticipant: CallParticipant = {
+    id: uuidv4(),
+    phone: input.employeePhone,
+    name: input.employeeName,
+    role: 'employee',
+    designation: input.employeeDesignation,
+    department: input.employeeDepartment,
+    ringStatus: 'ringing',
+    ringStartedAt: new Date(),
+  };
+
+  // 3. Create call session
+  const callSession: CallSession = {
+    id: callId,
+    grievanceId: input.grievanceId,
+    title: input.title,
+    hostUserId: input.hostUserId,
+    hostName: input.hostName,
+    hostDesignation: input.hostDesignation,
+    livekitRoomName: roomName,
+    status: 'ringing',
+    participants: [hostParticipant, citizenParticipant, employeeParticipant],
+    autoRecord: input.autoRecord ?? true,
+    createdAt: new Date(),
+  };
+
+  activeCalls.set(callId, callSession);
+
+  // 4. Generate host's LiveKit token
+  const hostToken = await livekitService.generateToken({
+    identity: input.hostUserId,
+    name: `${input.hostName} (${input.hostDesignation})`,
+    roomName,
+    isHost: true,
+  });
+
+  // 5. Send incoming call ring to citizen and employee
+  const incomingCallData = {
+    callId,
+    grievanceId: input.grievanceId,
+    title: input.title,
+    callerName: input.hostName,
+    callerDesignation: input.hostDesignation,
+    roomName,
+    participantCount: 3,
+  };
+
+  sendToClient(input.citizenPhone, {
+    type: 'incoming_call',
+    callId,
+    data: { ...incomingCallData, yourRole: 'citizen' },
+  });
+
+  sendToClient(input.employeePhone, {
+    type: 'incoming_call',
+    callId,
+    data: { ...incomingCallData, yourRole: 'employee' },
+  });
+
+  // 6. Set ring timeout (auto-decline after 60 seconds)
+  const timeoutId = setTimeout(() => {
+    handleRingTimeout(callId);
+  }, RING_TIMEOUT_MS);
+  ringTimeouts.set(callId, timeoutId);
+
+  console.log(`[CallManager] Call initiated: ${callId} for grievance ${input.grievanceId}`);
+  return { callSession, hostToken };
+}
+
+/**
+ * Handle a participant's response to an incoming call (accept or decline).
+ *
+ * On accept:
+ *  - Generate a LiveKit token for the participant
+ *  - If all participants have accepted, transition call to 'active'
+ *  - Optionally start recording
+ *
+ * On decline:
+ *  - Mark participant as declined
+ *  - Notify host
+ */
+export async function respondToCall(
+  callId: string,
+  phone: string,
+  action: 'accept' | 'decline'
+): Promise<{ token?: string; livekitUrl?: string; roomName?: string } | null> {
+  const call = activeCalls.get(callId);
+  if (!call) {
+    console.log(`[CallManager] Call not found: ${callId}`);
+    return null;
+  }
+
+  const participant = call.participants.find((p) => p.phone === phone);
+  if (!participant) {
+    console.log(`[CallManager] Participant ${phone} not in call ${callId}`);
+    return null;
+  }
+
+  if (action === 'accept') {
+    participant.ringStatus = 'accepted';
+    participant.answeredAt = new Date();
+
+    // Generate LiveKit token for this participant
+    const token = await livekitService.generateToken({
+      identity: phone,
+      name: `${participant.name}${participant.designation ? ` (${participant.designation})` : ''}`,
+      roomName: call.livekitRoomName,
+      isHost: false,
+    });
+
+    // Broadcast acceptance to all connected participants
+    sendToClient(phone, {
+      type: 'call_accepted',
+      callId,
+      data: { participantName: participant.name, role: participant.role },
+    });
+
+    // Check if call should transition to active
+    const allRinging = call.participants.filter((p) => p.ringStatus === 'ringing');
+    if (allRinging.length === 0 && call.status === 'ringing') {
+      call.status = 'active';
+      call.startedAt = new Date();
+
+      // Clear ring timeout
+      const timeout = ringTimeouts.get(callId);
+      if (timeout) {
+        clearTimeout(timeout);
+        ringTimeouts.delete(callId);
+      }
+
+      // Start recording if auto-record is enabled
+      if (call.autoRecord) {
+        call.egressId = (await livekitService.startRecording(call.livekitRoomName, call.grievanceId)) ?? undefined;
+      }
+
+      console.log(`[CallManager] Call is now active: ${callId}`);
+    }
+
+    console.log(`[CallManager] ${participant.name} accepted call ${callId}`);
+    return {
+      token,
+      livekitUrl: livekitService.getLiveKitUrl(),
+      roomName: call.livekitRoomName,
+    };
+  } else {
+    // Decline
+    participant.ringStatus = 'declined';
+
+    sendToClient(phone, {
+      type: 'call_declined',
+      callId,
+      data: { participantName: participant.name, role: participant.role },
+    });
+
+    console.log(`[CallManager] ${participant.name} declined call ${callId}`);
+    return null;
+  }
+}
+
+/**
+ * Add an additional officer mid-call (e.g., dial Tehsildar while hearing is live).
+ * Rings the new officer's phone and adds them to the session.
+ */
+export async function addParticipantToCall(
+  callId: string,
+  phone: string,
+  name: string,
+  designation?: string,
+  department?: string
+): Promise<CallParticipant | null> {
+  const call = activeCalls.get(callId);
+  if (!call) return null;
+
+  const newParticipant: CallParticipant = {
+    id: uuidv4(),
+    phone,
+    name,
+    role: 'guest_officer',
+    designation,
+    department,
+    ringStatus: 'ringing',
+    ringStartedAt: new Date(),
+  };
+
+  call.participants.push(newParticipant);
+
+  // Ring the new participant
+  sendToClient(phone, {
+    type: 'incoming_call',
+    callId,
+    data: {
+      callId,
+      grievanceId: call.grievanceId,
+      title: call.title,
+      callerName: call.hostName,
+      callerDesignation: call.hostDesignation,
+      roomName: call.livekitRoomName,
+      participantCount: call.participants.length,
+      yourRole: 'guest_officer',
+      midCallJoin: true,
+    },
+  });
+
+  console.log(`[CallManager] Added ${name} (${phone}) to call ${callId}`);
+  return newParticipant;
+}
+
+/**
+ * End a call session — terminate the LiveKit room, stop recording,
+ * and notify all participants.
+ */
+export async function endCall(callId: string): Promise<CallSession | null> {
+  const call = activeCalls.get(callId);
+  if (!call) return null;
+
+  // Stop recording if active
+  if (call.egressId) {
+    await livekitService.stopRecording(call.egressId);
+  }
+
+  // Delete the LiveKit room
+  try {
+    await livekitService.deleteRoom(call.livekitRoomName);
+  } catch (err) {
+    console.error(`[CallManager] Error deleting room:`, err);
+  }
+
+  // Update session state
+  call.status = 'completed';
+  call.endedAt = new Date();
+  if (call.startedAt) {
+    call.durationSeconds = Math.round((call.endedAt.getTime() - call.startedAt.getTime()) / 1000);
+  }
+
+  // Persist hearing call record to SQLite
+  try {
+    db.prepare(`
+      INSERT OR REPLACE INTO call_records (id, grievance_id, host_name, status, duration_seconds, recording_url, started_at, ended_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      call.id,
+      call.grievanceId,
+      call.hostName,
+      call.status,
+      call.durationSeconds || 0,
+      call.recordingUrl || null,
+      call.startedAt ? call.startedAt.toISOString() : null,
+      call.endedAt ? call.endedAt.toISOString() : null
+    );
+    console.log(`[SQLite] Persisted call record ${call.id} for grievance ${call.grievanceId}`);
+  } catch (dbErr) {
+    console.error('[SQLite] Failed to persist call record:', dbErr);
+  }
+
+  // Mark all active participants as left
+  call.participants.forEach((p) => {
+    if (p.ringStatus === 'accepted' && !p.leftAt) {
+      p.leftAt = new Date();
+    }
+    if (p.ringStatus === 'ringing') {
+      p.ringStatus = 'missed';
+    }
+  });
+
+  // Notify all participants
+  call.participants.forEach((p) => {
+    if (p.phone) {
+      sendToClient(p.phone, {
+        type: 'call_ended',
+        callId,
+        data: {
+          grievanceId: call.grievanceId,
+          duration: call.durationSeconds,
+        },
+      });
+    }
+  });
+
+  // Clear ring timeout
+  const timeout = ringTimeouts.get(callId);
+  if (timeout) {
+    clearTimeout(timeout);
+    ringTimeouts.delete(callId);
+  }
+
+  console.log(`[CallManager] Call ended: ${callId} (duration: ${call.durationSeconds}s)`);
+  return call;
+}
+
+/**
+ * Handle ring timeout — if participants haven't answered in 60 seconds,
+ * mark them as timed out.
+ */
+function handleRingTimeout(callId: string) {
+  const call = activeCalls.get(callId);
+  if (!call) return;
+
+  call.participants.forEach((p) => {
+    if (p.ringStatus === 'ringing') {
+      p.ringStatus = 'timeout';
+      console.log(`[CallManager] Ring timeout for ${p.name} (${p.phone}) in call ${callId}`);
+    }
+  });
+
+  // If no one answered, mark call as missed
+  const anyAccepted = call.participants.some((p) => p.role !== 'host' && p.ringStatus === 'accepted');
+  if (!anyAccepted) {
+    call.status = 'missed';
+    console.log(`[CallManager] Call marked as missed: ${callId}`);
+  }
+
+  ringTimeouts.delete(callId);
+}
+
+/**
+ * Remove a specific participant from a call (Collector ejects a specific person).
+ * Disconnects them from LiveKit and notifies them via WebSocket.
+ */
+export async function removeParticipantFromCall(
+  callId: string,
+  participantPhone: string
+): Promise<boolean> {
+  const call = activeCalls.get(callId);
+  if (!call) return false;
+
+  const participant = call.participants.find(
+    (p) => p.phone === participantPhone || p.id === participantPhone || p.name === participantPhone
+  );
+  if (participant) {
+    participant.leftAt = new Date();
+    participant.ringStatus = 'declined';
+  }
+
+  const identityToRemove = participant?.phone || participantPhone;
+
+  // Disconnect this specific participant from LiveKit SFU
+  try {
+    await livekitService.removeParticipant(call.livekitRoomName, identityToRemove);
+    console.log(`[CallManager] Removed ${identityToRemove} from room ${call.livekitRoomName}`);
+  } catch (err) {
+    console.warn(`[CallManager] LiveKit removeParticipant notice:`, err);
+  }
+
+  // Send dedicated notification to the ejected participant via WebSocket
+  sendToClient(identityToRemove, {
+    type: 'participant_removed',
+    callId,
+    data: {
+      message: 'You have been disconnected from the hearing by the Presiding Officer.',
+      callId,
+      participantName: participant?.name || identityToRemove,
+    },
+  });
+
+  // Notify remaining participants in the hearing
+  call.participants.forEach((p) => {
+    if (p.phone && p.phone !== identityToRemove && !p.leftAt) {
+      sendToClient(p.phone, {
+        type: 'participant_left',
+        callId,
+        data: {
+          participantName: participant?.name || identityToRemove,
+          phone: identityToRemove,
+          wasRemovedByHost: true,
+        },
+      });
+    }
+  });
+
+  return true;
+}
+
+/**
+ * Handle a participant leaving the hearing on their own (Citizen or Employee clicks Leave).
+ * ONLY that participant leaves; the rest of the meeting stays active!
+ */
+export async function participantLeaveCall(
+  callId: string,
+  participantPhone: string
+): Promise<boolean> {
+  const call = activeCalls.get(callId);
+  if (!call) return false;
+
+  const participant = call.participants.find((p) => p.phone === participantPhone);
+  if (participant) {
+    participant.leftAt = new Date();
+  }
+
+  // Notify all remaining active participants
+  call.participants.forEach((p) => {
+    if (p.phone && p.phone !== participantPhone && !p.leftAt) {
+      sendToClient(p.phone, {
+        type: 'participant_left',
+        callId,
+        data: {
+          participantName: participant?.name || participantPhone,
+          phone: participantPhone,
+          wasRemovedByHost: false,
+        },
+      });
+    }
+  });
+
+  console.log(`[CallManager] Participant ${participant?.name || participantPhone} left call ${callId}. Meeting continues.`);
+  return true;
+}
+
+// ─── Query Functions ──────────────────────────────────────────
+
+/** Get a call session by ID */
+export function getCall(callId: string): CallSession | undefined {
+  return activeCalls.get(callId);
+}
+
+/** List all active (non-completed) calls */
+export function getActiveCalls(): CallSession[] {
+  return Array.from(activeCalls.values()).filter(
+    (c) => c.status === 'ringing' || c.status === 'active'
+  );
+}
+
+/** Get all calls (for admin view) */
+export function getAllCalls(): CallSession[] {
+  return Array.from(activeCalls.values());
+}
+
+// ─── Exports ──────────────────────────────────────────────────
+
+export const callManager = {
+  registerClient,
+  unregisterClient,
+  initiateCall,
+  respondToCall,
+  addParticipantToCall,
+  removeParticipantFromCall,
+  participantLeaveCall,
+  endCall,
+  getCall,
+  getActiveCalls,
+  getAllCalls,
+};
+
+export default callManager;
