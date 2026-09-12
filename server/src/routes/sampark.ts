@@ -14,8 +14,40 @@
 
 import { Router, Request, Response } from 'express';
 import samparkService from '../services/sampark';
+import { lookupUserByPhone } from '../db/database';
 
 const router = Router();
+
+/**
+ * GET /api/sampark/lookup-phone/:phone
+ *
+ * Automatically checks if a phone number exists in SQLite database
+ * (officers, employees, or citizens) and returns their name, designation, department, and role.
+ */
+router.get('/lookup-phone/:phone', (req: Request, res: Response) => {
+  const { phone } = req.params;
+  try {
+    const user = lookupUserByPhone(phone);
+    if (user) {
+      res.json({
+        found: true,
+        user: {
+          name: user.name,
+          phone: user.phone,
+          designation: user.designation || (user.role === 'citizen' ? 'Citizen Complainant' : 'Official'),
+          department: user.department || (user.role === 'citizen' ? 'Citizen Directory' : 'State Administration'),
+          role: user.role,
+          district: user.district,
+        },
+      });
+    } else {
+      res.json({ found: false });
+    }
+  } catch (error) {
+    console.error('[Sampark] Error in lookup-phone:', error);
+    res.status(500).json({ error: 'Failed to lookup phone number' });
+  }
+});
 
 /**
  * GET /api/sampark/grievance/:id

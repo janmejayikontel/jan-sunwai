@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 
 interface ControlBarProps {
   isMuted: boolean;
@@ -28,70 +28,82 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   return (
     <View style={styles.container}>
       {/* Mic Button */}
-      <TouchableOpacity
-        style={[styles.btn, isMuted ? styles.btnDanger : styles.btnDefault]}
-        onPress={onToggleMic}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.btnIcon}>{isMuted ? '🔇' : '🎤'}</Text>
+      <View style={styles.btnWrapper}>
+        <TouchableOpacity
+          style={[styles.circleBtn, isMuted ? styles.btnDanger : styles.btnDefault]}
+          onPress={onToggleMic}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.btnIcon}>{isMuted ? '🔇' : '🎤'}</Text>
+        </TouchableOpacity>
         <Text style={styles.btnLabel}>{isMuted ? 'Unmute' : 'Mute'}</Text>
-      </TouchableOpacity>
+      </View>
 
       {/* Camera Button */}
-      <TouchableOpacity
-        style={[styles.btn, isCameraOff ? styles.btnDanger : styles.btnDefault]}
-        onPress={onToggleCamera}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.btnIcon}>{isCameraOff ? '📷' : '📹'}</Text>
-        <Text style={styles.btnLabel}>{isCameraOff ? 'Cam On' : 'Cam Off'}</Text>
-      </TouchableOpacity>
+      <View style={styles.btnWrapper}>
+        <TouchableOpacity
+          style={[styles.circleBtn, isCameraOff ? styles.btnDanger : styles.btnDefault]}
+          onPress={onToggleCamera}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.btnIcon}>{isCameraOff ? '📷' : '📹'}</Text>
+        </TouchableOpacity>
+        <Text style={styles.btnLabel}>{isCameraOff ? 'Cam Off' : 'Cam On'}</Text>
+      </View>
 
-      {/* Screen Share Button (WhatsApp style native Android screen capture!) */}
-      <TouchableOpacity
-        style={[styles.btn, isScreenSharing ? styles.btnActiveShare : styles.btnDefault]}
-        onPress={onToggleScreenShare}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.btnIcon}>{isScreenSharing ? '⏹️' : '📱'}</Text>
-        <Text style={[styles.btnLabel, isScreenSharing && styles.btnLabelActive]}>
+      {/* Add Person Button (Available for Officer / Collector) */}
+      {onAddParticipant && (
+        <View style={styles.btnWrapper}>
+          <TouchableOpacity
+            style={[styles.circleBtn, styles.btnAddPerson]}
+            onPress={onAddParticipant}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.btnIcon, { fontSize: 20 }]}>➕</Text>
+          </TouchableOpacity>
+          <Text style={[styles.btnLabel, { color: '#38bdf8', fontWeight: '700' }]}>Add</Text>
+        </View>
+      )}
+
+      {/* Screen Share Button */}
+      <View style={styles.btnWrapper}>
+        <TouchableOpacity
+          style={[styles.circleBtn, isScreenSharing ? styles.btnActiveShare : styles.btnDefault]}
+          onPress={onToggleScreenShare}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.btnIcon}>{isScreenSharing ? '⏹️' : '📱'}</Text>
+        </TouchableOpacity>
+        <Text style={[styles.btnLabel, isScreenSharing && { color: '#34d399', fontWeight: '700' }]}>
           {isScreenSharing ? 'Stop' : 'Share'}
         </Text>
-      </TouchableOpacity>
-
-      {/* Add Participant / Official Button */}
-      {onAddParticipant && (
-        <TouchableOpacity
-          style={[styles.btn, styles.btnAddOfficial]}
-          onPress={onAddParticipant}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.btnIcon}>➕</Text>
-          <Text style={[styles.btnLabel, { color: '#38bdf8' }]}>Add Person</Text>
-        </TouchableOpacity>
-      )}
+      </View>
 
       {/* Flip Camera Button */}
       {onFlipCamera && (
-        <TouchableOpacity
-          style={[styles.btn, styles.btnDefault]}
-          onPress={onFlipCamera}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.btnIcon}>🔄</Text>
+        <View style={styles.btnWrapper}>
+          <TouchableOpacity
+            style={[styles.circleBtn, styles.btnDefault]}
+            onPress={onFlipCamera}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.btnIcon}>🔄</Text>
+          </TouchableOpacity>
           <Text style={styles.btnLabel}>Flip</Text>
-        </TouchableOpacity>
+        </View>
       )}
 
       {/* Leave / End Hearing Button */}
-      <TouchableOpacity
-        style={[styles.btn, styles.btnEndCall]}
-        onPress={onLeaveCall}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.btnIcon}>📞</Text>
-        <Text style={[styles.btnLabel, { color: '#ffffff', fontWeight: '700' }]}>Leave</Text>
-      </TouchableOpacity>
+      <View style={styles.btnWrapper}>
+        <TouchableOpacity
+          style={[styles.circleBtn, styles.btnEndCall]}
+          onPress={onLeaveCall}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.btnIcon, { transform: [{ rotate: '135deg' }] }]}>📞</Text>
+        </TouchableOpacity>
+        <Text style={[styles.btnLabel, { color: '#ef4444', fontWeight: '700' }]}>End</Text>
+      </View>
     </View>
   );
 };
@@ -99,50 +111,59 @@ export const ControlBar: React.FC<ControlBarProps> = ({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    backgroundColor: '#0f172a',
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'android' ? 22 : 32,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(9, 13, 22, 0.96)',
     borderTopWidth: 1,
     borderTopColor: '#1e293b',
   },
-  btn: {
+  btnWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    minWidth: 62,
+  },
+  circleBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   btnDefault: {
     backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   btnDanger: {
-    backgroundColor: '#7f1d1d',
+    backgroundColor: '#991b1b',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  btnAddPerson: {
+    backgroundColor: '#0369a1',
+    borderWidth: 1.5,
+    borderColor: '#38bdf8',
   },
   btnActiveShare: {
     backgroundColor: '#047857',
+    borderWidth: 1.5,
+    borderColor: '#34d399',
   },
   btnEndCall: {
     backgroundColor: '#dc2626',
-  },
-  btnAddOfficial: {
-    backgroundColor: '#075985',
-    borderWidth: 1,
-    borderColor: '#38bdf8',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
   btnIcon: {
-    fontSize: 20,
-    marginBottom: 4,
+    fontSize: 18,
   },
   btnLabel: {
-    fontSize: 10,
-    color: '#cbd5e1',
+    fontSize: 11,
+    color: '#94a3b8',
     fontWeight: '600',
-  },
-  btnLabelActive: {
-    color: '#34d399',
-    fontWeight: '700',
   },
 });

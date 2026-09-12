@@ -66,6 +66,13 @@ class MainApplication : Application(), ReactApplication {
     }
 
     SoLoader.init(this, false)
+    // Enable WebRTC Android MediaProjectionService for native screen sharing
+    try {
+      com.oney.WebRTCModule.WebRTCModuleOptions.getInstance().enableMediaProjectionService = true
+    } catch (e: Throwable) {
+      Log.w("JanSunwai", "Failed to configure WebRTCModuleOptions", e)
+    }
+
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
       // If you opted-in for the New Architecture, we load the native entry point for this app.
       load()

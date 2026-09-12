@@ -18,7 +18,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({
   const isSpeaking = trackRef.participant?.isSpeaking;
 
   return (
-    <View style={[styles.container, isSpeaking && styles.speakingBorder, style]}>
+    <View style={[styles.container, isSpeaking && styles.speakingBorder, isScreenShare && styles.screenShareBox, style]}>
       {/* Video stream rendering via hardware-accelerated WebRTC */}
       <VideoTrack
         trackRef={trackRef as any}
@@ -26,6 +26,16 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({
         objectFit={isScreenShare ? 'contain' : 'cover'}
         style={styles.video}
       />
+
+      {isScreenShare && isLocal && (
+        <View style={styles.localShareOverlay}>
+          <Text style={styles.localShareIcon}>📱</Text>
+          <Text style={styles.localShareTitle}>You are sharing your screen</Text>
+          <Text style={styles.localShareSubtitle}>
+            Participants in the hearing can see your screen in real time.
+          </Text>
+        </View>
+      )}
 
       {/* Badges / Header overlay */}
       <View style={styles.overlay}>
@@ -61,6 +71,39 @@ const styles = StyleSheet.create({
     position: 'relative',
     borderWidth: 1.5,
     borderColor: '#1e293b',
+  },
+  screenShareBox: {
+    backgroundColor: '#020617',
+    borderWidth: 1.5,
+    borderColor: '#059669',
+  },
+  localShareOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(2, 6, 23, 0.75)',
+    padding: 20,
+  },
+  localShareIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  localShareTitle: {
+    color: '#34d399',
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  localShareSubtitle: {
+    color: '#94a3b8',
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   speakingBorder: {
     borderColor: '#10b981',

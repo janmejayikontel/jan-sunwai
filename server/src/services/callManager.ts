@@ -439,15 +439,29 @@ export async function addParticipantToCall(
 ): Promise<CallParticipant | null> {
   let call = activeCalls.get(callIdOrGrievance);
   if (!call) {
-    const cleanGrievance = callIdOrGrievance.replace(/^hearing_/, '').trim().toUpperCase();
+    const raw = (callIdOrGrievance || '').trim();
+    const clean = raw.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
     for (const c of activeCalls.values()) {
-      if (c.grievanceId.toUpperCase() === cleanGrievance || c.livekitRoomName === callIdOrGrievance) {
+      if (
+        c.id === raw ||
+        c.grievanceId.toUpperCase() === clean ||
+        c.grievanceId.toUpperCase() === raw.toUpperCase() ||
+        c.livekitRoomName === raw ||
+        c.livekitRoomName === `JS-${clean}`
+      ) {
         call = c;
         break;
       }
     }
   }
-  if (!call) return null;
+  // Fallback: If only 1 active call exists in the system, connect to it
+  if (!call && activeCalls.size === 1) {
+    call = Array.from(activeCalls.values())[0];
+  }
+  if (!call) {
+    console.warn(`[CallManager] Cannot add participant — call "${callIdOrGrievance}" not found. Active calls count: ${activeCalls.size}`);
+    return null;
+  }
 
   const newParticipant: CallParticipant = {
     id: uuidv4(),
