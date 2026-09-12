@@ -17,7 +17,7 @@ import crypto from 'crypto';
 
 const router = Router();
 
-import db from '../db/database';
+import db, { lookupUserByPhone } from '../db/database';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -40,92 +40,27 @@ const otpStore = new Map<string, { otp: string; expiresAt: number }>();
 /** Development bypass: OTP "987654" (demo OTP) */
 const DEV_OTP = '987654';
 
-/** Known Officers (District Collector & Administrative Heads) */
-const KNOWN_OFFICERS: Record<string, UserProfile> = {
-  '+919414000001': {
-    id: 'officer-001',
-    phone: '+919414000001',
-    name: 'Sh. Alok Sharma, IAS',
-    role: 'officer',
-    designation: 'District Collector & DM',
-    department: 'District Administration',
-    district: 'Jaipur',
-  },
-  '+919414000002': {
-    id: 'officer-002',
-    phone: '+919414000002',
-    name: 'Sh. Vikram Singh Rathore, RAS',
-    role: 'officer',
-    designation: 'Sub Divisional Magistrate (SDM)',
-    department: 'Revenue Department',
-    district: 'Jaipur',
-  },
-};
-
 /**
- * Look up user profile dynamically from SQLite database (or known officers).
+ * Look up user profile dynamically from SQLite database (officers, employees, citizens).
+ * Automatically detects whether the number belongs to a Collector, SDM, Engineer, Employee, or Citizen.
  */
 export function getUserProfileByPhone(phone: string): UserProfile | null {
-  const normalized = normalizePhone(phone);
-  const barePhone = normalized.replace('+91', '');
-
-  // 1. Check known higher officers
-  if (KNOWN_OFFICERS[normalized]) {
-    return KNOWN_OFFICERS[normalized];
+  const dbUser = lookupUserByPhone(phone);
+  if (dbUser) {
+    return {
+      id: dbUser.id,
+      phone: dbUser.phone,
+      name: dbUser.name,
+      role: dbUser.role,
+      designation: dbUser.designation,
+      department: dbUser.department,
+      district: dbUser.district,
+      employeeCode: dbUser.employeeCode,
+    };
   }
-
-  // 2. Check SQLite employees table
-  try {
-    const empRow = db
-      .prepare(`
-        SELECT id, name, phone, designation, department, employee_code, posting_location
-        FROM employees
-        WHERE phone = ? OR phone = ? OR phone = ?
-      `)
-      .get(normalized, barePhone, `+91${barePhone}`) as any;
-
-    if (empRow) {
-      return {
-        id: empRow.id,
-        phone: empRow.phone,
-        name: empRow.name,
-        role: 'employee',
-        designation: empRow.designation,
-        department: empRow.department,
-        district: empRow.posting_location || 'Rajasthan',
-        employeeCode: empRow.employee_code,
-      };
-    }
-  } catch (err) {
-    console.error('[Auth] Error querying employees:', err);
-  }
-
-  // 3. Check SQLite citizens table
-  try {
-    const citRow = db
-      .prepare(`
-        SELECT id, name, phone, village, district, tehsil
-        FROM citizens
-        WHERE phone = ? OR phone = ? OR phone = ?
-      `)
-      .get(normalized, barePhone, `+91${barePhone}`) as any;
-
-    if (citRow) {
-      return {
-        id: citRow.id,
-        phone: citRow.phone,
-        name: citRow.name,
-        role: 'citizen',
-        designation: `Citizen (${citRow.village || citRow.district || 'Complainant'})`,
-        district: citRow.district || 'Rajasthan',
-      };
-    }
-  } catch (err) {
-    console.error('[Auth] Error querying citizens:', err);
-  }
-
   return null;
 }
+
 
 // ─── Helper Functions ─────────────────────────────────────────
 
@@ -214,6 +149,9 @@ router.post('/otp/send', (req: Request, res: Response) => {
     userExists: !!existingUser,
     detectedRole: existingUser?.role || 'citizen',
     userName: existingUser?.name || null,
+    designation: existingUser?.designation || (existingUser ? 'Citizen' : 'New Citizen'),
+    department: existingUser?.department || null,
+    district: existingUser?.district || 'Rajasthan',
     // In dev mode, include OTP in response for easy testing
     ...(process.env.NODE_ENV !== 'production' && { devOtp: otp }),
   });
@@ -262,15 +200,26 @@ router.post('/otp/verify', (req: Request, res: Response) => {
   // Clear OTP
   otpStore.delete(normalizedPhone);
 
-  // Look up user in SQLite database or create a new citizen
+  // Look up user dynamically from SQLite database (officers, employees, citizens)
   let user: UserProfile | null = getUserProfileByPhone(normalizedPhone);
 
   if (!user) {
     const assignedRole = requestedRole === 'employee' ? 'employee' : requestedRole === 'officer' ? 'officer' : 'citizen';
     const assignedName = name || (assignedRole === 'citizen' ? `Citizen (${normalizedPhone.slice(-4)})` : `Officer (${normalizedPhone.slice(-4)})`);
+    const newId = `cit-${Date.now()}`;
+
+    // Automatically persist newly registered citizen into SQLite database!
+    try {
+      db.prepare(`
+        INSERT OR IGNORE INTO citizens (id, name, phone, village, district, tehsil)
+        VALUES (?, ?, ?, 'Jaipur', 'Rajasthan', 'Jaipur')
+      `).run(newId, assignedName, normalizedPhone);
+    } catch (e) {
+      console.error('[Auth] Error inserting new citizen into SQLite:', e);
+    }
 
     user = {
-      id: `${assignedRole}-${Date.now()}`,
+      id: newId,
       phone: normalizedPhone,
       name: assignedName,
       role: assignedRole,
@@ -278,6 +227,7 @@ router.post('/otp/verify', (req: Request, res: Response) => {
       district: 'Rajasthan',
     };
   }
+
 
   // Generate auth token
   const token = generateAuthToken(user);

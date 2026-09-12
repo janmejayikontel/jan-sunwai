@@ -37,6 +37,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [isLoading, setIsLoading] = useState(false);
   const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
+  const [detectedUser, setDetectedUser] = useState<{
+    name: string;
+    role: string;
+    designation: string;
+    department?: string;
+    district?: string;
+  } | null>(null);
   const [showConfig, setShowConfig] = useState(false);
 
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
@@ -51,6 +58,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
     setIsLoading(true);
     setDevOtpHint(null);
+    setDetectedUser(null);
 
     try {
       const url = `${cleanServerUrl(serverBase)}/api/auth/otp/send`;
@@ -68,6 +76,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
       if (data.devOtp) {
         setDevOtpHint(data.devOtp);
+      }
+
+      // Automatically store detected designation & identity from database
+      if (data.userExists && data.userName) {
+        setDetectedUser({
+          name: data.userName,
+          role: data.detectedRole || 'citizen',
+          designation: data.designation || 'Registered User',
+          department: data.department,
+          district: data.district,
+        });
       }
 
       setStep('otp');
@@ -120,7 +139,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           phone: data.user.phone,
           name: data.user.name || `Citizen (${cleanPhone.slice(-4)})`,
           role: data.user.role || 'citizen',
-          designation: data.user.designation || 'Citizen',
+          designation: data.user.designation || (data.user.role === 'citizen' ? 'Citizen' : 'Officer'),
           department: data.user.department,
           district: data.user.district || 'Rajasthan',
           token: data.token,
@@ -134,6 +153,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       setIsLoading(false);
     }
   };
+
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -200,6 +220,47 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             ) : (
               // Step 2: OTP input
               <View style={styles.formGroup}>
+                {detectedUser ? (
+                  <View
+                    style={[
+                      styles.detectedCard,
+                      detectedUser.role === 'officer'
+                        ? styles.detectedOfficer
+                        : detectedUser.role === 'employee'
+                        ? styles.detectedEmployee
+                        : styles.detectedCitizen,
+                    ]}
+                  >
+                    <View style={styles.detectedHeaderRow}>
+                      <Text style={styles.detectedIcon}>
+                        {detectedUser.role === 'officer' ? '🏛️' : detectedUser.role === 'employee' ? '👮' : '👤'}
+                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.detectedName}>{detectedUser.name}</Text>
+                        <Text style={styles.detectedDesig}>{detectedUser.designation}</Text>
+                        {detectedUser.department && (
+                          <Text style={styles.detectedDept}>🏢 {detectedUser.department}</Text>
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.detectedRoleTag}>
+                      <Text style={styles.detectedRoleTagText}>
+                        {detectedUser.role === 'officer'
+                          ? '🏛️ OFFICIAL / DISTRICT MAGISTRATE'
+                          : detectedUser.role === 'employee'
+                          ? '👮 FIELD OFFICER'
+                          : '👤 REGISTERED CITIZEN'}
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.newCitizenCard}>
+                    <Text style={styles.newCitizenText}>
+                      👤 New Citizen Registration (Auto-linking upon OTP verify)
+                    </Text>
+                  </View>
+                )}
+
                 <View style={styles.otpHeaderRow}>
                   <Text style={styles.inputLabel}>Enter 6-Digit OTP</Text>
                   <TouchableOpacity
@@ -211,6 +272,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <Text style={styles.changePhoneText}>Change Number</Text>
                   </TouchableOpacity>
                 </View>
+
 
                 <TextInput
                   style={styles.otpInput}
@@ -548,4 +610,76 @@ const styles = StyleSheet.create({
     color: '#f59e0b',
     fontWeight: '700',
   },
+  detectedCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1.5,
+  },
+  detectedOfficer: {
+    borderColor: '#8b5cf6',
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
+  },
+  detectedEmployee: {
+    borderColor: '#3b82f6',
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+  },
+  detectedCitizen: {
+    borderColor: '#10b981',
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+  },
+  detectedHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  detectedIcon: {
+    fontSize: 28,
+  },
+  detectedName: {
+    color: '#f8fafc',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  detectedDesig: {
+    color: '#38bdf8',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  detectedDept: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  detectedRoleTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  detectedRoleTagText: {
+    color: '#e2e8f0',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  newCitizenCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  newCitizenText: {
+    color: '#94a3b8',
+    fontSize: 12,
+  },
 });
+

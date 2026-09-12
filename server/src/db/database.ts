@@ -66,6 +66,18 @@ export function initializeDatabase(): void {
       FOREIGN KEY (assigned_employee_id) REFERENCES employees(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS officers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL UNIQUE,
+      designation TEXT NOT NULL,
+      department TEXT NOT NULL,
+      district TEXT NOT NULL,
+      cadre TEXT DEFAULT 'IAS',
+      posting_location TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS call_records (
       id TEXT PRIMARY KEY,
       grievance_id TEXT,
@@ -83,8 +95,12 @@ export function initializeDatabase(): void {
   seedInitialData();
 }
 
+
 function seedInitialData(): void {
-  console.log('[SQLite] Syncing and updating seed Sampark grievance data...');
+  const insertOfficer = db.prepare(`
+    INSERT OR REPLACE INTO officers (id, name, phone, designation, department, district, cadre, posting_location)
+    VALUES (@id, @name, @phone, @designation, @department, @district, @cadre, @posting_location)
+  `);
 
   const insertCitizen = db.prepare(`
     INSERT OR REPLACE INTO citizens (id, name, phone, village, district, tehsil)
@@ -102,6 +118,94 @@ function seedInitialData(): void {
   `);
 
   const seedTransaction = db.transaction(() => {
+    // ─── 1. Higher Administrative Officers (Collectors, SDM, SP) ───
+    const officersSeed = [
+      {
+        id: 'off-001',
+        name: 'Sh. Alok Sharma, IAS',
+        phone: '+919414000001',
+        designation: 'District Collector & DM',
+        department: 'District Administration & Collectorate',
+        district: 'Jaipur',
+        cadre: 'IAS',
+        posting_location: 'Collectorate Campus, Bani Park, Jaipur',
+      },
+      {
+        id: 'off-002',
+        name: 'Sh. Vikram Singh Rathore, RAS',
+        phone: '+919414000002',
+        designation: 'Sub-Divisional Magistrate (SDM)',
+        department: 'Revenue & Sub-Divisional Administration',
+        district: 'Jaipur',
+        cadre: 'RAS',
+        posting_location: 'SDM Office Sanganer, Jaipur',
+      },
+      {
+        id: 'off-003',
+        name: 'Smt. Tina Dabi, IAS',
+        phone: '+919414000003',
+        designation: 'District Collector & DM',
+        department: 'District Administration & Collectorate',
+        district: 'Barmer',
+        cadre: 'IAS',
+        posting_location: 'Collectorate Campus, Barmer',
+      },
+      {
+        id: 'off-004',
+        name: 'Sh. Anand Sharma, IPS',
+        phone: '+919414000004',
+        designation: 'Superintendent of Police (SP)',
+        department: 'Rajasthan Police (राजस्थान पुलिस)',
+        district: 'Jaipur',
+        cadre: 'IPS',
+        posting_location: 'Police Headquarters, Jaipur City',
+      },
+      {
+        id: 'off-005',
+        name: 'Sh. Gaurav Agrawal, IAS',
+        phone: '+919414000005',
+        designation: 'District Collector & DM',
+        department: 'District Administration & Collectorate',
+        district: 'Jodhpur',
+        cadre: 'IAS',
+        posting_location: 'Collectorate Campus, Jodhpur',
+      },
+      {
+        id: 'off-006',
+        name: 'Sh. Rajesh Meena, IAS',
+        phone: '+919876543211',
+        designation: 'District Collector & DM',
+        department: 'District Administration',
+        district: 'Jaipur',
+        cadre: 'IAS',
+        posting_location: 'District Collectorate, Jaipur',
+      },
+      {
+        id: 'off-007',
+        name: 'Sh. Jitendra Kumar Soni, IAS',
+        phone: '+919414000006',
+        designation: 'Divisional Commissioner',
+        department: 'General Administration Department',
+        district: 'Jaipur',
+        cadre: 'IAS',
+        posting_location: 'Divisional Commissioner Office, Jaipur',
+      },
+      {
+        id: 'off-008',
+        name: 'Dr. Manjit Singh, IAS',
+        phone: '+919414000008',
+        designation: 'Chief Executive Officer (CEO), Zila Parishad',
+        department: 'Rural Development & Panchayati Raj',
+        district: 'Jaipur',
+        cadre: 'IAS',
+        posting_location: 'Zila Parishad Bhawan, Jaipur',
+      },
+    ];
+
+    for (const off of officersSeed) {
+      insertOfficer.run(off);
+    }
+
     // 1. Citizen Ramesh
     insertCitizen.run({
       id: 'cit-001',
@@ -296,4 +400,115 @@ function seedInitialData(): void {
   console.log('[SQLite] Database initialized and seeded successfully.');
 }
 
+// ─── Dynamic Database User & Designation Lookup ─────────────────
+export interface DatabaseUserRecord {
+  id: string;
+  name: string;
+  phone: string;
+  role: 'officer' | 'employee' | 'citizen';
+  designation: string;
+  department?: string;
+  district: string;
+  cadre?: string;
+  employeeCode?: string;
+  village?: string;
+  tehsil?: string;
+  postingLocation?: string;
+}
+
+/**
+ * Dynamically look up any user (Collector, SDM, Engineer, Employee, Citizen)
+ * from the SQLite database by their mobile number.
+ */
+export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null {
+  const cleanDigits = inputPhone.replace(/\D/g, '');
+  const bare10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
+  const withPlus91 = `+91${bare10}`;
+  const with91 = `91${bare10}`;
+  const withZero = `0${bare10}`;
+
+  // 1. Check SQLite officers table (District Collector, DM, SDM, SP, etc.)
+  try {
+    const officerRow = db
+      .prepare(`
+        SELECT id, name, phone, designation, department, district, cadre, posting_location
+        FROM officers
+        WHERE phone = ? OR phone = ? OR phone = ? OR phone = ? OR phone LIKE ?
+      `)
+      .get(withPlus91, bare10, with91, withZero, `%${bare10}`) as any;
+
+    if (officerRow) {
+      return {
+        id: officerRow.id,
+        name: officerRow.name,
+        phone: officerRow.phone,
+        role: 'officer',
+        designation: officerRow.designation,
+        department: officerRow.department,
+        district: officerRow.district,
+        cadre: officerRow.cadre,
+        postingLocation: officerRow.posting_location,
+      };
+    }
+  } catch (err) {
+    console.error('[SQLite] Error querying officers table:', err);
+  }
+
+  // 2. Check SQLite employees table (JEn, AEn, Patwari, VDO, BDO, SHO, etc.)
+  try {
+    const empRow = db
+      .prepare(`
+        SELECT id, name, phone, designation, department, employee_code, posting_location
+        FROM employees
+        WHERE phone = ? OR phone = ? OR phone = ? OR phone = ? OR phone LIKE ?
+      `)
+      .get(withPlus91, bare10, with91, withZero, `%${bare10}`) as any;
+
+    if (empRow) {
+      return {
+        id: empRow.id,
+        name: empRow.name,
+        phone: empRow.phone,
+        role: 'employee',
+        designation: empRow.designation,
+        department: empRow.department,
+        district: empRow.posting_location || 'Rajasthan',
+        employeeCode: empRow.employee_code,
+        postingLocation: empRow.posting_location,
+      };
+    }
+  } catch (err) {
+    console.error('[SQLite] Error querying employees table:', err);
+  }
+
+  // 3. Check SQLite citizens table (Registered complainants)
+  try {
+    const citRow = db
+      .prepare(`
+        SELECT id, name, phone, village, district, tehsil
+        FROM citizens
+        WHERE phone = ? OR phone = ? OR phone = ? OR phone = ? OR phone LIKE ?
+      `)
+      .get(withPlus91, bare10, with91, withZero, `%${bare10}`) as any;
+
+    if (citRow) {
+      return {
+        id: citRow.id,
+        name: citRow.name,
+        phone: citRow.phone,
+        role: 'citizen',
+        designation: 'Citizen / Complainant',
+        district: citRow.district || 'Rajasthan',
+        village: citRow.village,
+        tehsil: citRow.tehsil,
+      };
+    }
+  } catch (err) {
+    console.error('[SQLite] Error querying citizens table:', err);
+  }
+
+  return null;
+}
+
 export default db;
+

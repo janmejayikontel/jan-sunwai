@@ -220,6 +220,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <View style={styles.profileInfo}>
               <Text style={styles.greetingText}>नमस्ते (Welcome),</Text>
               <Text style={styles.userNameText}>{user.name}</Text>
+              {user.designation ? (
+                <Text style={styles.userDesigText}>🏛️ {user.designation}</Text>
+              ) : null}
+              {user.department ? (
+                <Text style={styles.userDeptText}>🏢 {user.department}</Text>
+              ) : null}
               <Text style={styles.userPhoneText}>📱 {user.phone}</Text>
             </View>
           </View>
@@ -232,12 +238,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               ]}
             >
               <Text style={[styles.roleBadgeText, { color: getRoleBadgeColor(user.role) }]}>
-                {getRoleLabel(user.role)}
+                {user.designation || getRoleLabel(user.role)}
               </Text>
             </View>
             <Text style={styles.districtText}>📍 {user.district || 'Rajasthan'}</Text>
           </View>
         </View>
+
 
         {/* Quick Join by Case ID */}
         <View style={styles.actionCard}>
@@ -420,11 +427,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#f8fafc',
   },
-  userPhoneText: {
-    fontSize: 12,
+  userDesigText: {
+    fontSize: 13,
+    fontWeight: '700',
     color: '#38bdf8',
     marginTop: 2,
   },
+  userDeptText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 1,
+  },
+  userPhoneText: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 4,
+  },
+
   profileMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
