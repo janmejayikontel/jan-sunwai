@@ -1,5 +1,7 @@
-// 1. Polyfill TextEncoder & TextDecoder for Hermes before any modules evaluate
-import 'fast-text-encoding';
+// 1. Full WHATWG TextEncoder & TextDecoder polyfill supporting { fatal: true } for Hermes
+const { TextEncoder, TextDecoder } = require('text-encoding-polyfill');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
 
 // 2. Register LiveKit WebRTC native globals
 import { registerGlobals } from '@livekit/react-native';
