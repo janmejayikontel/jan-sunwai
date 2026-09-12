@@ -36,11 +36,11 @@ jobs:
 
       - name: Build Android APK
         working-directory: mobile/android
-        run: ./gradlew assembleDebug --no-daemon -Pandroid.minSdkVersion=24
+        run: ./gradlew assembleRelease --no-daemon -Pandroid.minSdkVersion=24
 
       - name: Upload Jan Sunwai Mobile APK
         uses: actions/upload-artifact@v4
         with:
           name: JanSunwai-Native-LiveKit-Mobile-APK
-          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          path: mobile/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
