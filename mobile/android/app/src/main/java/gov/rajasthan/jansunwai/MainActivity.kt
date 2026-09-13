@@ -31,6 +31,9 @@ class MainActivity : ReactActivity() {
       )
     }
 
+    CallOverlayManager.dismiss(this)
+    IncomingCallActivity.activeInstance?.finish()
+
     intent?.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
       JanSunwaiVoIPModule.pendingIncomingCallJson = it
     }
@@ -39,6 +42,8 @@ class MainActivity : ReactActivity() {
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
+    CallOverlayManager.dismiss(this)
+    IncomingCallActivity.activeInstance?.finish()
     intent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
       JanSunwaiVoIPModule.pendingIncomingCallJson = it
     }

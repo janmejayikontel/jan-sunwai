@@ -283,6 +283,7 @@ object CallOverlayManager {
                     setOnClickListener {
                         Log.i(TAG, "User tapped DECLINE on CallOverlay")
                         dismiss(context)
+                        IncomingCallActivity.activeInstance?.finish()
                         JanSunwaiVoIPService.dismissCall(callId)
                         JanSunwaiVoIPService.stopActiveRinging()
 
@@ -333,6 +334,8 @@ object CallOverlayManager {
                     setOnClickListener {
                         Log.i(TAG, "User tapped ACCEPT on CallOverlay")
                         dismiss(context)
+                        IncomingCallActivity.activeInstance?.finish()
+
                         JanSunwaiVoIPService.dismissCall(callId)
                         JanSunwaiVoIPService.stopActiveRinging()
                         JanSunwaiVoIPService.setInCallState(true)
@@ -350,7 +353,7 @@ object CallOverlayManager {
                         JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
 
                         val launchIntent = Intent(context, MainActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                             putExtra("action", "accept_call")
                             putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
                         }
@@ -400,16 +403,26 @@ object CallOverlayManager {
         handler.post {
             isPulseActive = false
             handler.removeCallbacksAndMessages(null)
-            overlayView?.let {
+            overlayView?.let { view ->
                 try {
-                    val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                    windowManager.removeView(it)
+                    val windowManager = (context.applicationContext ?: context).getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && view.isAttachedToWindow) {
+                        windowManager.removeViewImmediate(view)
+                    } else {
+                        windowManager.removeView(view)
+                    }
                     Log.i(TAG, "CallOverlay successfully removed from WindowManager")
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error removing CallOverlay view", e)
+                    try {
+                        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                        windowManager.removeView(view)
+                    } catch (e2: Exception) {
+                        Log.w(TAG, "Error removing CallOverlay view", e2)
+                    }
                 }
                 overlayView = null
             }
+            IncomingCallActivity.activeInstance?.finish()
         }
     }
 }

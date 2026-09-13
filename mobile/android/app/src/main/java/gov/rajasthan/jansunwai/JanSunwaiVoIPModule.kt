@@ -70,6 +70,8 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stopRinging(promise: Promise) {
         try {
+            CallOverlayManager.dismiss(reactContext)
+            IncomingCallActivity.activeInstance?.finish()
             JanSunwaiVoIPService.stopActiveRinging()
             try {
                 val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
@@ -88,6 +90,10 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setInCall(inCall: Boolean, promise: Promise) {
         try {
+            if (inCall) {
+                CallOverlayManager.dismiss(reactContext)
+                IncomingCallActivity.activeInstance?.finish()
+            }
             JanSunwaiVoIPService.setInCallState(inCall)
             val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
                 action = JanSunwaiVoIPService.ACTION_SET_IN_CALL
@@ -168,6 +174,8 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun dismissCall(callId: String?, promise: Promise) {
         try {
+            CallOverlayManager.dismiss(reactContext)
+            IncomingCallActivity.activeInstance?.finish()
             JanSunwaiVoIPService.dismissCall(callId)
             try {
                 val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {

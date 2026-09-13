@@ -386,12 +386,14 @@ class IncomingCallActivity : AppCompatActivity() {
             }.start()
         }
 
+        CallOverlayManager.dismiss(applicationContext)
         finish()
     }
 
     private fun onAcceptClicked() {
         Log.i(TAG, "User tapped ACCEPT on incoming call screen")
         isPulseActive = false
+        CallOverlayManager.dismiss(applicationContext)
 
         // Stop ringing sound and vibration immediately and mark inCall
         JanSunwaiVoIPService.dismissCall(callId)
@@ -455,10 +457,11 @@ class IncomingCallActivity : AppCompatActivity() {
         JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
 
         val launchIntent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
             putExtra("action", "accept_call")
             putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
         }
+        CallOverlayManager.dismiss(applicationContext)
         startActivity(launchIntent)
         finish()
     }
