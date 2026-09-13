@@ -216,6 +216,50 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <Text style={styles.primaryButtonText}>Get OTP ➔</Text>
                   )}
                 </TouchableOpacity>
+
+                {/* Server Connection Settings Toggle */}
+                <TouchableOpacity
+                  style={styles.serverSettingsToggle}
+                  onPress={() => setShowConfig(!showConfig)}
+                >
+                  <Text style={styles.serverSettingsToggleText}>
+                    {showConfig ? '▲ Hide Server Settings' : '⚙️ Server Connection Settings'}
+                  </Text>
+                </TouchableOpacity>
+
+                {showConfig && (
+                  <View style={styles.configBox}>
+                    <Text style={styles.configLabel}>Server Endpoint URL:</Text>
+                    <TextInput
+                      style={styles.configInput}
+                      value={serverBase}
+                      onChangeText={setServerBase}
+                      placeholder="https://... or http://192.168.1.9:8080"
+                      placeholderTextColor="#64748b"
+                      autoCapitalize="none"
+                    />
+                    <View style={styles.quickUrlRow}>
+                      <TouchableOpacity
+                        style={styles.quickUrlBtn}
+                        onPress={() => setServerBase('https://dressing-then-easier-wedding.trycloudflare.com')}
+                      >
+                        <Text style={styles.quickUrlBtnText}>☁️ Cloudflare</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.quickUrlBtn}
+                        onPress={() => setServerBase('http://192.168.1.9:8080')}
+                      >
+                        <Text style={styles.quickUrlBtnText}>📶 Wi-Fi (8080)</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.quickUrlBtn}
+                        onPress={() => setServerBase('http://192.168.1.9:3000')}
+                      >
+                        <Text style={styles.quickUrlBtnText}>💻 Wi-Fi (3000)</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </View>
             ) : (
               // Step 2: OTP input
@@ -592,6 +636,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     borderWidth: 1,
     borderColor: '#334155',
+  },
+  serverSettingsToggle: {
+    alignItems: 'center',
+    marginTop: 18,
+    paddingVertical: 6,
+  },
+  serverSettingsToggleText: {
+    color: '#38bdf8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  quickUrlRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+  },
+  quickUrlBtn: {
+    flex: 1,
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 8,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  quickUrlBtnText: {
+    color: '#94a3b8',
+    fontSize: 10,
+    fontWeight: '600',
   },
   configHelp: {
     color: '#64748b',
