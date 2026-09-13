@@ -1,12 +1,14 @@
 import './polyfill';
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, Alert, ActivityIndicator, NativeModules, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LoginScreen, UserProfile } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { VideoHearingScreen } from './src/screens/VideoHearingScreen';
 import { IncomingCallModal, IncomingCallData } from './src/components/IncomingCallModal';
 import { DEFAULT_SERVER_URL } from './src/config';
+
+const { JanSunwaiVoIP } = NativeModules;
 
 interface ActiveHearingState {
   serverUrl: string;
@@ -40,9 +42,12 @@ export default function App() {
           if (parsed?.user?.phone) {
             console.log('[App/Session] Restored saved login for:', parsed.user.name, parsed.user.phone);
             setCurrentUser(parsed.user);
+            const targetSrv = parsed.serverUrl || DEFAULT_SERVER_URL;
             if (parsed.serverUrl) {
               setServerUrl(parsed.serverUrl);
             }
+            // Ensure native background VoIP service is active for this phone
+            JanSunwaiVoIP?.startService?.(parsed.user.phone, cleanServerUrl(targetSrv));
           }
         }
       } catch (e) {
@@ -55,11 +60,42 @@ export default function App() {
     restoreSavedSession();
   }, []);
 
+  // ─── 1b. Check if Native VoIP Service has a pending incoming call (woken from closed/bg) ─
+  useEffect(() => {
+    const checkPendingNativeCall = async () => {
+      try {
+        const pendingJson = await JanSunwaiVoIP?.getPendingCall?.();
+        if (pendingJson) {
+          console.log('[App] Received pending VoIP call from native background service:', pendingJson);
+          const data = typeof pendingJson === 'string' ? JSON.parse(pendingJson) : pendingJson;
+          if (data?.callId) {
+            setIncomingCall(data as IncomingCallData);
+          }
+        }
+      } catch (e) {
+        console.warn('[App] Error checking pending native call:', e);
+      }
+    };
+
+    checkPendingNativeCall();
+
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        checkPendingNativeCall();
+      }
+    });
+
+    return () => {
+      appStateSub.remove();
+    };
+  }, []);
+
   // ─── 2. Auto-timeout incoming call locally after 60s ─────────
   useEffect(() => {
     if (!incomingCall) return;
     const timeout = setTimeout(() => {
       console.log('[App] Incoming call local ring timeout reached (60s)');
+      JanSunwaiVoIP?.stopRinging?.();
       setIncomingCall(null);
     }, 60000);
 
@@ -102,6 +138,7 @@ export default function App() {
             if (msg.type === 'incoming_call' && msg.data) {
               setIncomingCall(msg.data as IncomingCallData);
             } else if (msg.type === 'call_ended' || msg.type === 'call_declined') {
+              JanSunwaiVoIP?.stopRinging?.();
               setIncomingCall(null);
             }
           } catch (e) {
@@ -165,6 +202,7 @@ export default function App() {
   // ─── 4. Incoming Call Actions ──────────────────────────────────
   const handleAcceptIncomingCall = async () => {
     if (!incomingCall || !currentUser) return;
+    JanSunwaiVoIP?.stopRinging?.();
 
     try {
       const base = cleanServerUrl(serverUrl);
@@ -202,6 +240,7 @@ export default function App() {
 
   const handleDeclineIncomingCall = async () => {
     if (!incomingCall || !currentUser) return;
+    JanSunwaiVoIP?.stopRinging?.();
 
     try {
       const base = cleanServerUrl(serverUrl);
@@ -233,9 +272,14 @@ export default function App() {
     } catch (err) {
       console.warn('[App/Session] Error storing session:', err);
     }
+
+    // Start native background VoIP service so phone rings even if app closed
+    JanSunwaiVoIP?.startService?.(user.phone, cleanServerUrl(srv));
   };
 
   const handleLogout = async () => {
+    JanSunwaiVoIP?.stopService?.();
+    JanSunwaiVoIP?.stopRinging?.();
     setActiveHearing(null);
     setCurrentUser(null);
     setIncomingCall(null);

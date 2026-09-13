@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.os.Build
 import android.util.Log
 
 import com.facebook.react.PackageList
@@ -24,9 +25,9 @@ class MainApplication : Application(), ReactApplication {
         this,
         object : DefaultReactNativeHost(this) {
           override fun getPackages(): List<ReactPackage> {
-            // Packages that cannot be autolinked yet can be added manually here, for example:
-            // packages.add(new MyReactNativePackage());
-            return PackageList(this).packages
+            val packages = PackageList(this).packages.toMutableList()
+            packages.add(JanSunwaiVoIPPackage())
+            return packages
           }
 
           override fun getJSMainModuleName(): String = "index"
@@ -71,6 +72,25 @@ class MainApplication : Application(), ReactApplication {
       com.oney.WebRTCModule.WebRTCModuleOptions.getInstance().enableMediaProjectionService = true
     } catch (e: Throwable) {
       Log.w("JanSunwai", "Failed to configure WebRTCModuleOptions", e)
+    }
+
+    // Auto-start background VoIP hearing receiver if user previously logged in
+    try {
+      val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+      val phone = prefs.getString("phone", "")
+      if (!phone.isNullOrEmpty()) {
+        val voipIntent = Intent(this, JanSunwaiVoIPService::class.java).apply {
+          action = JanSunwaiVoIPService.ACTION_START
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          androidx.core.content.ContextCompat.startForegroundService(this, voipIntent)
+        } else {
+          startService(voipIntent)
+        }
+        Log.i("JanSunwai", "Auto-started background VoIP hearing receiver for $phone")
+      }
+    } catch (e: Throwable) {
+      Log.w("JanSunwai", "Failed to auto-start background VoIP service", e)
     }
 
     if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
