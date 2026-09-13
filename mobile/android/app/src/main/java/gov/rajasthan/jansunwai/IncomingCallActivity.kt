@@ -335,7 +335,8 @@ class IncomingCallActivity : AppCompatActivity() {
         Log.i(TAG, "User tapped DECLINE on incoming call screen")
         isPulseActive = false
 
-        // Stop ringing sound and vibration immediately
+        // Stop ringing sound and vibration immediately and blacklist call from re-ringing
+        JanSunwaiVoIPService.dismissCall(callId)
         JanSunwaiVoIPService.stopActiveRinging()
 
         // Send decline signal to backend in background thread
@@ -368,7 +369,8 @@ class IncomingCallActivity : AppCompatActivity() {
         Log.i(TAG, "User tapped ACCEPT on incoming call screen")
         isPulseActive = false
 
-        // Stop ringing sound and vibration immediately
+        // Stop ringing sound and vibration immediately and mark inCall
+        JanSunwaiVoIPService.dismissCall(callId)
         JanSunwaiVoIPService.stopActiveRinging()
         JanSunwaiVoIPService.setInCallState(true)
 

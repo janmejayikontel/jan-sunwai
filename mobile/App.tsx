@@ -204,8 +204,14 @@ export default function App() {
   const handleDeclineIncomingCall = async () => {
     if (!incomingCall) return;
     const targetCallId = incomingCall.callId;
+    const grievanceId = incomingCall.grievanceId;
     if (targetCallId) {
+      JanSunwaiVoIP?.dismissCall?.(targetCallId);
       dismissedCallIdsRef.current.add(targetCallId);
+    }
+    if (grievanceId) {
+      JanSunwaiVoIP?.dismissCall?.(grievanceId);
+      dismissedCallIdsRef.current.add(grievanceId);
     }
     JanSunwaiVoIP?.stopRinging?.();
 
@@ -230,23 +236,43 @@ export default function App() {
   const handleLeaveHearing = async () => {
     if (activeHearing) {
       const callId = activeHearing.callId;
+      const grievanceId = activeHearing.grievanceId;
+      const roomName = activeHearing.roomName;
       const base = cleanServerUrl(serverUrl);
+
+      // Stop any ringing sounds immediately and release inCall state
       JanSunwaiVoIP?.stopRinging?.();
       JanSunwaiVoIP?.setInCall?.(false);
 
+      // Blacklist callId, grievanceId, and roomName natively in Kotlin AND in JS
       if (callId) {
-        console.log('[App] Participant left hearing. Blacklisting callId from re-ringing:', callId);
+        JanSunwaiVoIP?.dismissCall?.(callId);
         dismissedCallIdsRef.current.add(callId);
+      }
+      if (grievanceId) {
+        JanSunwaiVoIP?.dismissCall?.(grievanceId);
+        dismissedCallIdsRef.current.add(grievanceId);
+      }
+      if (roomName) {
+        JanSunwaiVoIP?.dismissCall?.(roomName);
+        dismissedCallIdsRef.current.add(roomName);
+      }
 
-        if (currentUser?.phone) {
-          fetch(`${base}/api/calls/${callId}/leave`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: currentUser.phone }),
-          }).catch((e) => console.warn('[App] Error sending leave notice to server:', e));
-        }
+      const targetLeaveId = callId || grievanceId || roomName;
+      if (targetLeaveId && currentUser?.phone) {
+        console.log('[App] Participant left hearing. Blacklisting call from re-ringing:', targetLeaveId);
+        fetch(`${base}/api/calls/${encodeURIComponent(targetLeaveId)}/leave`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: currentUser.phone,
+            grievanceId,
+            roomName,
+          }),
+        }).catch((e) => console.warn('[App] Error sending leave notice to server:', e));
       }
     }
+    setIncomingCall(null);
     setActiveHearing(null);
   };
 
@@ -258,9 +284,14 @@ export default function App() {
         if (pendingJson) {
           console.log('[App] Received pending VoIP call from native background service:', pendingJson);
           const data = typeof pendingJson === 'string' ? JSON.parse(pendingJson) : pendingJson;
-          if (data?.callId) {
-            if (dismissedCallIdsRef.current.has(data.callId)) {
-              console.log('[App] Ignoring call previously left/dismissed:', data.callId);
+          if (data?.callId || data?.grievanceId) {
+            const checkId = data.callId || '';
+            const checkGrievance = data.grievanceId || '';
+            if (
+              (checkId && dismissedCallIdsRef.current.has(checkId)) ||
+              (checkGrievance && dismissedCallIdsRef.current.has(checkGrievance))
+            ) {
+              console.log('[App] Ignoring call previously left/dismissed:', checkId, checkGrievance);
               return;
             }
             if (data.autoAccept) {
@@ -334,8 +365,13 @@ export default function App() {
             console.log('[Mobile/WS] Received:', msg.type);
 
             if (msg.type === 'incoming_call' && msg.data) {
-              if (dismissedCallIdsRef.current.has(msg.data.callId)) {
-                console.log('[Mobile/WS] Ignoring incoming call for dismissed/left call:', msg.data.callId);
+              const incomingId = msg.data.callId;
+              const grievance = msg.data.grievanceId;
+              if (
+                (incomingId && dismissedCallIdsRef.current.has(incomingId)) ||
+                (grievance && dismissedCallIdsRef.current.has(grievance))
+              ) {
+                console.log('[Mobile/WS] Ignoring incoming call for dismissed/left call:', incomingId, grievance);
                 return;
               }
               setIncomingCall(msg.data as IncomingCallData);
@@ -380,7 +416,12 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           if (data.hasIncomingCall && data.incomingCall) {
-            if (dismissedCallIdsRef.current.has(data.incomingCall.callId)) {
+            const incomingId = data.incomingCall.callId;
+            const grievance = data.incomingCall.grievanceId;
+            if (
+              (incomingId && dismissedCallIdsRef.current.has(incomingId)) ||
+              (grievance && dismissedCallIdsRef.current.has(grievance))
+            ) {
               return;
             }
             setIncomingCall((prev) => {

@@ -63,8 +63,14 @@ const RoomContent: React.FC<{
     NativeModules.JanSunwaiVoIP?.setInCall?.(true);
     return () => {
       NativeModules.JanSunwaiVoIP?.setInCall?.(false);
+      if (callId) {
+        NativeModules.JanSunwaiVoIP?.dismissCall?.(callId);
+      }
+      if (grievanceId) {
+        NativeModules.JanSunwaiVoIP?.dismissCall?.(grievanceId);
+      }
     };
-  }, []);
+  }, [callId, grievanceId]);
 
   // Sync state with local participant
   useEffect(() => {

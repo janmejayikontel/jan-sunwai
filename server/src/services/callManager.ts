@@ -740,15 +740,52 @@ export async function removeParticipantFromCall(
  */
 export async function participantLeaveCall(
   callId: string,
-  participantPhone: string
+  participantPhone: string,
+  grievanceId?: string,
+  roomName?: string
 ): Promise<boolean> {
-  const call = activeCalls.get(callId);
-  if (!call) return false;
+  let call = activeCalls.get(callId);
+  if (!call) {
+    const raw = (callId || '').trim();
+    const clean = raw.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+    const targetGrievance = (grievanceId || clean).trim().toUpperCase();
+    const targetRoom = (roomName || raw).trim();
+
+    for (const c of activeCalls.values()) {
+      if (
+        c.id === raw ||
+        c.grievanceId.toUpperCase() === targetGrievance ||
+        c.grievanceId.toUpperCase() === clean ||
+        c.livekitRoomName === targetRoom ||
+        c.livekitRoomName === raw ||
+        c.livekitRoomName === `JS-${clean}` ||
+        c.livekitRoomName === `hearing_${clean}`
+      ) {
+        call = c;
+        break;
+      }
+    }
+  }
+  if (!call && activeCalls.size === 1) {
+    call = Array.from(activeCalls.values())[0];
+  }
+  if (!call) {
+    console.warn(`[CallManager] participantLeaveCall: Call ${callId} not found in activeCalls`);
+    return false;
+  }
 
   const participant = call.participants.find((p) => matchPhone(p.phone, participantPhone));
   if (participant) {
     participant.leftAt = new Date();
     participant.ringStatus = 'left';
+    console.log(`[CallManager] Participant ${participant.name} (${participantPhone}) marked as 'left' in call ${call.id}`);
+  }
+
+  // Also remove from LiveKit SFU so connection is cleaned up immediately
+  try {
+    await livekitService.removeParticipant(call.livekitRoomName, participantPhone);
+  } catch (err) {
+    // Participant may have already disconnected
   }
 
   // Notify all remaining active participants
@@ -756,7 +793,7 @@ export async function participantLeaveCall(
     if (p.phone && !matchPhone(p.phone, participantPhone) && !p.leftAt) {
       sendToClient(p.phone, {
         type: 'participant_left',
-        callId,
+        callId: call!.id,
         data: {
           participantName: participant?.name || participantPhone,
           phone: participantPhone,
@@ -766,8 +803,46 @@ export async function participantLeaveCall(
     }
   });
 
-  console.log(`[CallManager] Participant ${participant?.name || participantPhone} left call ${callId}. Meeting continues.`);
   return true;
+}
+
+/**
+ * Mark a participant as joined/accepted when they enter the LiveKit room.
+ * Prevents any subsequent incoming call ringing or re-check.
+ */
+export function markParticipantJoined(callIdOrRoom: string, phone: string): boolean {
+  let call = activeCalls.get(callIdOrRoom);
+  if (!call) {
+    const raw = (callIdOrRoom || '').trim();
+    const clean = raw.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+    for (const c of activeCalls.values()) {
+      if (
+        c.id === raw ||
+        c.grievanceId.toUpperCase() === clean ||
+        c.grievanceId.toUpperCase() === raw.toUpperCase() ||
+        c.livekitRoomName === raw ||
+        c.livekitRoomName === `JS-${clean}` ||
+        c.livekitRoomName === `hearing_${clean}`
+      ) {
+        call = c;
+        break;
+      }
+    }
+  }
+  if (!call && activeCalls.size === 1) {
+    call = Array.from(activeCalls.values())[0];
+  }
+  if (!call) return false;
+
+  const participant = call.participants.find((p) => matchPhone(p.phone, phone));
+  if (participant) {
+    participant.ringStatus = 'accepted';
+    participant.answeredAt = participant.answeredAt || new Date();
+    participant.leftAt = undefined;
+    console.log(`[CallManager] Participant ${participant.name} (${phone}) confirmed joined in room ${call.livekitRoomName}`);
+    return true;
+  }
+  return false;
 }
 
 // ─── Query Functions ──────────────────────────────────────────
@@ -811,6 +886,10 @@ export function getIncomingCallForPhone(phone: string): {
 
     const participant = call.participants.find((p) => matchPhone(p.phone, phone));
     if (!participant || participant.role === 'host') continue;
+
+    // CRITICAL: If participant has ALREADY answered/entered this call or has left/declined,
+    // they MUST NEVER receive an incoming call prompt for it again!
+    if (participant.answeredAt !== undefined) continue;
     if (participant.leftAt !== undefined) continue;
     if (participant.ringStatus !== 'ringing') continue;
 
@@ -898,6 +977,7 @@ export const callManager = {
   addParticipantToCall,
   removeParticipantFromCall,
   participantLeaveCall,
+  markParticipantJoined,
   endCall,
   getCall,
   getActiveCalls,

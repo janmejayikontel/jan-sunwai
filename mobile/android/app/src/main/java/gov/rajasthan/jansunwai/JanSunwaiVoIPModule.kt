@@ -121,9 +121,21 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun dismissCall(callId: String?, promise: Promise) {
+        try {
+            JanSunwaiVoIPService.dismissCall(callId)
+            pendingIncomingCallJson = null
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("DISMISS_CALL_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
     fun getPendingCall(promise: Promise) {
         val callData = pendingIncomingCallJson ?: JanSunwaiVoIPService.lastReceivedCallData
         pendingIncomingCallJson = null
+        JanSunwaiVoIPService.lastReceivedCallData = null // One-shot consumption so it never rings again on leave!
         promise.resolve(callData)
     }
 }

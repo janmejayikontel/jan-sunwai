@@ -459,7 +459,7 @@ router.post('/:id/remove-participant', async (req: Request, res: Response) => {
  */
 router.post('/:id/leave', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { phone } = req.body;
+  const { phone, grievanceId, roomName } = req.body;
 
   if (!phone) {
     res.status(400).json({ error: 'phone is required' });
@@ -467,7 +467,7 @@ router.post('/:id/leave', async (req: Request, res: Response) => {
   }
 
   try {
-    await callManager.participantLeaveCall(id, phone);
+    await callManager.participantLeaveCall(id, phone, grievanceId, roomName);
     res.json({ success: true, message: 'Left the hearing' });
   } catch (error) {
     console.error('[Calls] Error leaving call:', error);

@@ -84,6 +84,7 @@ app.post('/api/livekit/token', async (req, res) => {
     const userPhone = req.body.phone || identity || '';
 
     // Enforce business rule: user and employee can enter ONLY if meeting is ongoing AND officer called him
+    let callSessionId: string | undefined;
     if (!isHost) {
       const check = callManager.checkCanEnterRoom(roomName, userPhone, participantRole || 'citizen');
       if (!check.allowed) {
@@ -93,6 +94,10 @@ app.post('/api/livekit/token', async (req, res) => {
           reason: check.reason,
         });
         return;
+      }
+      callSessionId = check.callId;
+      if (check.callId && userPhone) {
+        callManager.markParticipantJoined(check.callId, userPhone);
       }
     }
 
@@ -110,6 +115,7 @@ app.post('/api/livekit/token', async (req, res) => {
       success: true,
       token,
       roomName,
+      callId: callSessionId,
       serverUrl: process.env.LIVEKIT_URL || 'wss://jan-sunwai-demo-y7hrzb7k.livekit.cloud',
     });
   } catch (error: any) {

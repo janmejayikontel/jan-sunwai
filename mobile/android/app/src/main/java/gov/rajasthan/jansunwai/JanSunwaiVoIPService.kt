@@ -56,6 +56,7 @@ class JanSunwaiVoIPService : Service() {
         var isInCall = false
         var currentRingingCallId: String? = null
         var lastReceivedCallData: String? = null
+        val dismissedCallIds: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
         private var instance: JanSunwaiVoIPService? = null
 
@@ -68,6 +69,36 @@ class JanSunwaiVoIPService : Service() {
             if (inCall) {
                 stopActiveRinging()
             }
+        }
+
+        fun dismissCall(callId: String?) {
+            if (!callId.isNullOrBlank()) {
+                val c = callId.trim().uppercase()
+                dismissedCallIds.add(c)
+                val clean = c.replace(Regex("^(HEARING_|JS-)"), "")
+                if (clean.isNotEmpty()) {
+                    dismissedCallIds.add(clean)
+                    dismissedCallIds.add("JS-$clean")
+                    dismissedCallIds.add("HEARING_$clean")
+                }
+                Log.i(TAG, "Dismissed callId added to blacklist: $c (total dismissed: ${dismissedCallIds.size})")
+            }
+            lastReceivedCallData = null
+            stopActiveRinging()
+        }
+
+        fun isCallDismissed(callId: String?, grievanceId: String?): Boolean {
+            if (!callId.isNullOrBlank()) {
+                val c = callId.trim().uppercase()
+                if (dismissedCallIds.contains(c)) return true
+                val clean = c.replace(Regex("^(HEARING_|JS-)"), "")
+                if (dismissedCallIds.contains(clean) || dismissedCallIds.contains("JS-$clean") || dismissedCallIds.contains("HEARING_$clean")) return true
+            }
+            if (!grievanceId.isNullOrBlank()) {
+                val g = grievanceId.trim().uppercase()
+                if (dismissedCallIds.contains(g) || dismissedCallIds.contains("JS-$g") || dismissedCallIds.contains("HEARING_$g")) return true
+            }
+            return false
         }
     }
 
@@ -135,10 +166,13 @@ class JanSunwaiVoIPService : Service() {
             }
             ACTION_DECLINE -> {
                 val callId = intent?.getStringExtra(EXTRA_CALL_ID)
+                dismissCall(callId)
                 handleDeclineCall(callId)
                 return START_STICKY
             }
             ACTION_ACCEPT -> {
+                val callId = intent?.getStringExtra(EXTRA_CALL_ID)
+                dismissCall(callId)
                 stopRinging()
                 setInCallState(true)
                 // Launch MainActivity with accepted call data
@@ -259,6 +293,12 @@ class JanSunwaiVoIPService : Service() {
                                 return
                             }
                             val data = json.optJSONObject("data") ?: json
+                            val incomingCallId = data.optString("callId", "")
+                            val grievanceId = data.optString("grievanceId", "")
+                            if (isCallDismissed(incomingCallId, grievanceId)) {
+                                Log.i(TAG, "Ignoring incoming call via WS — call $incomingCallId / case $grievanceId was already left/dismissed")
+                                return
+                            }
                             handleIncomingCall(data.toString())
                         } else if (type == "call_ended" || type == "call_declined") {
                             stopRinging()
@@ -324,8 +364,14 @@ class JanSunwaiVoIPService : Service() {
                     if (json.optBoolean("hasIncomingCall", false) && !isInCall) {
                         val callObj = json.optJSONObject("incomingCall")
                         if (callObj != null && !isCallRinging && !isInCall) {
-                            handler.post {
-                                handleIncomingCall(callObj.toString())
+                            val callId = callObj.optString("callId", "")
+                            val grievanceId = callObj.optString("grievanceId", "")
+                            if (isCallDismissed(callId, grievanceId)) {
+                                Log.i(TAG, "Ignoring incoming call in background poll — call $callId / case $grievanceId was already left/dismissed")
+                            } else {
+                                handler.post {
+                                    handleIncomingCall(callObj.toString())
+                                }
                             }
                         }
                     }
@@ -339,8 +385,6 @@ class JanSunwaiVoIPService : Service() {
 
     fun handleIncomingCall(callJsonString: String) {
         if (isInCall || isCallRinging) return
-        isCallRinging = true
-        lastReceivedCallData = callJsonString
 
         try {
             val json = JSONObject(callJsonString)
@@ -349,6 +393,14 @@ class JanSunwaiVoIPService : Service() {
             val callerName = json.optString("callerName", "District Collector")
             val callerDesig = json.optString("callerDesignation", "Presiding Officer")
             val title = json.optString("title", "Jan Sunwai Video Hearing")
+
+            if (isCallDismissed(callId, grievanceId)) {
+                Log.i(TAG, "handleIncomingCall: Aborting ring — call $callId / case $grievanceId was already left/dismissed")
+                return
+            }
+
+            isCallRinging = true
+            lastReceivedCallData = callJsonString
 
             currentRingingCallId = callId
             Log.i(TAG, "TRIGGERING INCOMING CALL RING: $callerName for case $grievanceId")
