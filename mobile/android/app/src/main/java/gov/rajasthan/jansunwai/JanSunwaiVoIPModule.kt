@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -115,6 +116,42 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
                 }
             } catch (e: Exception) {
                 Log.w("JanSunwaiVoIPModule", "Error requesting overlay permission", e)
+            }
+        }
+        promise.resolve(true)
+    }
+
+    @ReactMethod
+    fun checkBatteryOptimization(promise: Promise) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val powerManager = reactContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                val isIgnoring = powerManager?.isIgnoringBatteryOptimizations(reactContext.packageName) ?: true
+                promise.resolve(isIgnoring)
+            } catch (e: Exception) {
+                promise.resolve(true)
+            }
+        } else {
+            promise.resolve(true)
+        }
+    }
+
+    @ReactMethod
+    fun requestIgnoreBatteryOptimization(promise: Promise) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val powerManager = reactContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                if (powerManager != null && !powerManager.isIgnoringBatteryOptimizations(reactContext.packageName)) {
+                    val intent = Intent(
+                        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:" + reactContext.packageName)
+                    ).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    reactContext.startActivity(intent)
+                }
+            } catch (e: Exception) {
+                Log.w("JanSunwaiVoIPModule", "Error requesting battery optimization exemption", e)
             }
         }
         promise.resolve(true)

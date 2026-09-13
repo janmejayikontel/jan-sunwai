@@ -30,6 +30,7 @@ import org.json.JSONObject
  *
  * Displays a full-screen pop-up when an official hearing call arrives,
  * even when the device is locked or the screen is off (WhatsApp / true VoIP style).
+ * Handles multiple calls cleanly with singleInstance launchMode and onNewIntent.
  */
 class IncomingCallActivity : AppCompatActivity() {
 
@@ -48,8 +49,24 @@ class IncomingCallActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         activeInstance = this
+        applyWindowFlags()
+        renderCallUI(intent)
+    }
 
-        // 1. Wake screen up and show over lock screen
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        activeInstance = this
+        applyWindowFlags()
+        renderCallUI(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applyWindowFlags()
+    }
+
+    private fun applyWindowFlags() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -63,12 +80,19 @@ class IncomingCallActivity : AppCompatActivity() {
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         )
+    }
 
-        // 2. Parse Intent Extras
-        callDataStr = intent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA) ?: ""
-        callId = intent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_ID) ?: ""
-        serverUrl = intent.getStringExtra(JanSunwaiVoIPService.EXTRA_SERVER_URL) ?: ""
-        userPhone = intent.getStringExtra(JanSunwaiVoIPService.EXTRA_PHONE) ?: ""
+    private fun renderCallUI(incomingIntent: Intent) {
+        // Stop any prior pulse handler
+        isPulseActive = false
+        handler.removeCallbacksAndMessages(null)
+        isPulseActive = true
+
+        // 1. Parse Intent Extras
+        callDataStr = incomingIntent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA) ?: ""
+        callId = incomingIntent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_ID) ?: ""
+        serverUrl = incomingIntent.getStringExtra(JanSunwaiVoIPService.EXTRA_SERVER_URL) ?: ""
+        userPhone = incomingIntent.getStringExtra(JanSunwaiVoIPService.EXTRA_PHONE) ?: ""
 
         val json = try {
             JSONObject(callDataStr)
@@ -85,9 +109,9 @@ class IncomingCallActivity : AppCompatActivity() {
         val callerDesig = json.optString("callerDesignation", "Presiding Officer")
         val title = json.optString("title", "Jan Sunwai Video Hearing")
 
-        Log.i(TAG, "Showing full-screen incoming call: $callerName for $grievanceId")
+        Log.i(TAG, "Rendering full-screen incoming call UI: $callerName for Case #$grievanceId (callId: $callId)")
 
-        // 3. Build Rich Native UI
+        // 2. Build Rich Native UI
         val density = resources.displayMetrics.density
         fun dp(value: Int): Int = (value * density).toInt()
 

@@ -35,7 +35,7 @@ class JanSunwaiVoIPService : Service() {
     companion object {
         const val TAG = "JanSunwaiVoIP"
         const val STANDBY_CHANNEL_ID = "jansunwai_standby_channel"
-        const val CALL_CHANNEL_ID = "jansunwai_incoming_call_channel_v3"
+        const val CALL_CHANNEL_ID = "jansunwai_incoming_call_channel_v4"
         const val NOTIFICATION_ID_STANDBY = 1001
         const val NOTIFICATION_ID_CALL = 9999
 
@@ -142,7 +142,33 @@ class JanSunwaiVoIPService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.i(TAG, "App task removed (swiped away) - maintaining VoIP background service in foreground")
+        Log.i(TAG, "App task removed (swiped away) - re-arming VoIP service via AlarmManager")
+        try {
+            val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+            val phone = prefs.getString("phone", "") ?: ""
+            val serverUrl = prefs.getString("server_url", "") ?: ""
+            if (phone.isNotEmpty()) {
+                val restartIntent = Intent(applicationContext, JanSunwaiVoIPService::class.java).apply {
+                    action = ACTION_START
+                    putExtra(EXTRA_PHONE, phone)
+                    putExtra(EXTRA_SERVER_URL, serverUrl)
+                }
+                val pendingIntent = PendingIntent.getService(
+                    applicationContext,
+                    9090,
+                    restartIntent,
+                    PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+                alarmManager?.set(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 1000,
+                    pendingIntent
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to schedule restart in onTaskRemoved", e)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -450,15 +476,16 @@ class JanSunwaiVoIPService : Service() {
             }
 
             // 4. Intent for Native Full-Screen Incoming Call Activity (IncomingCallActivity)
+            val reqCode = (System.currentTimeMillis() % 100000).toInt()
             val incomingCallIntent = Intent(this, IncomingCallActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 putExtra(EXTRA_CALL_ID, callId)
                 putExtra(EXTRA_CALL_DATA, callJsonString)
                 putExtra(EXTRA_SERVER_URL, serverUrl)
                 putExtra(EXTRA_PHONE, userPhone)
             }
             val fullScreenPendingIntent = PendingIntent.getActivity(
-                this, 101, incomingCallIntent,
+                this, reqCode, incomingCallIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
@@ -469,7 +496,7 @@ class JanSunwaiVoIPService : Service() {
                 putExtra(EXTRA_CALL_DATA, callJsonString)
             }
             val acceptPendingIntent = PendingIntent.getService(
-                this, 102, acceptIntent,
+                this, reqCode + 1, acceptIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
@@ -479,7 +506,7 @@ class JanSunwaiVoIPService : Service() {
                 putExtra(EXTRA_CALL_ID, callId)
             }
             val declinePendingIntent = PendingIntent.getService(
-                this, 103, declineIntent,
+                this, reqCode + 2, declineIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
@@ -504,13 +531,20 @@ class JanSunwaiVoIPService : Service() {
                 .build()
 
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            try {
+                notificationManager.cancel(NOTIFICATION_ID_CALL)
+            } catch (e: Exception) {
+                // ignore
+            }
             notificationManager.notify(NOTIFICATION_ID_CALL, notification)
 
-            // Launch native full-screen incoming call UI immediately
-            try {
-                startActivity(incomingCallIntent)
-            } catch (e: Exception) {
-                Log.i(TAG, "Direct launch will show via fullScreenIntent: ${e.message}")
+            // Launch native full-screen incoming call UI immediately on main thread
+            handler.post {
+                try {
+                    startActivity(incomingCallIntent)
+                } catch (e: Exception) {
+                    Log.i(TAG, "Direct launch will show via fullScreenIntent: ${e.message}")
+                }
             }
 
             // 60-second auto-dismiss if not answered

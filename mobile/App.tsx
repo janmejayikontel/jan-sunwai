@@ -103,9 +103,9 @@ export default function App() {
     restoreSavedSession();
   }, []);
 
-  // ─── 1c. Check and Request "Display over other apps" Permission ───
+  // ─── 1c. Check and Request "Display over other apps" & Battery Optimization ───
   useEffect(() => {
-    const checkOverlay = async () => {
+    const checkPermissions = async () => {
       try {
         if (Platform.OS === 'android') {
           const hasOverlay = await JanSunwaiVoIP?.checkOverlayPermission?.();
@@ -122,6 +122,23 @@ export default function App() {
               ]
             );
           }
+
+          const isIgnoringBattery = await JanSunwaiVoIP?.checkBatteryOptimization?.();
+          if (isIgnoringBattery === false) {
+            setTimeout(() => {
+              Alert.alert(
+                'पृष्ठभूमि कॉल अनुमति (Background Call Setting)',
+                'ऐप बंद रहने या फोन लॉक होने पर भी वीडियो सुनवाई कॉल समय पर प्राप्त करने के लिए कृपया बैटरी अनुकूलन बंद करें (Unrestricted Battery)।\n\nTo ensure video hearing calls ring reliably even when the app is killed or screen is locked, please allow unrestricted background activity.',
+                [
+                  { text: 'बाद में (Later)', style: 'cancel' },
+                  {
+                    text: 'अनुमति दें (Allow)',
+                    onPress: () => JanSunwaiVoIP?.requestIgnoreBatteryOptimization?.(),
+                  },
+                ]
+              );
+            }, 1200);
+          }
         }
       } catch (e) {
         // ignore
@@ -129,7 +146,7 @@ export default function App() {
     };
 
     if (currentUser) {
-      setTimeout(checkOverlay, 1500);
+      setTimeout(checkPermissions, 1500);
     }
   }, [currentUser]);
 
