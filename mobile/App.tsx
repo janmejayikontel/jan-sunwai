@@ -1,6 +1,7 @@
 import './polyfill';
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Alert } from 'react-native';
+import { StyleSheet, View, Text, Alert, ActivityIndicator } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LoginScreen, UserProfile } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { VideoHearingScreen } from './src/screens/VideoHearingScreen';
@@ -17,16 +18,55 @@ interface ActiveHearingState {
   callId?: string;
 }
 
+const STORAGE_SESSION_KEY = '@jan_sunwai_session';
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [serverUrl, setServerUrl] = useState<string>(DEFAULT_SERVER_URL);
   const [activeHearing, setActiveHearing] = useState<ActiveHearingState | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
+  const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
 
   const wsRef = useRef<WebSocket | null>(null);
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
-  // ─── WebSocket Signaling & Incoming Call Receiver ───────────
+  // ─── 1. Persistent Session Restoration on App Launch ─────────
+  useEffect(() => {
+    const restoreSavedSession = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(STORAGE_SESSION_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.user?.phone) {
+            console.log('[App/Session] Restored saved login for:', parsed.user.name, parsed.user.phone);
+            setCurrentUser(parsed.user);
+            if (parsed.serverUrl) {
+              setServerUrl(parsed.serverUrl);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[App/Session] Failed to restore session from AsyncStorage:', e);
+      } finally {
+        setIsRestoringSession(false);
+      }
+    };
+
+    restoreSavedSession();
+  }, []);
+
+  // ─── 2. Auto-timeout incoming call locally after 60s ─────────
+  useEffect(() => {
+    if (!incomingCall) return;
+    const timeout = setTimeout(() => {
+      console.log('[App] Incoming call local ring timeout reached (60s)');
+      setIncomingCall(null);
+    }, 60000);
+
+    return () => clearTimeout(timeout);
+  }, [incomingCall?.callId]);
+
+  // ─── 3. WebSocket Signaling & Incoming Call Receiver ───────────
   useEffect(() => {
     if (!currentUser) {
       if (wsRef.current) {
@@ -90,8 +130,9 @@ export default function App() {
 
     connectWebSocket();
 
-    // Fast polling fallback: checks every 2.5s for any active call ringing for this phone
-    // Ensures incoming call is received even if WebSocket had a reconnect delay or sleep
+    // Secondary polling fallback: checks every 3s to discover any missed incoming call
+    // Note: NEVER auto-disconnect an active incoming call here; dismissal is handled
+    // by WebSocket (call_ended / call_declined), user button presses, or 60s timeout.
     const pollInterval = setInterval(async () => {
       if (!isSubscribed || activeHearing) return;
       try {
@@ -104,14 +145,12 @@ export default function App() {
               if (prev && prev.callId === data.incomingCall.callId) return prev;
               return data.incomingCall;
             });
-          } else {
-            setIncomingCall((prev) => (prev ? null : null));
           }
         }
       } catch (err) {
         // network polling silent
       }
-    }, 2500);
+    }, 3000);
 
     return () => {
       isSubscribed = false;
@@ -123,7 +162,7 @@ export default function App() {
     };
   }, [currentUser, serverUrl, activeHearing]);
 
-  // ─── Incoming Call Actions ──────────────────────────────────
+  // ─── 4. Incoming Call Actions ──────────────────────────────────
   const handleAcceptIncomingCall = async () => {
     if (!incomingCall || !currentUser) return;
 
@@ -181,6 +220,48 @@ export default function App() {
     }
   };
 
+  // ─── 5. Login & Logout Session Handlers ────────────────────────
+  const handleLoginSuccess = async (user: UserProfile, srv: string) => {
+    setCurrentUser(user);
+    setServerUrl(srv);
+    try {
+      await AsyncStorage.setItem(
+        STORAGE_SESSION_KEY,
+        JSON.stringify({ user, serverUrl: srv })
+      );
+      console.log('[App/Session] User session saved to AsyncStorage');
+    } catch (err) {
+      console.warn('[App/Session] Error storing session:', err);
+    }
+  };
+
+  const handleLogout = async () => {
+    setActiveHearing(null);
+    setCurrentUser(null);
+    setIncomingCall(null);
+    try {
+      await AsyncStorage.removeItem(STORAGE_SESSION_KEY);
+      console.log('[App/Session] User session removed from AsyncStorage');
+    } catch (err) {
+      console.warn('[App/Session] Error removing session:', err);
+    }
+  };
+
+  // Splash screen while restoring session from storage
+  if (isRestoringSession) {
+    return (
+      <View style={styles.splashContainer}>
+        <View style={styles.splashEmblem}>
+          <Text style={styles.splashEmblemText}>🏛️</Text>
+        </View>
+        <Text style={styles.splashTitleHindi}>संपर्क लाइट</Text>
+        <Text style={styles.splashTitleEnglish}>Sampark Lite — Rajasthan</Text>
+        <ActivityIndicator color="#38bdf8" size="large" style={{ marginTop: 24 }} />
+        <Text style={styles.splashSub}>Restoring secure session...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {activeHearing ? (
@@ -200,11 +281,7 @@ export default function App() {
             user={currentUser}
             serverUrl={serverUrl}
             onJoinHearing={(params) => setActiveHearing(params)}
-            onLogout={() => {
-              setActiveHearing(null);
-              setCurrentUser(null);
-              setIncomingCall(null);
-            }}
+            onLogout={handleLogout}
           />
 
           <IncomingCallModal
@@ -214,12 +291,7 @@ export default function App() {
           />
         </>
       ) : (
-        <LoginScreen
-          onLoginSuccess={(user, srv) => {
-            setCurrentUser(user);
-            setServerUrl(srv);
-          }}
-        />
+        <LoginScreen onLoginSuccess={handleLoginSuccess} />
       )}
     </View>
   );
@@ -229,5 +301,43 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#020617',
+  },
+  splashContainer: {
+    flex: 1,
+    backgroundColor: '#020617',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  splashEmblem: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#0f172a',
+    borderWidth: 1.5,
+    borderColor: '#334155',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  splashEmblemText: {
+    fontSize: 40,
+  },
+  splashTitleHindi: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#f8fafc',
+    letterSpacing: 0.5,
+  },
+  splashTitleEnglish: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#38bdf8',
+    marginTop: 4,
+  },
+  splashSub: {
+    color: '#94a3b8',
+    fontSize: 13,
+    marginTop: 12,
   },
 });
