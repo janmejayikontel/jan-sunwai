@@ -111,6 +111,7 @@ class JanSunwaiVoIPService : Service() {
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var standbyWakeLock: PowerManager.WakeLock? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private var pollRunnable: Runnable? = null
@@ -128,6 +129,19 @@ class JanSunwaiVoIPService : Service() {
             "JanSunwai::VoIPWakeLock"
         )
 
+        try {
+            standbyWakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "JanSunwai::VoIPStandbyWakeLock"
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+            Log.i(TAG, "Acquired standby partial wake lock to keep background polling alive")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to acquire standby partial wake lock", e)
+        }
+
         vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
             vibratorManager.defaultVibrator
@@ -143,41 +157,41 @@ class JanSunwaiVoIPService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.i(TAG, "App task removed (swiped away) - re-arming VoIP service via AlarmManager")
+        Log.i(TAG, "App task removed (swiped away) - reaffirming foreground service and triggering backup revival")
         try {
-            val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
-            val phone = prefs.getString("phone", "") ?: ""
-            val serverUrl = prefs.getString("server_url", "") ?: ""
-            if (phone.isNotEmpty()) {
-                val restartIntent = Intent(applicationContext, JanSunwaiVoIPService::class.java).apply {
-                    action = ACTION_START
-                    putExtra(EXTRA_PHONE, phone)
-                    putExtra(EXTRA_SERVER_URL, serverUrl)
-                }
-                val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    PendingIntent.getForegroundService(
-                        applicationContext,
-                        9090,
-                        restartIntent,
-                        PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-                    )
-                } else {
-                    PendingIntent.getService(
-                        applicationContext,
-                        9090,
-                        restartIntent,
-                        PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-                    )
-                }
-                val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
-                alarmManager?.set(
+            startForeground(NOTIFICATION_ID_STANDBY, createStandbyNotification())
+        } catch (e: Exception) {
+            // ignore
+        }
+
+        try {
+            val restartIntent = Intent(applicationContext, VoIPRestartReceiver::class.java).apply {
+                action = VoIPRestartReceiver.ACTION_RESTART
+            }
+            sendBroadcast(restartIntent)
+
+            val pendingIntent = PendingIntent.getBroadcast(
+                applicationContext,
+                9091,
+                restartIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager?.setExactAndAllowWhileIdle(
                     android.app.AlarmManager.RTC_WAKEUP,
-                    System.currentTimeMillis() + 1000,
+                    System.currentTimeMillis() + 1500,
+                    pendingIntent
+                )
+            } else {
+                alarmManager?.setExact(
+                    android.app.AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 1500,
                     pendingIntent
                 )
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to schedule restart in onTaskRemoved", e)
+            Log.e(TAG, "Failed to schedule revival in onTaskRemoved", e)
         }
     }
 
@@ -227,13 +241,13 @@ class JanSunwaiVoIPService : Service() {
             }
             ACTION_START -> {
                 val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
-                val phone = intent?.getStringExtra(EXTRA_PHONE) ?: prefs.getString("phone", "") ?: ""
-                val srv = intent?.getStringExtra(EXTRA_SERVER_URL) ?: prefs.getString("server_url", "") ?: ""
+                val phone = intent?.getStringExtra(EXTRA_PHONE)?.takeIf { it.isNotBlank() } ?: prefs.getString("phone", "") ?: ""
+                val srv = intent?.getStringExtra(EXTRA_SERVER_URL)?.takeIf { it.isNotBlank() } ?: prefs.getString("server_url", "") ?: ""
 
                 if (phone.isNotEmpty()) {
                     userPhone = phone
                     serverUrl = srv
-                    prefs.edit().putString("phone", userPhone).putString("server_url", serverUrl).apply()
+                    prefs.edit().putString("phone", userPhone).putString("server_url", serverUrl).commit()
 
                     startForeground(NOTIFICATION_ID_STANDBY, createStandbyNotification())
                     isServiceRunning = true
@@ -671,6 +685,14 @@ class JanSunwaiVoIPService : Service() {
         isServiceRunning = false
         stopRinging()
 
+        try {
+            standbyWakeLock?.let {
+                if (it.isHeld) it.release()
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+
         pollRunnable?.let { handler.removeCallbacks(it) }
         handler.removeCallbacksAndMessages(null)
 
@@ -687,8 +709,47 @@ class JanSunwaiVoIPService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        stopForegroundService()
         instance = null
-        Log.i(TAG, "JanSunwaiVoIPService destroyed")
+        Log.i(TAG, "JanSunwaiVoIPService onDestroy - checking revival")
+        try {
+            standbyWakeLock?.let {
+                if (it.isHeld) it.release()
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+
+        // If the service was destroyed by OS (not an explicit user logout), revive it immediately!
+        if (isServiceRunning) {
+            try {
+                val restartIntent = Intent(applicationContext, VoIPRestartReceiver::class.java).apply {
+                    action = VoIPRestartReceiver.ACTION_RESTART
+                }
+                sendBroadcast(restartIntent)
+
+                val pendingIntent = PendingIntent.getBroadcast(
+                    applicationContext,
+                    9092,
+                    restartIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager?.setExactAndAllowWhileIdle(
+                        android.app.AlarmManager.RTC_WAKEUP,
+                        System.currentTimeMillis() + 1500,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager?.setExact(
+                        android.app.AlarmManager.RTC_WAKEUP,
+                        System.currentTimeMillis() + 1500,
+                        pendingIntent
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send revival in onDestroy", e)
+            }
+        }
     }
 }

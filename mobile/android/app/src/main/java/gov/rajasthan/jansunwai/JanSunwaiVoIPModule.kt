@@ -27,6 +27,11 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     fun startService(phone: String, serverUrl: String, promise: Promise) {
         try {
             Log.i("JanSunwaiVoIPModule", "Starting native VoIP service for $phone @ $serverUrl")
+
+            // Write to SharedPreferences synchronously with commit() so BootReceiver and Service have it
+            val prefs = reactContext.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putString("phone", phone).putString("server_url", serverUrl).commit()
+
             val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
                 action = JanSunwaiVoIPService.ACTION_START
                 putExtra(JanSunwaiVoIPService.EXTRA_PHONE, phone)
@@ -49,6 +54,9 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stopService(promise: Promise) {
         try {
+            val prefs = reactContext.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+            prefs.edit().remove("phone").commit()
+
             val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
                 action = JanSunwaiVoIPService.ACTION_STOP
             }
