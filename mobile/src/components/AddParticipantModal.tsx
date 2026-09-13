@@ -39,14 +39,21 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'directory' | 'phone'>('directory');
 
-  // Tab 1: Directory Search
+  // ─── TAB 1: Department, Designation & Name Search ───
   const [departments, setDepartments] = useState<string[]>([]);
+  const [designations, setDesignations] = useState<string[]>([]);
   const [selectedDept, setSelectedDept] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [officers, setOfficers] = useState<Officer[]>([]);
+  const [selectedDesig, setSelectedDesig] = useState<string>('');
+  const [nameQuery, setNameQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Officer[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
-  // Tab 2: Direct Phone Dial with Auto-Lookup
+  // Dropdown modal pickers for Dept and Desig
+  const [showDeptPicker, setShowDeptPicker] = useState(false);
+  const [showDesigPicker, setShowDesigPicker] = useState(false);
+
+  // ─── TAB 2: Direct Phone Number Dial with DB Auto-Lookup ───
   const [customPhone, setCustomPhone] = useState('');
   const [customName, setCustomName] = useState('');
   const [customRole, setCustomRole] = useState('');
@@ -59,12 +66,14 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
     role?: string;
   } | null>(null);
   const [isLookingUp, setIsLookingUp] = useState(false);
+
+  // Dialing state
   const [isDialing, setIsDialing] = useState(false);
   const [dialingPhone, setDialingPhone] = useState<string | null>(null);
 
   const cleanUrl = serverUrl.replace(/\/+$/, '');
 
-  // Fetch departments list from server
+  // 1. Fetch departments from SQLite
   const fetchDepartments = useCallback(async () => {
     try {
       const res = await fetch(`${cleanUrl}/api/sampark/departments`);
@@ -75,77 +84,119 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
         }
       }
     } catch (e) {
-      console.warn('Error fetching departments:', e);
+      console.warn('[AddPerson] Error fetching departments:', e);
     }
   }, [cleanUrl]);
 
-  // Search officer directory by name/phone & department (same as website!)
-  const searchDirectory = useCallback(async (query: string, dept: string) => {
+  // 2. Fetch designations from SQLite (optionally filtered by department)
+  const fetchDesignations = useCallback(
+    async (dept?: string) => {
+      try {
+        const param = dept ? `?department=${encodeURIComponent(dept)}` : '';
+        const res = await fetch(`${cleanUrl}/api/sampark/designations${param}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.designations)) {
+            setDesignations(data.designations);
+          }
+        }
+      } catch (e) {
+        console.warn('[AddPerson] Error fetching designations:', e);
+      }
+    },
+    [cleanUrl]
+  );
+
+  // Initial load on modal open
+  useEffect(() => {
+    if (visible) {
+      fetchDepartments();
+      fetchDesignations(selectedDept);
+      handleSearch(nameQuery, selectedDept, selectedDesig);
+    }
+  }, [visible]);
+
+  // Reload designations when selected department changes
+  const handleDepartmentSelect = (dept: string) => {
+    setSelectedDept(dept);
+    setSelectedDesig(''); // Reset designation when dept changes
+    setShowDeptPicker(false);
+    fetchDesignations(dept);
+    handleSearch(nameQuery, dept, '');
+  };
+
+  const handleDesignationSelect = (desig: string) => {
+    setSelectedDesig(desig);
+    setShowDesigPicker(false);
+    handleSearch(nameQuery, selectedDept, desig);
+  };
+
+  // 3. Search Database
+  const handleSearch = async (name: string, dept: string, desig: string) => {
     setIsSearching(true);
+    setHasSearched(true);
     try {
       const params = new URLSearchParams();
-      if (query.trim()) params.set('q', query.trim());
+      if (name.trim()) params.set('q', name.trim());
       if (dept.trim()) params.set('department', dept.trim());
+      if (desig.trim()) params.set('designation', desig.trim());
 
       const res = await fetch(`${cleanUrl}/api/sampark/officers?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
-        setOfficers(data.officers || []);
+        setSearchResults(data.officers || []);
       }
     } catch (err) {
-      console.warn('Directory search error:', err);
+      console.warn('[AddPerson] Search error:', err);
     } finally {
       setIsSearching(false);
     }
-  }, [cleanUrl]);
+  };
 
-  useEffect(() => {
-    if (visible) {
-      fetchDepartments();
-      searchDirectory(searchQuery, selectedDept);
-    }
-  }, [visible, fetchDepartments, searchDirectory, searchQuery, selectedDept]);
-
-  // Automatic Database Lookup when 10 digits are typed in Tab 2!
+  // 4. Tab 2: Phone Lookup in SQLite
   const handlePhoneInputChange = async (text: string) => {
     setCustomPhone(text);
     const digitsOnly = text.replace(/[^0-9]/g, '');
     const last10 = digitsOnly.slice(-10);
 
     if (last10.length === 10) {
-      setIsLookingUp(true);
-      try {
-        const lookupRes = await fetch(`${cleanUrl}/api/sampark/lookup-phone/${encodeURIComponent(last10)}`);
-        if (lookupRes.ok) {
-          const data = await lookupRes.json();
-          if (data.found && data.user) {
-            setLookupResult({
-              found: true,
-              name: data.user.name,
-              designation: data.user.designation,
-              department: data.user.department,
-              role: data.user.role,
-            });
-            // Automatically fill name and designation from database!
-            setCustomName(data.user.name);
-            setCustomRole(data.user.designation);
-            setCustomDept(data.user.department || '');
-            return;
-          }
-        }
-        setLookupResult({ found: false });
-      } catch (err) {
-        setLookupResult({ found: false });
-      } finally {
-        setIsLookingUp(false);
-      }
+      lookupPhoneNumber(last10);
     } else {
       setLookupResult(null);
     }
   };
 
-  // Ring & Add participant to the live hearing
-  const handleAddParticipant = async (participant: {
+  const lookupPhoneNumber = async (last10: string) => {
+    setIsLookingUp(true);
+    try {
+      const res = await fetch(`${cleanUrl}/api/sampark/lookup-phone/${encodeURIComponent(last10)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.found && data.user) {
+          setLookupResult({
+            found: true,
+            name: data.user.name,
+            designation: data.user.designation,
+            department: data.user.department,
+            role: data.user.role,
+          });
+          // Prepopulate fields from database!
+          setCustomName(data.user.name);
+          setCustomRole(data.user.designation || 'Official');
+          setCustomDept(data.user.department || '');
+          return;
+        }
+      }
+      setLookupResult({ found: false });
+    } catch (err) {
+      setLookupResult({ found: false });
+    } finally {
+      setIsLookingUp(false);
+    }
+  };
+
+  // 5. Dial & Add Participant into Live Hearing
+  const handleDialParticipant = async (participant: {
     phone: string;
     name: string;
     designation: string;
@@ -169,8 +220,8 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
       const data = await res.json();
       if (res.ok && data.success) {
         Alert.alert(
-          '📞 Dialing Official',
-          `Calling ${participant.name} (${participant.phone}). They are ringing now and will enter the video room once they answer.`
+          '📞 Calling Official',
+          `Calling ${participant.name} (${participant.phone}). Their phone is ringing now and they will enter the video hearing once they accept.`
         );
         onClose();
       } else {
@@ -183,8 +234,8 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
     }
   };
 
-  // Submit from Tab 2
-  const handleDirectDial = async () => {
+  // 6. Submit Direct Dial (Tab 2)
+  const handleDirectDialSubmit = async () => {
     const raw = customPhone.replace(/[^0-9]/g, '');
     const last10 = raw.slice(-10);
     if (last10.length !== 10) {
@@ -193,13 +244,18 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
     }
 
     const formattedPhone = `+91${last10}`;
-    const formattedName = customName.trim() || `Participant (${last10.slice(-4)})`;
-    const formattedRole = customRole.trim() || 'Official / Complainant';
-    const formattedDept = customDept.trim() || 'External Direct Call';
+    const formattedName =
+      customName.trim() || (lookupResult?.name ? lookupResult.name : `Guest (+91 ${last10})`);
+    const formattedRole =
+      customRole.trim() ||
+      (lookupResult?.designation ? lookupResult.designation : 'Guest Participant');
+    const formattedDept =
+      customDept.trim() ||
+      (lookupResult?.department ? lookupResult.department : 'External Direct Call');
 
     setIsDialing(true);
     try {
-      await handleAddParticipant({
+      await handleDialParticipant({
         phone: formattedPhone,
         name: formattedName,
         designation: formattedRole,
@@ -215,7 +271,7 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} transparent={true} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.modalOverlay}
@@ -227,12 +283,12 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
               <Text style={styles.sheetTitle}>➕ Add Person to Hearing</Text>
               <Text style={styles.sheetSubtitle}>Jan Sunwai • Case #{grievanceId}</Text>
             </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
+            <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
               <Text style={styles.closeBtnText}>✕</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Tab Navigation (Identical to Website!) */}
+          {/* Tab Navigation */}
           <View style={styles.tabBar}>
             <TouchableOpacity
               style={[styles.tabBtn, activeTab === 'directory' && styles.tabBtnActiveDir]}
@@ -245,7 +301,7 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
                   activeTab === 'directory' && styles.tabBtnTextActive,
                 ]}
               >
-                🏛️ Employee List (कर्मचारी)
+                🏛️ By Dept & Designation
               </Text>
             </TouchableOpacity>
 
@@ -260,114 +316,159 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
                   activeTab === 'phone' && styles.tabBtnTextActive,
                 ]}
               >
-                📱 By Phone No. (अन्य व्यक्ति)
+                📱 By Mobile Number
               </Text>
             </TouchableOpacity>
           </View>
 
-          {/* TAB 1: EMPLOYEE DIRECTORY SEARCH & DEPARTMENT FILTER */}
+          {/* ══════════════════════════════════════════════════════════
+              TAB 1: SELECT BY DEPARTMENT, DESIGNATION & NAME
+             ══════════════════════════════════════════════════════════ */}
           {activeTab === 'directory' ? (
             <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-              {/* Department Filter Chips */}
-              <View style={styles.deptSection}>
-                <Text style={styles.fieldLabel}>Filter by Department (विभाग चुनें):</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.deptScroll}>
-                  <TouchableOpacity
-                    style={[styles.deptChip, selectedDept === '' && styles.deptChipActive]}
-                    onPress={() => {
-                      setSelectedDept('');
-                      searchDirectory(searchQuery, '');
-                    }}
-                  >
-                    <Text style={[styles.deptChipText, selectedDept === '' && styles.deptChipTextActive]}>
-                      🏛️ All Departments
-                    </Text>
-                  </TouchableOpacity>
-
-                  {departments.map((dept) => (
-                    <TouchableOpacity
-                      key={dept}
-                      style={[styles.deptChip, selectedDept === dept && styles.deptChipActive]}
-                      onPress={() => {
-                        const next = selectedDept === dept ? '' : dept;
-                        setSelectedDept(next);
-                        searchDirectory(searchQuery, next);
-                      }}
-                    >
-                      <Text
-                        style={[
-                          styles.deptChipText,
-                          selectedDept === dept && styles.deptChipTextActive,
-                        ]}
-                      >
-                        {dept}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+              {/* Step 1: Choose Department */}
+              <View style={styles.formGroup}>
+                <Text style={styles.fieldLabel}>1. Department (विभाग चुनें):</Text>
+                <TouchableOpacity
+                  style={styles.dropdownBtn}
+                  onPress={() => setShowDeptPicker(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.dropdownBtnText} numberOfLines={1}>
+                    {selectedDept ? `🏛️ ${selectedDept}` : '🏛️ All Departments (सभी विभाग)'}
+                  </Text>
+                  <Text style={styles.dropdownArrow}>▼</Text>
+                </TouchableOpacity>
               </View>
 
-              {/* Search Bar */}
-              <View style={styles.searchSection}>
-                <Text style={styles.fieldLabel}>Search by Name, Cadre or Phone (नाम या नंबर खोजें):</Text>
+              {/* Step 2: Choose Designation */}
+              <View style={styles.formGroup}>
+                <Text style={styles.fieldLabel}>2. Designation (पद चुनें):</Text>
+                <TouchableOpacity
+                  style={styles.dropdownBtn}
+                  onPress={() => setShowDesigPicker(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.dropdownBtnText} numberOfLines={1}>
+                    {selectedDesig ? `🎖️ ${selectedDesig}` : '🎖️ All Designations (सभी पद)'}
+                  </Text>
+                  <Text style={styles.dropdownArrow}>▼</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Step 3: Enter Name */}
+              <View style={styles.formGroup}>
+                <Text style={styles.fieldLabel}>3. Employee Name (कर्मचारी का नाम):</Text>
                 <View style={styles.searchRow}>
                   <TextInput
                     style={styles.searchInput}
-                    placeholder="Search SDM, SP, JEn, Tehsildar, or phone..."
+                    placeholder="e.g. Sharma, Chandan, Priya..."
                     placeholderTextColor="#64748b"
-                    value={searchQuery}
-                    onChangeText={(text) => {
-                      setSearchQuery(text);
-                      searchDirectory(text, selectedDept);
+                    value={nameQuery}
+                    onChangeText={(t) => {
+                      setNameQuery(t);
                     }}
+                    onSubmitEditing={() => handleSearch(nameQuery, selectedDept, selectedDesig)}
                   />
-                  {isSearching && (
-                    <ActivityIndicator style={styles.searchSpinner} color="#38bdf8" size="small" />
-                  )}
+                  <TouchableOpacity
+                    style={styles.searchActionBtn}
+                    onPress={() => handleSearch(nameQuery, selectedDept, selectedDesig)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.searchActionBtnText}>🔍 Search</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
+              {/* Active Filter Chips Bar */}
+              {(selectedDept || selectedDesig || nameQuery) && (
+                <View style={styles.activeFilterRow}>
+                  <Text style={styles.filterSummaryText}>Filters:</Text>
+                  {selectedDept ? (
+                    <TouchableOpacity
+                      style={styles.activeFilterChip}
+                      onPress={() => handleDepartmentSelect('')}
+                    >
+                      <Text style={styles.activeFilterChipText}>{selectedDept} ✕</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {selectedDesig ? (
+                    <TouchableOpacity
+                      style={styles.activeFilterChip}
+                      onPress={() => handleDesignationSelect('')}
+                    >
+                      <Text style={styles.activeFilterChipText}>{selectedDesig} ✕</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {nameQuery ? (
+                    <TouchableOpacity
+                      style={styles.activeFilterChip}
+                      onPress={() => {
+                        setNameQuery('');
+                        handleSearch('', selectedDept, selectedDesig);
+                      }}
+                    >
+                      <Text style={styles.activeFilterChipText}>{nameQuery} ✕</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              )}
+
               {/* Search Results */}
               <View style={styles.resultsContainer}>
-                {officers.length === 0 && !isSearching ? (
+                <Text style={styles.sectionHeading}>
+                  Matching Database Employees ({searchResults.length})
+                </Text>
+
+                {isSearching ? (
+                  <View style={styles.loadingBox}>
+                    <ActivityIndicator size="small" color="#38bdf8" />
+                    <Text style={styles.loadingBoxText}>Searching Rajasthan Government directory...</Text>
+                  </View>
+                ) : searchResults.length === 0 ? (
                   <View style={styles.emptyBox}>
-                    <Text style={styles.emptyText}>No officers found for this filter.</Text>
+                    <Text style={styles.emptyTitle}>No matching employee found</Text>
+                    <Text style={styles.emptyText}>
+                      Check spelling or change department/designation filters.
+                    </Text>
                     <TouchableOpacity
                       style={styles.switchTabLink}
                       onPress={() => setActiveTab('phone')}
                     >
                       <Text style={styles.switchTabLinkText}>
-                        📱 Person not in list? Dial directly by phone number →
+                        📱 Dial directly by mobile number instead →
                       </Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  officers.map((officer) => {
+                  searchResults.map((officer) => {
                     const isRinging = dialingPhone === officer.phone;
                     return (
                       <View key={officer.phone} style={styles.officerCard}>
                         <View style={styles.officerCardInfo}>
                           <View style={styles.officerTitleRow}>
                             <Text style={styles.officerNameText}>{officer.name}</Text>
-                            {officer.department ? (
-                              <View style={styles.deptBadge}>
-                                <Text style={styles.deptBadgeText} numberOfLines={1}>
-                                  {officer.department}
-                                </Text>
+                            {officer.employeeCode ? (
+                              <View style={styles.codeBadge}>
+                                <Text style={styles.codeBadgeText}>{officer.employeeCode}</Text>
                               </View>
                             ) : null}
                           </View>
-                          <Text style={styles.officerDesigText}>
-                            {officer.designation} {officer.employeeCode ? `(${officer.employeeCode})` : ''}
-                          </Text>
-                          <Text style={styles.officerPhoneText}>
-                            📱 {officer.phone} {officer.postingDistrict ? `• 📍 ${officer.postingDistrict}` : ''}
-                          </Text>
+                          <Text style={styles.officerDesigText}>{officer.designation}</Text>
+                          <Text style={styles.officerDeptText}>🏛️ {officer.department}</Text>
+                          {/* Fetched Phone Number prominently shown */}
+                          <View style={styles.fetchedPhoneRow}>
+                            <Text style={styles.fetchedPhoneLabel}>Phone (from DB):</Text>
+                            <Text style={styles.fetchedPhoneVal}>{officer.phone}</Text>
+                          </View>
+                          {officer.postingDistrict ? (
+                            <Text style={styles.officerLocText}>📍 {officer.postingDistrict}</Text>
+                          ) : null}
                         </View>
 
                         <TouchableOpacity
                           style={[styles.dialInBtn, isRinging && styles.btnDisabled]}
-                          onPress={() => handleAddParticipant(officer)}
+                          onPress={() => handleDialParticipant(officer)}
                           disabled={isRinging}
                           activeOpacity={0.8}
                         >
@@ -384,96 +485,220 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
               </View>
             </ScrollView>
           ) : (
-            /* TAB 2: BY PHONE NUMBER WITH AUTOMATIC DATABASE LOOKUP */
+            /* ══════════════════════════════════════════════════════════
+               TAB 2: DIAL DIRECTLY BY MOBILE NUMBER (WITH DB LOOKUP)
+               ══════════════════════════════════════════════════════════ */
             <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
               <View style={styles.infoBanner}>
                 <Text style={styles.infoBannerText}>
-                  💡 <Text style={{ fontWeight: '700' }}>Direct Phone Dialing:</Text> Enter any 10-digit mobile number. If the number is registered in the official database, their Name &amp; Designation will be detected automatically!
+                  💡 Enter any 10-digit mobile number. The system will automatically fetch their name
+                  and designation from the database. If not in the database, they will be called as a
+                  Guest Participant.
                 </Text>
               </View>
 
-              {/* Phone Input */}
+              {/* Mobile Number Input */}
               <View style={styles.formGroup}>
-                <Text style={styles.fieldLabel}>Mobile Number (10-अंकीय मोबाइल नंबर) *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter 10-digit mobile number (e.g. 9964235548)"
-                  placeholderTextColor="#64748b"
-                  keyboardType="phone-pad"
-                  maxLength={14}
-                  value={customPhone}
-                  onChangeText={handlePhoneInputChange}
-                />
+                <Text style={styles.fieldLabel}>Mobile Number (10-अंकीय मोबाइल नंबर):</Text>
+                <View style={styles.phoneInputRow}>
+                  <View style={styles.countryCodeBox}>
+                    <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
+                  </View>
+                  <TextInput
+                    style={styles.phoneInput}
+                    placeholder="Enter 10-digit number (e.g. 7749852013)"
+                    placeholderTextColor="#64748b"
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                    value={customPhone}
+                    onChangeText={handlePhoneInputChange}
+                  />
+                  {isLookingUp && (
+                    <ActivityIndicator style={styles.lookupSpinner} color="#10b981" size="small" />
+                  )}
+                </View>
               </View>
 
-              {/* Auto-Lookup Indicator & Result Banner */}
-              {isLookingUp ? (
-                <View style={styles.lookupStatusBox}>
-                  <ActivityIndicator color="#38bdf8" size="small" />
-                  <Text style={styles.lookupStatusText}>Checking directory database...</Text>
-                </View>
-              ) : lookupResult?.found ? (
-                <View style={styles.foundBadgeBox}>
-                  <Text style={styles.foundBadgeHeader}>✓ Verified Record Found in Database:</Text>
-                  <Text style={styles.foundNameText}>
-                    👤 {lookupResult.name}
+              {/* Database Lookup Result Banner */}
+              {lookupResult?.found ? (
+                <View style={styles.dbFoundBanner}>
+                  <Text style={styles.dbFoundTitle}>✅ Verified in Rajasthan Database</Text>
+                  <Text style={styles.dbFoundName}>{lookupResult.name}</Text>
+                  <Text style={styles.dbFoundDesig}>
+                    {lookupResult.designation} • {lookupResult.department}
                   </Text>
-                  <Text style={styles.foundDesigText}>
-                    🏛️ {lookupResult.designation}
+                  <Text style={styles.dbFoundRole}>
+                    Registered as: {lookupResult.role?.toUpperCase() || 'OFFICIAL'}
                   </Text>
-                  {lookupResult.department ? (
-                    <Text style={styles.foundDeptText}>
-                      🏢 {lookupResult.department}
-                    </Text>
-                  ) : null}
                 </View>
-              ) : customPhone.replace(/[^0-9]/g, '').length === 10 ? (
-                <View style={styles.notFoundBadgeBox}>
-                  <Text style={styles.notFoundText}>
-                    ℹ️ External number (not in directory). You can enter a custom name below.
+              ) : lookupResult?.found === false && customPhone.length === 10 ? (
+                <View style={styles.dbNotFoundBanner}>
+                  <Text style={styles.dbNotFoundTitle}>
+                    ℹ️ Number Not in Database — Will Call as Guest
+                  </Text>
+                  <Text style={styles.dbNotFoundSub}>
+                    This number is not registered. You can enter their name and call them directly as
+                    an invited guest participant.
                   </Text>
                 </View>
               ) : null}
 
-              {/* Name Input */}
+              {/* Editable Name Field */}
               <View style={styles.formGroup}>
-                <Text style={styles.fieldLabel}>Person Name (नाम)</Text>
+                <Text style={styles.fieldLabel}>Participant Name (नाम):</Text>
                 <TextInput
-                  style={styles.input}
-                  placeholder="Full Name (e.g. Ramesh Sharma)"
+                  style={styles.formInput}
+                  placeholder="e.g. Chandan / Citizen"
                   placeholderTextColor="#64748b"
                   value={customName}
                   onChangeText={setCustomName}
                 />
               </View>
 
-              {/* Designation / Role Input */}
+              {/* Editable Designation / Role */}
               <View style={styles.formGroup}>
-                <Text style={styles.fieldLabel}>Designation / Role (पद / भूमिका)</Text>
+                <Text style={styles.fieldLabel}>Designation / Role (पद / भूमिका):</Text>
                 <TextInput
-                  style={styles.input}
-                  placeholder="e.g. Sub-Divisional Magistrate / Complainant"
+                  style={styles.formInput}
+                  placeholder="e.g. Junior Engineer / Citizen"
                   placeholderTextColor="#64748b"
                   value={customRole}
                   onChangeText={setCustomRole}
                 />
               </View>
 
-              {/* Call Button */}
+              {/* Dial Button */}
               <TouchableOpacity
-                style={[styles.ringAndAddBtn, isDialing && styles.btnDisabled]}
-                onPress={handleDirectDial}
-                disabled={isDialing}
+                style={[
+                  styles.directDialBtn,
+                  (customPhone.replace(/\D/g, '').length !== 10 || isDialing) && styles.btnDisabled,
+                ]}
+                onPress={handleDirectDialSubmit}
+                disabled={customPhone.replace(/\D/g, '').length !== 10 || isDialing}
                 activeOpacity={0.8}
               >
                 {isDialing ? (
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
-                  <Text style={styles.ringAndAddBtnText}>📞 Ring &amp; Add to Live Hearing</Text>
+                  <Text style={styles.directDialBtnText}>
+                    {lookupResult?.found
+                      ? `📞 Call ${customName || 'Official'} into Meeting`
+                      : `📞 Call by Number as Guest`}
+                  </Text>
                 )}
               </TouchableOpacity>
             </ScrollView>
           )}
+
+          {/* ══════════════════════════════════════════════════════════
+              DEPARTMENT PICKER MODAL
+             ══════════════════════════════════════════════════════════ */}
+          <Modal
+            visible={showDeptPicker}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowDeptPicker(false)}
+          >
+            <View style={styles.pickerOverlay}>
+              <View style={styles.pickerBox}>
+                <View style={styles.pickerHeader}>
+                  <Text style={styles.pickerTitle}>Select Department (विभाग चुनें)</Text>
+                  <TouchableOpacity onPress={() => setShowDeptPicker(false)}>
+                    <Text style={styles.pickerClose}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.pickerList}>
+                  <TouchableOpacity
+                    style={[styles.pickerItem, !selectedDept && styles.pickerItemActive]}
+                    onPress={() => handleDepartmentSelect('')}
+                  >
+                    <Text
+                      style={[
+                        styles.pickerItemText,
+                        !selectedDept && styles.pickerItemTextActive,
+                      ]}
+                    >
+                      🏛️ All Departments (सभी विभाग)
+                    </Text>
+                  </TouchableOpacity>
+                  {departments.map((dept) => (
+                    <TouchableOpacity
+                      key={dept}
+                      style={[
+                        styles.pickerItem,
+                        selectedDept === dept && styles.pickerItemActive,
+                      ]}
+                      onPress={() => handleDepartmentSelect(dept)}
+                    >
+                      <Text
+                        style={[
+                          styles.pickerItemText,
+                          selectedDept === dept && styles.pickerItemTextActive,
+                        ]}
+                      >
+                        {dept}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+
+          {/* ══════════════════════════════════════════════════════════
+              DESIGNATION PICKER MODAL
+             ══════════════════════════════════════════════════════════ */}
+          <Modal
+            visible={showDesigPicker}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowDesigPicker(false)}
+          >
+            <View style={styles.pickerOverlay}>
+              <View style={styles.pickerBox}>
+                <View style={styles.pickerHeader}>
+                  <Text style={styles.pickerTitle}>Select Designation (पद चुनें)</Text>
+                  <TouchableOpacity onPress={() => setShowDesigPicker(false)}>
+                    <Text style={styles.pickerClose}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={styles.pickerList}>
+                  <TouchableOpacity
+                    style={[styles.pickerItem, !selectedDesig && styles.pickerItemActive]}
+                    onPress={() => handleDesignationSelect('')}
+                  >
+                    <Text
+                      style={[
+                        styles.pickerItemText,
+                        !selectedDesig && styles.pickerItemTextActive,
+                      ]}
+                    >
+                      🎖️ All Designations (सभी पद)
+                    </Text>
+                  </TouchableOpacity>
+                  {designations.map((desig) => (
+                    <TouchableOpacity
+                      key={desig}
+                      style={[
+                        styles.pickerItem,
+                        selectedDesig === desig && styles.pickerItemActive,
+                      ]}
+                      onPress={() => handleDesignationSelect(desig)}
+                    >
+                      <Text
+                        style={[
+                          styles.pickerItemText,
+                          selectedDesig === desig && styles.pickerItemTextActive,
+                        ]}
+                      >
+                        {desig}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -483,24 +708,24 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.88)',
+    backgroundColor: 'rgba(2, 6, 23, 0.82)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
     backgroundColor: '#0f172a',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    borderColor: '#334155',
-    maxHeight: '92%',
-    paddingBottom: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '90%',
+    minHeight: '65%',
+    borderWidth: 1,
+    borderColor: '#1e293b',
   },
   sheetHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#1e293b',
   },
@@ -514,44 +739,43 @@ const styles = StyleSheet.create({
   },
   sheetSubtitle: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: '#38bdf8',
     marginTop: 2,
+    fontWeight: '600',
   },
   closeBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#1e293b',
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeBtnText: {
-    color: '#cbd5e1',
-    fontSize: 15,
+    color: '#94a3b8',
+    fontSize: 16,
     fontWeight: '700',
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: '#020617',
+    padding: 6,
     marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 8,
-    borderRadius: 10,
-    padding: 4,
-    gap: 6,
+    borderRadius: 12,
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 10,
     alignItems: 'center',
-    justifyContent: 'center',
     borderRadius: 8,
   },
   tabBtnActiveDir: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#1e3a5f',
   },
   tabBtnActivePhone: {
-    backgroundColor: '#059669',
+    backgroundColor: '#064e3b',
   },
   tabBtnText: {
     fontSize: 12,
@@ -559,104 +783,158 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
   },
   tabBtnTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
+    color: '#f8fafc',
+    fontWeight: '800',
   },
   modalContent: {
     paddingHorizontal: 16,
     paddingTop: 8,
   },
-  deptSection: {
+  formGroup: {
     marginBottom: 12,
   },
   fieldLabel: {
-    fontSize: 11,
-    color: '#94a3b8',
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#cbd5e1',
     marginBottom: 6,
   },
-  deptScroll: {
+  dropdownBtn: {
     flexDirection: 'row',
-  },
-  deptChip: {
+    justifyContent: 'space-between',
+    alignItems: 'center',
     backgroundColor: '#1e293b',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  deptChipActive: {
-    backgroundColor: 'rgba(37, 99, 235, 0.3)',
-    borderColor: '#38bdf8',
-  },
-  deptChipText: {
-    fontSize: 12,
-    color: '#cbd5e1',
-    fontWeight: '600',
-  },
-  deptChipTextActive: {
-    color: '#38bdf8',
-    fontWeight: '700',
-  },
-  searchSection: {
-    marginBottom: 12,
-  },
-  searchRow: {
-    position: 'relative',
-  },
-  searchInput: {
-    backgroundColor: '#020617',
     borderWidth: 1,
     borderColor: '#334155',
     borderRadius: 10,
     paddingHorizontal: 14,
-    paddingVertical: 9,
-    color: '#f8fafc',
+    paddingVertical: 11,
+  },
+  dropdownBtnText: {
+    color: '#f1f5f9',
     fontSize: 13,
-    paddingRight: 40,
+    fontWeight: '600',
+    flex: 1,
   },
-  searchSpinner: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
+  dropdownArrow: {
+    color: '#94a3b8',
+    fontSize: 11,
+    marginLeft: 8,
   },
-  resultsContainer: {
-    paddingBottom: 20,
+  searchRow: {
+    flexDirection: 'row',
+    gap: 8,
   },
-  emptyBox: {
-    paddingVertical: 24,
+  searchInput: {
+    flex: 1,
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#ffffff',
+    fontSize: 13,
+  },
+  searchActionBtn: {
+    backgroundColor: '#0284c7',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  emptyText: {
-    color: '#64748b',
+  searchActionBtnText: {
+    color: '#ffffff',
     fontSize: 13,
-    marginBottom: 10,
+    fontWeight: '700',
   },
-  switchTabLink: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    backgroundColor: 'rgba(16, 185, 129, 0.12)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+  activeFilterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
   },
-  switchTabLinkText: {
-    color: '#34d399',
-    fontSize: 12,
+  filterSummaryText: {
+    fontSize: 11,
+    color: '#64748b',
     fontWeight: '600',
   },
-  officerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#020617',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
+  activeFilterChip: {
+    backgroundColor: '#1e293b',
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: '#0284c7',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  activeFilterChipText: {
+    fontSize: 11,
+    color: '#38bdf8',
+    fontWeight: '600',
+  },
+  resultsContainer: {
+    marginTop: 4,
+    paddingBottom: 30,
+  },
+  sectionHeading: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#94a3b8',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  loadingBox: {
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingBoxText: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 8,
+  },
+  emptyBox: {
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    marginVertical: 8,
+  },
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#cbd5e1',
+    marginBottom: 4,
+  },
+  emptyText: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  switchTabLink: {
+    marginTop: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderRadius: 8,
+  },
+  switchTabLinkText: {
+    fontSize: 12,
+    color: '#38bdf8',
+    fontWeight: '700',
+  },
+  officerCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   officerCardInfo: {
     flex: 1,
@@ -666,87 +944,116 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    flexWrap: 'wrap',
   },
   officerNameText: {
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
     color: '#f8fafc',
   },
-  deptBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.18)',
-    borderRadius: 4,
+  codeBadge: {
+    backgroundColor: '#334155',
     paddingHorizontal: 6,
-    paddingVertical: 1,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
-  deptBadgeText: {
-    fontSize: 10,
-    color: '#fbbf24',
-    fontWeight: '600',
+  codeBadgeText: {
+    fontSize: 9,
+    color: '#cbd5e1',
+    fontWeight: '700',
   },
   officerDesigText: {
-    fontSize: 11,
+    fontSize: 12,
+    fontWeight: '600',
     color: '#38bdf8',
     marginTop: 2,
-    fontWeight: '600',
   },
-  officerPhoneText: {
+  officerDeptText: {
     fontSize: 11,
     color: '#94a3b8',
     marginTop: 2,
   },
+  fetchedPhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 4,
+  },
+  fetchedPhoneLabel: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  fetchedPhoneVal: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#34d399',
+  },
+  officerLocText: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
   dialInBtn: {
     backgroundColor: '#059669',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    minWidth: 90,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 78,
   },
   dialInBtnText: {
     color: '#ffffff',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   infoBanner: {
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.25)',
+    borderColor: 'rgba(56, 189, 248, 0.3)',
     borderRadius: 10,
-    padding: 10,
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 14,
   },
   infoBannerText: {
-    fontSize: 11,
-    color: '#93c5fd',
-    lineHeight: 16,
+    fontSize: 12,
+    color: '#bae6fd',
+    lineHeight: 18,
   },
-  formGroup: {
-    marginBottom: 12,
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  input: {
-    backgroundColor: '#020617',
+  countryCodeBox: {
+    backgroundColor: '#1e293b',
     borderWidth: 1,
     borderColor: '#334155',
     borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    color: '#f8fafc',
+    paddingVertical: 11,
+  },
+  countryCodeText: {
+    color: '#cbd5e1',
+    fontWeight: '700',
     fontSize: 13,
   },
-  lookupStatusBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-    paddingHorizontal: 4,
+  phoneInput: {
+    flex: 1,
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
   },
-  lookupStatusText: {
-    fontSize: 11,
-    color: '#38bdf8',
+  lookupSpinner: {
+    position: 'absolute',
+    right: 12,
   },
-  foundBadgeBox: {
+  dbFoundBanner: {
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
     borderWidth: 1,
     borderColor: '#10b981',
@@ -754,53 +1061,132 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 14,
   },
-  foundBadgeHeader: {
+  dbFoundTitle: {
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#34d399',
-    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  foundNameText: {
-    fontSize: 13,
+  dbFoundName: {
+    fontSize: 15,
     fontWeight: '800',
     color: '#ffffff',
+    marginTop: 4,
   },
-  foundDesigText: {
+  dbFoundDesig: {
     fontSize: 12,
+    fontWeight: '600',
     color: '#6ee7b7',
     marginTop: 2,
-    fontWeight: '600',
   },
-  foundDeptText: {
-    fontSize: 11,
+  dbFoundRole: {
+    fontSize: 10,
     color: '#a7f3d0',
-    marginTop: 2,
+    marginTop: 4,
+    fontWeight: '700',
   },
-  notFoundBadgeBox: {
-    backgroundColor: 'rgba(148, 163, 184, 0.1)',
-    borderRadius: 8,
-    padding: 8,
-    marginBottom: 12,
+  dbNotFoundBanner: {
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
   },
-  notFoundText: {
+  dbNotFoundTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#38bdf8',
+  },
+  dbNotFoundSub: {
     fontSize: 11,
     color: '#94a3b8',
+    marginTop: 4,
+    lineHeight: 16,
   },
-  ringAndAddBtn: {
+  formInput: {
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#ffffff',
+    fontSize: 13,
+  },
+  directDialBtn: {
     backgroundColor: '#059669',
     borderRadius: 10,
-    paddingVertical: 12,
+    paddingVertical: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 6,
-    marginBottom: 24,
+    marginTop: 8,
+    marginBottom: 30,
   },
-  ringAndAddBtnText: {
+  directDialBtnText: {
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '800',
   },
   btnDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
+  },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  pickerBox: {
+    backgroundColor: '#0f172a',
+    borderRadius: 16,
+    width: '100%',
+    maxHeight: '70%',
+    borderWidth: 1,
+    borderColor: '#334155',
+    overflow: 'hidden',
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+  },
+  pickerTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#f8fafc',
+  },
+  pickerClose: {
+    fontSize: 16,
+    color: '#94a3b8',
+    fontWeight: '700',
+    padding: 4,
+  },
+  pickerList: {
+    padding: 8,
+  },
+  pickerItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  pickerItemActive: {
+    backgroundColor: '#1e293b',
+    borderLeftWidth: 3,
+    borderLeftColor: '#38bdf8',
+  },
+  pickerItemText: {
+    color: '#cbd5e1',
+    fontSize: 13,
+  },
+  pickerItemTextActive: {
+    color: '#38bdf8',
+    fontWeight: '700',
   },
 });

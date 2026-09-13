@@ -1,6 +1,6 @@
 import './polyfill';
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Alert, ActivityIndicator, NativeModules, AppState } from 'react-native';
+import { StyleSheet, View, Text, Alert, ActivityIndicator, NativeModules, AppState, Platform, PermissionsAndroid } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LoginScreen, UserProfile } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -31,6 +31,37 @@ export default function App() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
+
+  // ─── 0. Request Notification Permissions on Android 13+ ──────
+  useEffect(() => {
+    const requestAndroidPermissions = async () => {
+      if (Platform.OS === 'android') {
+        try {
+          if (Platform.Version >= 33) {
+            const granted = await PermissionsAndroid.request(
+              PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+              {
+                title: 'Sampark Lite Call Notifications',
+                message: 'Allow notifications so your phone rings on incoming official video hearings even when the app is closed.',
+                buttonPositive: 'Allow',
+              }
+            );
+            console.log('[App] POST_NOTIFICATIONS status:', granted);
+          }
+        } catch (err) {
+          console.warn('[App] Error requesting notification permissions:', err);
+        }
+      }
+    };
+    requestAndroidPermissions();
+  }, []);
+
+  // ─── 0b. Silence Ringtone Immediately when Entering a Hearing ─
+  useEffect(() => {
+    if (activeHearing) {
+      JanSunwaiVoIP?.stopRinging?.();
+    }
+  }, [activeHearing]);
 
   // ─── 1. Persistent Session Restoration on App Launch ─────────
   useEffect(() => {

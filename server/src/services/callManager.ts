@@ -373,7 +373,26 @@ export async function respondToCall(
   phone: string,
   action: 'accept' | 'decline'
 ): Promise<{ token?: string; livekitUrl?: string; roomName?: string } | null> {
-  const call = activeCalls.get(callId);
+  let call = activeCalls.get(callId);
+  if (!call) {
+    const raw = (callId || '').trim();
+    const clean = raw.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+    for (const c of activeCalls.values()) {
+      if (
+        c.id === raw ||
+        c.grievanceId.toUpperCase() === clean ||
+        c.grievanceId.toUpperCase() === raw.toUpperCase() ||
+        c.livekitRoomName === raw ||
+        c.livekitRoomName === `JS-${clean}`
+      ) {
+        call = c;
+        break;
+      }
+    }
+  }
+  if (!call && activeCalls.size === 1) {
+    call = Array.from(activeCalls.values())[0];
+  }
   if (!call) {
     console.log(`[CallManager] Call not found: ${callId}`);
     return null;
@@ -483,20 +502,40 @@ export async function addParticipantToCall(
     return null;
   }
 
-  const newParticipant: CallParticipant = {
-    id: uuidv4(),
-    phone,
-    name,
-    role: 'guest_officer',
-    designation,
-    department,
-    ringStatus: 'ringing',
-    ringStartedAt: new Date(),
-  };
+  // Check if participant already exists in the call
+  let targetParticipant = call.participants.find((p) => matchPhone(p.phone, phone));
+  if (targetParticipant) {
+    targetParticipant.name = name;
+    targetParticipant.ringStatus = 'ringing';
+    targetParticipant.ringStartedAt = new Date();
+    targetParticipant.leftAt = undefined;
+    targetParticipant.answeredAt = undefined;
+    if (designation) targetParticipant.designation = designation;
+    if (department) targetParticipant.department = department;
+  } else {
+    targetParticipant = {
+      id: uuidv4(),
+      phone,
+      name,
+      role: 'guest_officer',
+      designation,
+      department,
+      ringStatus: 'ringing',
+      ringStartedAt: new Date(),
+    };
+    call.participants.push(targetParticipant);
+  }
 
-  call.participants.push(newParticipant);
+  // 60-second auto ring timeout for this participant
+  const addedParticipantRef = targetParticipant;
+  setTimeout(() => {
+    if (addedParticipantRef && addedParticipantRef.ringStatus === 'ringing') {
+      addedParticipantRef.ringStatus = 'timeout';
+      console.log(`[CallManager] Ring timeout for added participant ${name} (${phone})`);
+    }
+  }, 60000);
 
-  // Ring the new participant
+  // Ring the participant via WebSocket
   sendToClient(phone, {
     type: 'incoming_call',
     callId: call.id,
@@ -508,13 +547,13 @@ export async function addParticipantToCall(
       callerDesignation: call.hostDesignation,
       roomName: call.livekitRoomName,
       participantCount: call.participants.length,
-      yourRole: 'guest_officer',
+      yourRole: addedParticipantRef.role,
       midCallJoin: true,
     },
   });
 
-  console.log(`[CallManager] Added ${name} (${phone}) to call ${call.id}`);
-  return newParticipant;
+  console.log(`[CallManager] Added & ringing ${name} (${phone}) in call ${call.id}`);
+  return addedParticipantRef;
 }
 
 /**

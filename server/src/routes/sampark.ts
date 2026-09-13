@@ -128,7 +128,23 @@ router.get('/departments', (_req: Request, res: Response) => {
 });
 
 /**
- * GET /api/sampark/officers?q=<search query>&department=<dept>
+ * GET /api/sampark/designations?department=<dept>
+ *
+ * List distinct designations in the SQLite directory, optionally filtered by department.
+ */
+router.get('/designations', (req: Request, res: Response) => {
+  const department = (req.query.department as string) || '';
+  try {
+    const designations = samparkService.listDesignations(department);
+    res.json({ success: true, designations });
+  } catch (error) {
+    console.error('[Sampark] Error fetching designations:', error);
+    res.status(500).json({ error: 'Failed to fetch designations' });
+  }
+});
+
+/**
+ * GET /api/sampark/officers?q=<search query>&department=<dept>&designation=<desig>
  *
  * Search the officer directory by name, designation, department, or phone number.
  * Used for the "Add Officer" mid-call dialing feature.
@@ -136,9 +152,10 @@ router.get('/departments', (_req: Request, res: Response) => {
 router.get('/officers', async (req: Request, res: Response) => {
   const query = (req.query.q as string) || '';
   const department = (req.query.department as string) || '';
+  const designation = (req.query.designation as string) || '';
 
   try {
-    const officers = await samparkService.searchOfficers(query, department);
+    const officers = await samparkService.searchOfficers(query, department, designation);
     res.json({ success: true, officers, total: officers.length });
   } catch (error) {
     console.error('[Sampark] Error searching officers:', error);

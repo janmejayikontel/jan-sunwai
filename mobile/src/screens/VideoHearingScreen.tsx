@@ -9,6 +9,7 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
+  NativeModules,
 } from 'react-native';
 import {
   LiveKitRoom,
@@ -55,6 +56,11 @@ const RoomContent: React.FC<{
   // Subscribe to all camera feeds and screen share feeds
   const cameraTracks = useTracks([Track.Source.Camera]);
   const screenShareTracks = useTracks([Track.Source.ScreenShare]);
+
+  // Stop any ongoing native VoIP ringtone/beep sound immediately on room entry
+  useEffect(() => {
+    NativeModules.JanSunwaiVoIP?.stopRinging?.();
+  }, []);
 
   // Sync state with local participant
   useEffect(() => {

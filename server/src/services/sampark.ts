@@ -280,28 +280,60 @@ export async function createGrievance(input: CreateGrievanceInput): Promise<Grie
 }
 
 /**
- * Get distinct departments from SQLite employees table.
+ * Get distinct departments from SQLite employees and officers tables.
  */
 export function listDepartments(): string[] {
   const rows = db.prepare(`
-    SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND department != '' ORDER BY department ASC
+    SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND department != ''
+    UNION
+    SELECT DISTINCT department FROM officers WHERE department IS NOT NULL AND department != ''
+    ORDER BY department ASC
   `).all() as any[];
   return rows.map((r) => r.department);
+}
+
+/**
+ * Get distinct designations from SQLite employees and officers tables.
+ * Optionally filtered by department.
+ */
+export function listDesignations(department?: string): string[] {
+  let empSql = `SELECT DISTINCT designation FROM employees WHERE designation IS NOT NULL AND designation != ''`;
+  let offSql = `SELECT DISTINCT designation FROM officers WHERE designation IS NOT NULL AND designation != ''`;
+  const params: any[] = [];
+
+  if (department && department !== 'ALL' && department.trim() !== '') {
+    empSql += ` AND (department = ? OR department LIKE ?)`;
+    offSql += ` AND (department = ? OR department LIKE ?)`;
+    params.push(department.trim(), `%${department.trim()}%`);
+  }
+
+  const empRows = db.prepare(empSql).all(...params) as any[];
+  const offRows = db.prepare(offSql).all(...params) as any[];
+
+  const set = new Set<string>();
+  empRows.forEach((r) => r.designation && set.add(r.designation));
+  offRows.forEach((r) => r.designation && set.add(r.designation));
+  return Array.from(set).sort();
 }
 
 /**
  * Search officers, employees, and citizens from SQLite database by name, phone, designation, or department.
  * Also supports direct dialing any 10-digit phone number.
  */
-export async function searchOfficers(query: string, department?: string): Promise<OfficerDirectoryEntry[]> {
+export async function searchOfficers(
+  query: string,
+  department?: string,
+  designation?: string
+): Promise<OfficerDirectoryEntry[]> {
   const cleanQ = (query || '').trim();
   const lower = `%${cleanQ.toLowerCase()}%`;
   const digitsOnly = cleanQ.replace(/[^0-9]/g, '');
   const phonePattern = digitsOnly.length >= 6 ? `%${digitsOnly.slice(-10)}%` : lower;
+  const cleanDesig = (designation || '').trim();
 
   // 1. Search officers table (Collectors, SDM, SP, etc.)
   let offRows: any[] = [];
-  if (!department || department === 'ALL') {
+  if (!department || department === 'ALL' || department.trim() === '') {
     let offSql = `
       SELECT name, phone, designation, department, posting_location as postingDistrict, cadre as employeeCode
       FROM officers
@@ -311,6 +343,10 @@ export async function searchOfficers(query: string, department?: string): Promis
     if (cleanQ) {
       offSql += ` AND (LOWER(name) LIKE ? OR LOWER(designation) LIKE ? OR LOWER(department) LIKE ? OR phone LIKE ? OR phone LIKE ?)`;
       offParams.push(lower, lower, lower, lower, phonePattern);
+    }
+    if (cleanDesig && cleanDesig !== 'ALL') {
+      offSql += ` AND (designation = ? OR LOWER(designation) LIKE ?)`;
+      offParams.push(cleanDesig, `%${cleanDesig.toLowerCase()}%`);
     }
     offSql += ` ORDER BY name ASC LIMIT 15`;
     offRows = db.prepare(offSql).all(...offParams) as any[];
@@ -329,9 +365,14 @@ export async function searchOfficers(query: string, department?: string): Promis
     empParams.push(lower, lower, lower, lower, phonePattern);
   }
 
-  if (department && department !== 'ALL') {
+  if (department && department !== 'ALL' && department.trim() !== '') {
     empSql += ` AND (department = ? OR department LIKE ?)`;
-    empParams.push(department, `%${department}%`);
+    empParams.push(department.trim(), `%${department.trim()}%`);
+  }
+
+  if (cleanDesig && cleanDesig !== 'ALL') {
+    empSql += ` AND (designation = ? OR LOWER(designation) LIKE ?)`;
+    empParams.push(cleanDesig, `%${cleanDesig.toLowerCase()}%`);
   }
 
   empSql += ` ORDER BY name ASC LIMIT 30`;
@@ -528,6 +569,7 @@ export const samparkService = {
   searchOfficers,
   findOfficerByPhone,
   listDepartments,
+  listDesignations,
 };
 
 export default samparkService;

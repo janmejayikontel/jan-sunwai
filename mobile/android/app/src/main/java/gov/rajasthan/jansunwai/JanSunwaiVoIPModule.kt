@@ -60,6 +60,14 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     fun stopRinging(promise: Promise) {
         try {
             JanSunwaiVoIPService.stopActiveRinging()
+            try {
+                val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
+                    action = JanSunwaiVoIPService.ACTION_STOP_RINGING
+                }
+                reactContext.startService(intent)
+            } catch (e: Exception) {
+                // ignore
+            }
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("STOP_RINGING_ERROR", e.message, e)

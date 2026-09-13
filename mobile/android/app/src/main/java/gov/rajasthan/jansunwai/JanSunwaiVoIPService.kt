@@ -43,6 +43,7 @@ class JanSunwaiVoIPService : Service() {
         const val ACTION_STOP = "gov.rajasthan.jansunwai.ACTION_STOP"
         const val ACTION_DECLINE = "gov.rajasthan.jansunwai.ACTION_DECLINE"
         const val ACTION_ACCEPT = "gov.rajasthan.jansunwai.ACTION_ACCEPT"
+        const val ACTION_STOP_RINGING = "gov.rajasthan.jansunwai.ACTION_STOP_RINGING"
 
         const val EXTRA_PHONE = "extra_phone"
         const val EXTRA_SERVER_URL = "extra_server_url"
@@ -101,6 +102,11 @@ class JanSunwaiVoIPService : Service() {
         val action = intent?.action ?: ACTION_START
 
         when (action) {
+            ACTION_STOP_RINGING -> {
+                Log.i(TAG, "ACTION_STOP_RINGING received")
+                stopRinging()
+                return START_STICKY
+            }
             ACTION_STOP -> {
                 Log.i(TAG, "Stopping VoIP service")
                 stopForegroundService()
@@ -394,6 +400,7 @@ class JanSunwaiVoIPService : Service() {
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setFullScreenIntent(fullScreenPendingIntent, true)
                 .setContentIntent(fullScreenPendingIntent)
                 .setOngoing(true)
@@ -402,15 +409,19 @@ class JanSunwaiVoIPService : Service() {
                 .addAction(R.mipmap.ic_launcher, "❌ DECLINE", declinePendingIntent)
                 .setStyle(
                     NotificationCompat.BigTextStyle()
-                        .bigText("$callerName ($callerDesig) is calling you into the official Jan Sunwai video hearing for Case #$grievanceId.")
+                        .bigText("$callerName ($callerDesig) is calling you into the official Jan Sunwai video hearing for Case #$grievanceId.\n\nTap ACCEPT to join or DECLINE to reject.")
                 )
                 .build()
 
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(NOTIFICATION_ID_CALL, notification)
 
-            // Also launch fullScreenIntent directly to display call immediately
-            startActivity(fullScreenIntent)
+            // Try to launch fullScreenIntent directly if allowed, but NEVER let OS restrictions cancel the notification
+            try {
+                startActivity(fullScreenIntent)
+            } catch (e: Exception) {
+                Log.i(TAG, "Direct startActivity deferred to heads-up notification: ${e.message}")
+            }
 
             // 60-second auto-dismiss if not answered
             handler.postDelayed({
@@ -427,34 +438,42 @@ class JanSunwaiVoIPService : Service() {
     }
 
     fun stopRinging() {
-        if (!isCallRinging) return
+        if (!isCallRinging && ringtone == null) return
         isCallRinging = false
         currentRingingCallId = null
 
-        try {
-            ringtone?.stop()
-            ringtone = null
-        } catch (e: Exception) {
-            // ignore
-        }
-
-        try {
-            vibrator?.cancel()
-        } catch (e: Exception) {
-            // ignore
-        }
-
-        try {
-            wakeLock?.let {
-                if (it.isHeld) it.release()
+        handler.post {
+            try {
+                if (ringtone != null) {
+                    ringtone?.stop()
+                    ringtone = null
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to stop ringtone", e)
             }
-        } catch (e: Exception) {
-            // ignore
-        }
 
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.cancel(NOTIFICATION_ID_CALL)
-        Log.i(TAG, "Stopped ringing and cleared call notification")
+            try {
+                vibrator?.cancel()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to cancel vibrator", e)
+            }
+
+            try {
+                wakeLock?.let {
+                    if (it.isHeld) it.release()
+                }
+            } catch (e: Exception) {
+                // ignore
+            }
+
+            try {
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.cancel(NOTIFICATION_ID_CALL)
+            } catch (e: Exception) {
+                // ignore
+            }
+            Log.i(TAG, "Stopped ringing, silenced audio and cleared call notification")
+        }
     }
 
     private fun handleDeclineCall(callId: String?) {
