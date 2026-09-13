@@ -372,7 +372,7 @@ class IncomingCallActivity : AppCompatActivity() {
 
         // Stop ringing sound and vibration immediately
         JanSunwaiVoIPService.stopActiveRinging()
-        JanSunwaiVoIPService.setInCall(true)
+        JanSunwaiVoIPService.setInCallState(true)
 
         // Embed autoAccept = true in call data
         val updatedCallData = try {

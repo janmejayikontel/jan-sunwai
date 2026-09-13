@@ -69,6 +69,10 @@ class JanSunwaiVoIPService : Service() {
                 stopActiveRinging()
             }
         }
+
+        fun setInCall(inCall: Boolean) {
+            setInCallState(inCall)
+        }
     }
 
     private var okHttpClient: OkHttpClient? = null
