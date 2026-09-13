@@ -161,6 +161,15 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     fun dismissCall(callId: String?, promise: Promise) {
         try {
             JanSunwaiVoIPService.dismissCall(callId)
+            try {
+                val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
+                    action = JanSunwaiVoIPService.ACTION_DISMISS_CALL
+                    putExtra(JanSunwaiVoIPService.EXTRA_CALL_ID, callId)
+                }
+                reactContext.startService(intent)
+            } catch (e: Exception) {
+                // ignore
+            }
             pendingIncomingCallJson = null
             promise.resolve(true)
         } catch (e: Exception) {

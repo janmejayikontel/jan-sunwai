@@ -1,6 +1,6 @@
 import './polyfill';
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Alert, ActivityIndicator, NativeModules, AppState, Platform, PermissionsAndroid } from 'react-native';
+import { StyleSheet, View, Text, Alert, ActivityIndicator, NativeModules, AppState, Platform, PermissionsAndroid, TouchableOpacity } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LoginScreen, UserProfile } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -28,6 +28,7 @@ export default function App() {
   const [activeHearing, setActiveHearing] = useState<ActiveHearingState | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
+  const [hasOverlayPermission, setHasOverlayPermission] = useState<boolean>(true);
 
   const wsRef = useRef<WebSocket | null>(null);
   const pendingCallRef = useRef<any>(null);
@@ -109,6 +110,8 @@ export default function App() {
       try {
         if (Platform.OS === 'android') {
           const hasOverlay = await JanSunwaiVoIP?.checkOverlayPermission?.();
+          setHasOverlayPermission(hasOverlay !== false);
+
           if (hasOverlay === false) {
             Alert.alert(
               'फुल-स्क्रीन कॉल अनुमति (Full-Screen Call Permission)',
@@ -146,8 +149,16 @@ export default function App() {
     };
 
     if (currentUser) {
-      setTimeout(checkPermissions, 1500);
+      setTimeout(checkPermissions, 1000);
     }
+
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && currentUser) {
+        checkPermissions();
+      }
+    });
+
+    return () => sub.remove();
   }, [currentUser]);
 
   // ─── Incoming Call Actions ──────────────────────────────────
@@ -527,6 +538,27 @@ export default function App() {
         />
       ) : currentUser ? (
         <>
+          {!hasOverlayPermission && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => JanSunwaiVoIP?.requestOverlayPermission?.()}
+              style={styles.permissionBanner}
+            >
+              <Text style={styles.permissionBannerIcon}>⚠️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.permissionBannerTitle}>
+                  फुल-स्क्रीन कॉल पॉप-अप चालू करें (Enable Full-Screen Calls)
+                </Text>
+                <Text style={styles.permissionBannerSub}>
+                  ऐप बंद रहने पर भी स्क्रीन पर कॉल पॉप-अप देखने के लिए 'Display over other apps' अनुमति चालू करें।
+                </Text>
+              </View>
+              <View style={styles.permissionBannerBtn}>
+                <Text style={styles.permissionBannerBtnText}>अनुमति दें</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+
           <HomeScreen
             user={currentUser}
             serverUrl={serverUrl}
@@ -551,6 +583,45 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#020617',
+  },
+  permissionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#78350f',
+    borderColor: '#f59e0b',
+    borderWidth: 1.5,
+    marginHorizontal: 16,
+    marginTop: 44,
+    marginBottom: 8,
+    borderRadius: 12,
+    padding: 12,
+    zIndex: 999,
+  },
+  permissionBannerIcon: {
+    fontSize: 22,
+    marginRight: 10,
+  },
+  permissionBannerTitle: {
+    color: '#fef3c7',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  permissionBannerSub: {
+    color: '#fde68a',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  permissionBannerBtn: {
+    backgroundColor: '#f59e0b',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  permissionBannerBtnText: {
+    color: '#000',
+    fontSize: 11,
+    fontWeight: '800',
   },
   splashContainer: {
     flex: 1,

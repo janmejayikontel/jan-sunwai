@@ -67,6 +67,17 @@ class MainApplication : Application(), ReactApplication {
     }
 
     SoLoader.init(this, false)
+
+    val procName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      Application.getProcessName()
+    } else {
+      ""
+    }
+    if (procName.endsWith(":voip")) {
+      Log.i("JanSunwai", "MainApplication running in dedicated lightweight :voip process")
+      return
+    }
+
     // Enable WebRTC Android MediaProjectionService for native screen sharing
     try {
       com.oney.WebRTCModule.WebRTCModuleOptions.getInstance().enableMediaProjectionService = true

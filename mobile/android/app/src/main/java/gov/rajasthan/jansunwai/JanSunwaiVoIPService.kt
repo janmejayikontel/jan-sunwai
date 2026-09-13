@@ -45,6 +45,7 @@ class JanSunwaiVoIPService : Service() {
         const val ACTION_ACCEPT = "gov.rajasthan.jansunwai.ACTION_ACCEPT"
         const val ACTION_STOP_RINGING = "gov.rajasthan.jansunwai.ACTION_STOP_RINGING"
         const val ACTION_SET_IN_CALL = "gov.rajasthan.jansunwai.ACTION_SET_IN_CALL"
+        const val ACTION_DISMISS_CALL = "gov.rajasthan.jansunwai.ACTION_DISMISS_CALL"
 
         const val EXTRA_PHONE = "extra_phone"
         const val EXTRA_SERVER_URL = "extra_server_url"
@@ -153,12 +154,21 @@ class JanSunwaiVoIPService : Service() {
                     putExtra(EXTRA_PHONE, phone)
                     putExtra(EXTRA_SERVER_URL, serverUrl)
                 }
-                val pendingIntent = PendingIntent.getService(
-                    applicationContext,
-                    9090,
-                    restartIntent,
-                    PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-                )
+                val pendingIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    PendingIntent.getForegroundService(
+                        applicationContext,
+                        9090,
+                        restartIntent,
+                        PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                } else {
+                    PendingIntent.getService(
+                        applicationContext,
+                        9090,
+                        restartIntent,
+                        PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                }
                 val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
                 alarmManager?.set(
                     android.app.AlarmManager.RTC_WAKEUP,
@@ -175,6 +185,11 @@ class JanSunwaiVoIPService : Service() {
         val action = intent?.action ?: ACTION_START
 
         when (action) {
+            ACTION_DISMISS_CALL -> {
+                val callId = intent?.getStringExtra(EXTRA_CALL_ID)
+                dismissCall(callId)
+                return START_STICKY
+            }
             ACTION_SET_IN_CALL -> {
                 val inCall = intent?.getBooleanExtra(EXTRA_IN_CALL, false) ?: false
                 setInCallState(inCall)
@@ -538,12 +553,19 @@ class JanSunwaiVoIPService : Service() {
             }
             notificationManager.notify(NOTIFICATION_ID_CALL, notification)
 
-            // Launch native full-screen incoming call UI immediately on main thread
+            // 1. Show true full-screen overlay directly on screen via WindowManager
+            try {
+                CallOverlayManager.show(applicationContext, callId, callJsonString, serverUrl, userPhone)
+            } catch (e: Exception) {
+                Log.w(TAG, "CallOverlayManager.show error: ${e.message}")
+            }
+
+            // 2. Launch native full-screen incoming call UI immediately on main thread as additional layer
             handler.post {
                 try {
                     startActivity(incomingCallIntent)
                 } catch (e: Exception) {
-                    Log.i(TAG, "Direct launch will show via fullScreenIntent: ${e.message}")
+                    Log.i(TAG, "Direct launch will show via fullScreenIntent / overlay: ${e.message}")
                 }
             }
 
@@ -597,6 +619,13 @@ class JanSunwaiVoIPService : Service() {
             try {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID_CALL)
+            } catch (e: Exception) {
+                // ignore
+            }
+
+            // Dismiss CallOverlay if active
+            try {
+                CallOverlayManager.dismiss(applicationContext)
             } catch (e: Exception) {
                 // ignore
             }
