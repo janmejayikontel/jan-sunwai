@@ -37,6 +37,9 @@ class BootReceiver : BroadcastReceiver() {
             val serverUrl = prefs.getString("server_url", "") ?: ""
 
             if (phone.isNotEmpty()) {
+                JanSunwaiVoIPService.isInCall = false
+                JanSunwaiVoIPService.stopActiveRinging()
+
                 Log.i(TAG, "Restoring JanSunwaiVoIPService for $phone @ $serverUrl after $action")
                 val serviceIntent = Intent(context, JanSunwaiVoIPService::class.java).apply {
                     this.action = JanSunwaiVoIPService.ACTION_START

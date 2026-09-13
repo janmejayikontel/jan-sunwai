@@ -28,6 +28,9 @@ class VoIPRestartReceiver : BroadcastReceiver() {
         val serverUrl = prefs.getString("server_url", "") ?: ""
 
         if (phone.isNotEmpty()) {
+            JanSunwaiVoIPService.isInCall = false
+            JanSunwaiVoIPService.stopActiveRinging()
+
             Log.i(TAG, "Reviving JanSunwaiVoIPService for $phone @ $serverUrl")
             val serviceIntent = Intent(context, JanSunwaiVoIPService::class.java).apply {
                 action = JanSunwaiVoIPService.ACTION_START

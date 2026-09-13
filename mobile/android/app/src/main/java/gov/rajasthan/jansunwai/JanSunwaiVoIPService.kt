@@ -75,14 +75,19 @@ class JanSunwaiVoIPService : Service() {
         fun dismissCall(callId: String?) {
             if (!callId.isNullOrBlank()) {
                 val c = callId.trim().uppercase()
-                dismissedCallIds.add(c)
-                val clean = c.replace(Regex("^(HEARING_|JS-)"), "")
-                if (clean.isNotEmpty()) {
-                    dismissedCallIds.add(clean)
-                    dismissedCallIds.add("JS-$clean")
-                    dismissedCallIds.add("HEARING_$clean")
+                // Only blacklist UUID-like call identifiers (>= 20 chars), NEVER grievance IDs!
+                if (c.length >= 20) {
+                    dismissedCallIds.add(c)
+                    val clean = c.replace(Regex("^(HEARING_|JS-)"), "")
+                    if (clean.isNotEmpty()) {
+                        dismissedCallIds.add(clean)
+                        dismissedCallIds.add("JS-$clean")
+                        dismissedCallIds.add("HEARING_$clean")
+                    }
+                    Log.i(TAG, "Dismissed callId added to blacklist: $c (total dismissed: ${dismissedCallIds.size})")
+                } else {
+                    Log.i(TAG, "Ignoring non-UUID callId in dismissCall: $c")
                 }
-                Log.i(TAG, "Dismissed callId added to blacklist: $c (total dismissed: ${dismissedCallIds.size})")
             }
             lastReceivedCallData = null
             stopActiveRinging()
@@ -95,10 +100,8 @@ class JanSunwaiVoIPService : Service() {
                 val clean = c.replace(Regex("^(HEARING_|JS-)"), "")
                 if (dismissedCallIds.contains(clean) || dismissedCallIds.contains("JS-$clean") || dismissedCallIds.contains("HEARING_$clean")) return true
             }
-            if (!grievanceId.isNullOrBlank()) {
-                val g = grievanceId.trim().uppercase()
-                if (dismissedCallIds.contains(g) || dismissedCallIds.contains("JS-$g") || dismissedCallIds.contains("HEARING_$g")) return true
-            }
+            // CRITICAL FIX: NEVER blacklist grievanceId! Each video hearing session generates a fresh unique callId.
+            // Blacklisting the grievance ID permanently blocks all future calls for that grievance case!
             return false
         }
     }
@@ -121,6 +124,18 @@ class JanSunwaiVoIPService : Service() {
         super.onCreate()
         instance = this
         Log.i(TAG, "JanSunwaiVoIPService created")
+
+        isInCall = false
+        isCallRinging = false
+        currentRingingCallId = null
+
+        val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+        if (userPhone.isEmpty()) {
+            userPhone = prefs.getString("phone", "") ?: ""
+        }
+        if (serverUrl.isEmpty()) {
+            serverUrl = prefs.getString("server_url", "") ?: ""
+        }
 
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         @Suppress("DEPRECATION")
@@ -157,7 +172,14 @@ class JanSunwaiVoIPService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.i(TAG, "App task removed (swiped away) - reaffirming foreground service and triggering backup revival")
+        Log.i(TAG, "App task removed (swiped away) - resetting in-call state, reaffirming foreground service and triggering backup revival")
+
+        // CRITICAL FIX: The app task was killed / swiped away. The user is DEFINITELY not in a call anymore!
+        isInCall = false
+        isCallRinging = false
+        currentRingingCallId = null
+        stopRinging()
+
         try {
             startForeground(NOTIFICATION_ID_STANDBY, createStandbyNotification())
         } catch (e: Exception) {
@@ -240,6 +262,10 @@ class JanSunwaiVoIPService : Service() {
                 return START_STICKY
             }
             ACTION_START -> {
+                isInCall = false
+                isCallRinging = false
+                currentRingingCallId = null
+
                 val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
                 val phone = intent?.getStringExtra(EXTRA_PHONE)?.takeIf { it.isNotBlank() } ?: prefs.getString("phone", "") ?: ""
                 val srv = intent?.getStringExtra(EXTRA_SERVER_URL)?.takeIf { it.isNotBlank() } ?: prefs.getString("server_url", "") ?: ""
@@ -321,7 +347,8 @@ class JanSunwaiVoIPService : Service() {
             val cleanBase = serverUrl.trim().trimEnd('/')
             val wsProto = if (cleanBase.startsWith("https")) "wss://" else "ws://"
             val cleanHost = cleanBase.replace(Regex("^https?://"), "")
-            val wsUrl = "${wsProto}${cleanHost}/ws?phone=${userPhone}"
+            val encodedPhone = java.net.URLEncoder.encode(userPhone, "UTF-8")
+            val wsUrl = "${wsProto}${cleanHost}/ws?phone=${encodedPhone}"
 
             Log.i(TAG, "Connecting native WebSocket: $wsUrl")
 
@@ -406,7 +433,8 @@ class JanSunwaiVoIPService : Service() {
         Thread {
             try {
                 val cleanBase = serverUrl.trim().trimEnd('/')
-                val checkUrl = "${cleanBase}/api/calls/check-incoming/${userPhone}"
+                val encodedPhone = java.net.URLEncoder.encode(userPhone, "UTF-8")
+                val checkUrl = "${cleanBase}/api/calls/check-incoming/${encodedPhone}"
                 val client = OkHttpClient.Builder()
                     .connectTimeout(3, TimeUnit.SECONDS)
                     .readTimeout(3, TimeUnit.SECONDS)
