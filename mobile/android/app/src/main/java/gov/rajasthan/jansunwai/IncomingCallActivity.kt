@@ -55,16 +55,14 @@ class IncomingCallActivity : AppCompatActivity() {
             setTurnScreenOn(true)
             val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
             keyguardManager?.requestDismissKeyguard(this, null)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-            )
         }
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        @Suppress("DEPRECATION")
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+        )
 
         // 2. Parse Intent Extras
         callDataStr = intent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA) ?: ""
@@ -374,11 +372,55 @@ class IncomingCallActivity : AppCompatActivity() {
         JanSunwaiVoIPService.stopActiveRinging()
         JanSunwaiVoIPService.setInCallState(true)
 
-        // Embed autoAccept = true in call data
+        // If serverUrl and userPhone are present, fetch LiveKit token immediately in background
+        if (callId.isNotEmpty() && serverUrl.isNotEmpty() && userPhone.isNotEmpty()) {
+            Thread {
+                try {
+                    val cleanBase = serverUrl.trim().trimEnd('/')
+                    val url = "${cleanBase}/api/calls/${callId}/respond"
+                    val body = JSONObject().apply {
+                        put("phone", userPhone)
+                        put("action", "accept")
+                    }.toString()
+
+                    val client = OkHttpClient()
+                    val req = Request.Builder()
+                        .url(url)
+                        .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
+                        .build()
+                    val res = client.newCall(req).execute()
+                    val resBody = res.body?.string() ?: ""
+                    res.close()
+
+                    val resJson = JSONObject(resBody)
+                    val livekitObj = resJson.optJSONObject("livekit")
+                    val token = livekitObj?.optString("token", "") ?: ""
+                    val roomName = livekitObj?.optString("roomName", "") ?: ""
+                    val lkUrl = livekitObj?.optString("url", "") ?: ""
+
+                    handler.post {
+                        launchMainActivity(token, roomName, lkUrl)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error posting accept to server, using local fallback", e)
+                    handler.post {
+                        launchMainActivity("", "", "")
+                    }
+                }
+            }.start()
+        } else {
+            launchMainActivity("", "", "")
+        }
+    }
+
+    private fun launchMainActivity(token: String, roomName: String, lkUrl: String) {
         val updatedCallData = try {
             val j = if (callDataStr.isNotEmpty()) JSONObject(callDataStr) else JSONObject()
             j.put("autoAccept", true)
             j.put("callId", callId)
+            if (token.isNotEmpty()) j.put("livekitToken", token)
+            if (roomName.isNotEmpty()) j.put("livekitRoomName", roomName)
+            if (lkUrl.isNotEmpty()) j.put("livekitUrl", lkUrl)
             j.toString()
         } catch (e: Exception) {
             callDataStr
@@ -386,7 +428,6 @@ class IncomingCallActivity : AppCompatActivity() {
 
         JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
 
-        // Launch MainActivity
         val launchIntent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra("action", "accept_call")

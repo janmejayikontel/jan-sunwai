@@ -45,10 +45,12 @@
       android:theme="@style/Theme.AppCompat.NoActionBar"
       android:showWhenLocked="true"
       android:turnScreenOn="true"
+      android:showOnLockScreen="true"
+      android:inheritShowWhenLocked="true"
       android:launchMode="singleTop"
       android:screenOrientation="portrait"
       android:excludeFromRecents="true"
-      android:exported="false" />
+      android:exported="true" />
     <service
       android:name="com.oney.WebRTCModule.MediaProjectionService"
       android:foregroundServiceType="mediaProjection"

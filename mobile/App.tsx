@@ -30,6 +30,8 @@ export default function App() {
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const pendingCallRef = useRef<any>(null);
+  const dismissedCallIdsRef = useRef<Set<string>>(new Set());
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
   // ─── 0. Request Notification Permissions on Android 13+ ──────
@@ -82,6 +84,13 @@ export default function App() {
             }
             // Ensure native background VoIP service is active for this phone
             JanSunwaiVoIP?.startService?.(parsed.user.phone, cleanServerUrl(targetSrv));
+
+            // If a pending call arrived while session was restoring, accept it now!
+            if (pendingCallRef.current) {
+              const pCall = pendingCallRef.current;
+              pendingCallRef.current = null;
+              handleAcceptIncomingCall(pCall, parsed.user);
+            }
           }
         }
       } catch (e) {
@@ -94,12 +103,69 @@ export default function App() {
     restoreSavedSession();
   }, []);
 
+  // ─── 1c. Check and Request "Display over other apps" Permission ───
+  useEffect(() => {
+    const checkOverlay = async () => {
+      try {
+        if (Platform.OS === 'android') {
+          const hasOverlay = await JanSunwaiVoIP?.checkOverlayPermission?.();
+          if (hasOverlay === false) {
+            Alert.alert(
+              'फुल-स्क्रीन कॉल अनुमति (Full-Screen Call Permission)',
+              'ऐप बंद होने पर भी सामान्य फोन कॉल की तरह फुल-स्क्रीन पॉप-अप देखने के लिए कृपया "Display over other apps" अनुमति चालू करें।\n\nTo show full-screen incoming video calls even when the app is closed, please enable "Display over other apps".',
+              [
+                { text: 'बाद में (Later)', style: 'cancel' },
+                {
+                  text: 'चालू करें (Enable Now)',
+                  onPress: () => JanSunwaiVoIP?.requestOverlayPermission?.(),
+                },
+              ]
+            );
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    if (currentUser) {
+      setTimeout(checkOverlay, 1500);
+    }
+  }, [currentUser]);
+
   // ─── Incoming Call Actions ──────────────────────────────────
-  const handleAcceptIncomingCall = async (overrideCall?: IncomingCallData) => {
+  const handleAcceptIncomingCall = async (
+    overrideCall?: any,
+    userOverride?: UserProfile | null
+  ) => {
     const target = overrideCall || incomingCall;
-    if (!target || !currentUser) return;
+    const user = userOverride || currentUser;
+    if (!target) return;
+
     JanSunwaiVoIP?.stopRinging?.();
     JanSunwaiVoIP?.setInCall?.(true);
+
+    // If pre-fetched LiveKit token exists from IncomingCallActivity, enter room in 0ms!
+    if (target.livekitToken && target.livekitRoomName) {
+      console.log('[App] Entering meeting room immediately with pre-fetched LiveKit token');
+      setActiveHearing({
+        serverUrl: target.livekitUrl || cleanServerUrl(serverUrl),
+        token: target.livekitToken,
+        roomName: target.livekitRoomName,
+        grievanceId: target.grievanceId,
+        userName: user?.name || `User (${user?.phone ? user.phone.slice(-4) : 'Citizen'})`,
+        role: user?.role || 'citizen',
+        callId: target.callId,
+      });
+      setIncomingCall(null);
+      return;
+    }
+
+    if (!user) {
+      console.log('[App] User session not ready yet, queuing pending call...');
+      pendingCallRef.current = target;
+      return;
+    }
 
     try {
       const base = cleanServerUrl(serverUrl);
@@ -107,7 +173,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone: currentUser.phone,
+          phone: user.phone,
           action: 'accept',
         }),
       });
@@ -120,8 +186,8 @@ export default function App() {
           token: data.livekit.token,
           roomName: data.livekit.roomName,
           grievanceId: target.grievanceId,
-          userName: currentUser.name || `User (${currentUser.phone.slice(-4)})`,
-          role: currentUser.role || 'citizen',
+          userName: user.name || `User (${user.phone.slice(-4)})`,
+          role: user.role || 'citizen',
           callId: target.callId,
         });
       } else {
@@ -136,24 +202,52 @@ export default function App() {
   };
 
   const handleDeclineIncomingCall = async () => {
-    if (!incomingCall || !currentUser) return;
+    if (!incomingCall) return;
+    const targetCallId = incomingCall.callId;
+    if (targetCallId) {
+      dismissedCallIdsRef.current.add(targetCallId);
+    }
     JanSunwaiVoIP?.stopRinging?.();
 
-    try {
-      const base = cleanServerUrl(serverUrl);
-      await fetch(`${base}/api/calls/${incomingCall.callId}/respond`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: currentUser.phone,
-          action: 'decline',
-        }),
-      });
-    } catch (err) {
-      console.warn('Decline call error:', err);
-    } finally {
-      setIncomingCall(null);
+    if (currentUser && targetCallId) {
+      try {
+        const base = cleanServerUrl(serverUrl);
+        await fetch(`${base}/api/calls/${targetCallId}/respond`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: currentUser.phone,
+            action: 'decline',
+          }),
+        });
+      } catch (err) {
+        console.warn('Decline call error:', err);
+      }
     }
+    setIncomingCall(null);
+  };
+
+  const handleLeaveHearing = async () => {
+    if (activeHearing) {
+      const callId = activeHearing.callId;
+      const base = cleanServerUrl(serverUrl);
+      JanSunwaiVoIP?.stopRinging?.();
+      JanSunwaiVoIP?.setInCall?.(false);
+
+      if (callId) {
+        console.log('[App] Participant left hearing. Blacklisting callId from re-ringing:', callId);
+        dismissedCallIdsRef.current.add(callId);
+
+        if (currentUser?.phone) {
+          fetch(`${base}/api/calls/${callId}/leave`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: currentUser.phone }),
+          }).catch((e) => console.warn('[App] Error sending leave notice to server:', e));
+        }
+      }
+    }
+    setActiveHearing(null);
   };
 
   // ─── 1b. Check if Native VoIP Service has a pending incoming call (woken from closed/bg) ─
@@ -165,8 +259,12 @@ export default function App() {
           console.log('[App] Received pending VoIP call from native background service:', pendingJson);
           const data = typeof pendingJson === 'string' ? JSON.parse(pendingJson) : pendingJson;
           if (data?.callId) {
+            if (dismissedCallIdsRef.current.has(data.callId)) {
+              console.log('[App] Ignoring call previously left/dismissed:', data.callId);
+              return;
+            }
             if (data.autoAccept) {
-              handleAcceptIncomingCall(data as IncomingCallData);
+              handleAcceptIncomingCall(data, currentUser);
             } else {
               setIncomingCall(data as IncomingCallData);
             }
@@ -236,6 +334,10 @@ export default function App() {
             console.log('[Mobile/WS] Received:', msg.type);
 
             if (msg.type === 'incoming_call' && msg.data) {
+              if (dismissedCallIdsRef.current.has(msg.data.callId)) {
+                console.log('[Mobile/WS] Ignoring incoming call for dismissed/left call:', msg.data.callId);
+                return;
+              }
               setIncomingCall(msg.data as IncomingCallData);
             } else if (msg.type === 'call_ended' || msg.type === 'call_declined') {
               JanSunwaiVoIP?.stopRinging?.();
@@ -278,6 +380,9 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           if (data.hasIncomingCall && data.incomingCall) {
+            if (dismissedCallIdsRef.current.has(data.incomingCall.callId)) {
+              return;
+            }
             setIncomingCall((prev) => {
               if (prev && prev.callId === data.incomingCall.callId) return prev;
               return data.incomingCall;
@@ -320,8 +425,9 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    JanSunwaiVoIP?.stopService?.();
     JanSunwaiVoIP?.stopRinging?.();
+    JanSunwaiVoIP?.setInCall?.(false);
+    JanSunwaiVoIP?.stopService?.();
     setActiveHearing(null);
     setCurrentUser(null);
     setIncomingCall(null);
@@ -359,7 +465,7 @@ export default function App() {
           userName={activeHearing.userName}
           role={activeHearing.role}
           callId={activeHearing.callId}
-          onLeave={() => setActiveHearing(null)}
+          onLeave={handleLeaveHearing}
         />
       ) : currentUser ? (
         <>

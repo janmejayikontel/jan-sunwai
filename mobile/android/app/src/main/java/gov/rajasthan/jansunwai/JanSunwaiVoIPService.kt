@@ -90,8 +90,9 @@ class JanSunwaiVoIPService : Service() {
         Log.i(TAG, "JanSunwaiVoIPService created")
 
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        @Suppress("DEPRECATION")
         wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
             "JanSunwai::VoIPWakeLock"
         )
 
@@ -107,6 +108,11 @@ class JanSunwaiVoIPService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.i(TAG, "App task removed (swiped away) - maintaining VoIP background service in foreground")
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: ACTION_START

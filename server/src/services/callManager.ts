@@ -20,7 +20,7 @@ import db from '../db/database';
 // ─── Types ────────────────────────────────────────────────────
 
 export type CallStatus = 'ringing' | 'active' | 'completed' | 'missed' | 'cancelled';
-export type ParticipantRingStatus = 'ringing' | 'accepted' | 'declined' | 'timeout' | 'missed';
+export type ParticipantRingStatus = 'ringing' | 'accepted' | 'declined' | 'timeout' | 'missed' | 'left';
 export type ParticipantRole = 'host' | 'employee' | 'citizen' | 'guest_officer';
 
 export interface CallParticipant {
@@ -745,14 +745,15 @@ export async function participantLeaveCall(
   const call = activeCalls.get(callId);
   if (!call) return false;
 
-  const participant = call.participants.find((p) => p.phone === participantPhone);
+  const participant = call.participants.find((p) => matchPhone(p.phone, participantPhone));
   if (participant) {
     participant.leftAt = new Date();
+    participant.ringStatus = 'left';
   }
 
   // Notify all remaining active participants
   call.participants.forEach((p) => {
-    if (p.phone && p.phone !== participantPhone && !p.leftAt) {
+    if (p.phone && !matchPhone(p.phone, participantPhone) && !p.leftAt) {
       sendToClient(p.phone, {
         type: 'participant_left',
         callId,
@@ -809,18 +810,20 @@ export function getIncomingCallForPhone(phone: string): {
     if (call.hostUserId && matchPhone(call.hostUserId, phone)) continue;
 
     const participant = call.participants.find((p) => matchPhone(p.phone, phone));
-    if (participant && participant.ringStatus === 'ringing' && participant.role !== 'host') {
-      return {
-        callId: call.id,
-        grievanceId: call.grievanceId,
-        title: call.title,
-        callerName: call.hostName,
-        callerDesignation: call.hostDesignation,
-        roomName: call.livekitRoomName,
-        participantCount: call.participants.length,
-        yourRole: participant.role,
-      };
-    }
+    if (!participant || participant.role === 'host') continue;
+    if (participant.leftAt !== undefined) continue;
+    if (participant.ringStatus !== 'ringing') continue;
+
+    return {
+      callId: call.id,
+      grievanceId: call.grievanceId,
+      title: call.title,
+      callerName: call.hostName,
+      callerDesignation: call.hostDesignation,
+      roomName: call.livekitRoomName,
+      participantCount: call.participants.length,
+      yourRole: participant.role,
+    };
   }
   return null;
 }

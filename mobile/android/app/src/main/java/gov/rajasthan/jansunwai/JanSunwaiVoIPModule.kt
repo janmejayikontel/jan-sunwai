@@ -2,7 +2,9 @@ package gov.rajasthan.jansunwai
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.Promise
@@ -87,6 +89,35 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             promise.reject("SET_IN_CALL_ERROR", e.message, e)
         }
+    }
+
+    @ReactMethod
+    fun checkOverlayPermission(promise: Promise) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            promise.resolve(Settings.canDrawOverlays(reactContext))
+        } else {
+            promise.resolve(true)
+        }
+    }
+
+    @ReactMethod
+    fun requestOverlayPermission(promise: Promise) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                if (!Settings.canDrawOverlays(reactContext)) {
+                    val intent = Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + reactContext.packageName)
+                    ).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    reactContext.startActivity(intent)
+                }
+            } catch (e: Exception) {
+                Log.w("JanSunwaiVoIPModule", "Error requesting overlay permission", e)
+            }
+        }
+        promise.resolve(true)
     }
 
     @ReactMethod
