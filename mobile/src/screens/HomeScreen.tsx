@@ -174,6 +174,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             : `Jan Sunwai — Hearing #${targetCaseId}`,
           hostUserId: user.id || user.phone || 'officer-001',
           hostName: user.name || 'Vivek, IAS',
+          hostPhone: user.phone || '',
           hostDesignation: user.designation || 'District Collector & DM',
           citizenPhone: targetGrievance?.citizen?.phone,
           citizenName: targetGrievance?.citizen?.name,

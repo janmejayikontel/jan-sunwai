@@ -57,9 +57,13 @@ const RoomContent: React.FC<{
   const cameraTracks = useTracks([Track.Source.Camera]);
   const screenShareTracks = useTracks([Track.Source.ScreenShare]);
 
-  // Stop any ongoing native VoIP ringtone/beep sound immediately on room entry
+  // Stop any ongoing native VoIP ringtone/beep sound immediately on room entry and lock inCall state
   useEffect(() => {
     NativeModules.JanSunwaiVoIP?.stopRinging?.();
+    NativeModules.JanSunwaiVoIP?.setInCall?.(true);
+    return () => {
+      NativeModules.JanSunwaiVoIP?.setInCall?.(false);
+    };
   }, []);
 
   // Sync state with local participant

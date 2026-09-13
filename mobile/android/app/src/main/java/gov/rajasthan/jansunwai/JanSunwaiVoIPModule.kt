@@ -75,6 +75,21 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun setInCall(inCall: Boolean, promise: Promise) {
+        try {
+            JanSunwaiVoIPService.setInCallState(inCall)
+            val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
+                action = JanSunwaiVoIPService.ACTION_SET_IN_CALL
+                putExtra(JanSunwaiVoIPService.EXTRA_IN_CALL, inCall)
+            }
+            reactContext.startService(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SET_IN_CALL_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
     fun getPendingCall(promise: Promise) {
         val callData = pendingIncomingCallJson ?: JanSunwaiVoIPService.lastReceivedCallData
         pendingIncomingCallJson = null

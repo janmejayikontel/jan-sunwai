@@ -60,6 +60,9 @@ export default function App() {
   useEffect(() => {
     if (activeHearing) {
       JanSunwaiVoIP?.stopRinging?.();
+      JanSunwaiVoIP?.setInCall?.(true);
+    } else {
+      JanSunwaiVoIP?.setInCall?.(false);
     }
   }, [activeHearing]);
 
@@ -91,6 +94,68 @@ export default function App() {
     restoreSavedSession();
   }, []);
 
+  // ─── Incoming Call Actions ──────────────────────────────────
+  const handleAcceptIncomingCall = async (overrideCall?: IncomingCallData) => {
+    const target = overrideCall || incomingCall;
+    if (!target || !currentUser) return;
+    JanSunwaiVoIP?.stopRinging?.();
+    JanSunwaiVoIP?.setInCall?.(true);
+
+    try {
+      const base = cleanServerUrl(serverUrl);
+      const res = await fetch(`${base}/api/calls/${target.callId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: currentUser.phone,
+          action: 'accept',
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.livekit) {
+        setActiveHearing({
+          serverUrl: data.livekit.url || base,
+          token: data.livekit.token,
+          roomName: data.livekit.roomName,
+          grievanceId: target.grievanceId,
+          userName: currentUser.name || `User (${currentUser.phone.slice(-4)})`,
+          role: currentUser.role || 'citizen',
+          callId: target.callId,
+        });
+      } else {
+        Alert.alert('Unable to Join', data.error || 'Failed to accept call session.');
+      }
+    } catch (err: any) {
+      console.error('Accept call error:', err);
+      Alert.alert('Connection Error', err?.message || 'Failed to join call.');
+    } finally {
+      setIncomingCall(null);
+    }
+  };
+
+  const handleDeclineIncomingCall = async () => {
+    if (!incomingCall || !currentUser) return;
+    JanSunwaiVoIP?.stopRinging?.();
+
+    try {
+      const base = cleanServerUrl(serverUrl);
+      await fetch(`${base}/api/calls/${incomingCall.callId}/respond`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: currentUser.phone,
+          action: 'decline',
+        }),
+      });
+    } catch (err) {
+      console.warn('Decline call error:', err);
+    } finally {
+      setIncomingCall(null);
+    }
+  };
+
   // ─── 1b. Check if Native VoIP Service has a pending incoming call (woken from closed/bg) ─
   useEffect(() => {
     const checkPendingNativeCall = async () => {
@@ -100,7 +165,11 @@ export default function App() {
           console.log('[App] Received pending VoIP call from native background service:', pendingJson);
           const data = typeof pendingJson === 'string' ? JSON.parse(pendingJson) : pendingJson;
           if (data?.callId) {
-            setIncomingCall(data as IncomingCallData);
+            if (data.autoAccept) {
+              handleAcceptIncomingCall(data as IncomingCallData);
+            } else {
+              setIncomingCall(data as IncomingCallData);
+            }
           }
         }
       } catch (e) {
@@ -119,7 +188,7 @@ export default function App() {
     return () => {
       appStateSub.remove();
     };
-  }, []);
+  }, [currentUser, serverUrl]);
 
   // ─── 2. Auto-timeout incoming call locally after 60s ─────────
   useEffect(() => {
@@ -230,65 +299,7 @@ export default function App() {
     };
   }, [currentUser, serverUrl, activeHearing]);
 
-  // ─── 4. Incoming Call Actions ──────────────────────────────────
-  const handleAcceptIncomingCall = async () => {
-    if (!incomingCall || !currentUser) return;
-    JanSunwaiVoIP?.stopRinging?.();
 
-    try {
-      const base = cleanServerUrl(serverUrl);
-      const res = await fetch(`${base}/api/calls/${incomingCall.callId}/respond`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: currentUser.phone,
-          action: 'accept',
-        }),
-      });
-
-      const data = await res.json();
-
-      if (data.success && data.livekit) {
-        setActiveHearing({
-          serverUrl: data.livekit.url || base,
-          token: data.livekit.token,
-          roomName: data.livekit.roomName,
-          grievanceId: incomingCall.grievanceId,
-          userName: currentUser.name || `User (${currentUser.phone.slice(-4)})`,
-          role: currentUser.role || 'citizen',
-          callId: incomingCall.callId,
-        });
-      } else {
-        Alert.alert('Unable to Join', data.error || 'Failed to accept call session.');
-      }
-    } catch (err: any) {
-      console.error('Accept call error:', err);
-      Alert.alert('Connection Error', err?.message || 'Failed to join call.');
-    } finally {
-      setIncomingCall(null);
-    }
-  };
-
-  const handleDeclineIncomingCall = async () => {
-    if (!incomingCall || !currentUser) return;
-    JanSunwaiVoIP?.stopRinging?.();
-
-    try {
-      const base = cleanServerUrl(serverUrl);
-      await fetch(`${base}/api/calls/${incomingCall.callId}/respond`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          phone: currentUser.phone,
-          action: 'decline',
-        }),
-      });
-    } catch (err) {
-      console.warn('Decline call error:', err);
-    } finally {
-      setIncomingCall(null);
-    }
-  };
 
   // ─── 5. Login & Logout Session Handlers ────────────────────────
   const handleLoginSuccess = async (user: UserProfile, srv: string) => {

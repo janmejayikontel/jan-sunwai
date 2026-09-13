@@ -42,6 +42,7 @@ export interface CallSession {
   grievanceId: string;
   title: string;
   hostUserId: string;
+  hostPhone?: string;
   hostName: string;
   hostDesignation: string;
   livekitRoomName: string;
@@ -60,6 +61,7 @@ export interface InitiateCallInput {
   grievanceId: string;
   title: string;
   hostUserId: string;
+  hostPhone?: string;
   hostName: string;
   hostDesignation: string;
   citizenPhone: string;
@@ -266,10 +268,12 @@ export async function initiateCall(input: InitiateCallInput): Promise<{
     emptyTimeout: 300,
   });
 
+  const hostPhone = input.hostPhone || (input.hostUserId?.startsWith('+') ? input.hostUserId : '');
+
   // 2. Build participant list
   const hostParticipant: CallParticipant = {
     id: uuidv4(),
-    phone: '', // Host phone determined by auth context
+    phone: hostPhone,
     name: input.hostName,
     role: 'host',
     designation: input.hostDesignation,
@@ -304,6 +308,7 @@ export async function initiateCall(input: InitiateCallInput): Promise<{
     grievanceId: input.grievanceId,
     title: input.title,
     hostUserId: input.hostUserId,
+    hostPhone,
     hostName: input.hostName,
     hostDesignation: input.hostDesignation,
     livekitRoomName: roomName,
@@ -323,7 +328,7 @@ export async function initiateCall(input: InitiateCallInput): Promise<{
     isHost: true,
   });
 
-  // 5. Send incoming call ring to citizen and employee
+  // 5. Send incoming call ring to citizen and employee (NEVER to host itself!)
   const incomingCallData = {
     callId,
     grievanceId: input.grievanceId,
@@ -334,17 +339,25 @@ export async function initiateCall(input: InitiateCallInput): Promise<{
     participantCount: 3,
   };
 
-  sendToClient(input.citizenPhone, {
-    type: 'incoming_call',
-    callId,
-    data: { ...incomingCallData, yourRole: 'citizen' },
-  });
+  if (hostPhone && matchPhone(input.citizenPhone, hostPhone)) {
+    console.log(`[CallManager] Host ${hostPhone} is also citizen ${input.citizenPhone} — skipping self-ring!`);
+  } else {
+    sendToClient(input.citizenPhone, {
+      type: 'incoming_call',
+      callId,
+      data: { ...incomingCallData, yourRole: 'citizen' },
+    });
+  }
 
-  sendToClient(input.employeePhone, {
-    type: 'incoming_call',
-    callId,
-    data: { ...incomingCallData, yourRole: 'employee' },
-  });
+  if (hostPhone && matchPhone(input.employeePhone, hostPhone)) {
+    console.log(`[CallManager] Host ${hostPhone} is also employee ${input.employeePhone} — skipping self-ring!`);
+  } else {
+    sendToClient(input.employeePhone, {
+      type: 'incoming_call',
+      callId,
+      data: { ...incomingCallData, yourRole: 'employee' },
+    });
+  }
 
   // 6. Set ring timeout (auto-decline after 60 seconds)
   const timeoutId = setTimeout(() => {
@@ -790,8 +803,13 @@ export function getIncomingCallForPhone(phone: string): {
 } | null {
   for (const call of activeCalls.values()) {
     if (call.status === 'completed' || call.status === 'cancelled') continue;
+
+    // RULE: If this phone is the HOST/CALLER who initiated this call, NEVER ring them!
+    if (call.hostPhone && matchPhone(call.hostPhone, phone)) continue;
+    if (call.hostUserId && matchPhone(call.hostUserId, phone)) continue;
+
     const participant = call.participants.find((p) => matchPhone(p.phone, phone));
-    if (participant && participant.ringStatus === 'ringing') {
+    if (participant && participant.ringStatus === 'ringing' && participant.role !== 'host') {
       return {
         callId: call.id,
         grievanceId: call.grievanceId,

@@ -8,7 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.media.Ringtone
+import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
@@ -35,7 +35,7 @@ class JanSunwaiVoIPService : Service() {
     companion object {
         const val TAG = "JanSunwaiVoIP"
         const val STANDBY_CHANNEL_ID = "jansunwai_standby_channel"
-        const val CALL_CHANNEL_ID = "jansunwai_incoming_call_channel"
+        const val CALL_CHANNEL_ID = "jansunwai_incoming_call_channel_v3"
         const val NOTIFICATION_ID_STANDBY = 1001
         const val NOTIFICATION_ID_CALL = 9999
 
@@ -44,13 +44,16 @@ class JanSunwaiVoIPService : Service() {
         const val ACTION_DECLINE = "gov.rajasthan.jansunwai.ACTION_DECLINE"
         const val ACTION_ACCEPT = "gov.rajasthan.jansunwai.ACTION_ACCEPT"
         const val ACTION_STOP_RINGING = "gov.rajasthan.jansunwai.ACTION_STOP_RINGING"
+        const val ACTION_SET_IN_CALL = "gov.rajasthan.jansunwai.ACTION_SET_IN_CALL"
 
         const val EXTRA_PHONE = "extra_phone"
         const val EXTRA_SERVER_URL = "extra_server_url"
         const val EXTRA_CALL_DATA = "extra_call_data"
         const val EXTRA_CALL_ID = "extra_call_id"
+        const val EXTRA_IN_CALL = "extra_in_call"
 
         var isServiceRunning = false
+        var isInCall = false
         var currentRingingCallId: String? = null
         var lastReceivedCallData: String? = null
 
@@ -59,6 +62,13 @@ class JanSunwaiVoIPService : Service() {
         fun stopActiveRinging() {
             instance?.stopRinging()
         }
+
+        fun setInCallState(inCall: Boolean) {
+            isInCall = inCall
+            if (inCall) {
+                stopActiveRinging()
+            }
+        }
     }
 
     private var okHttpClient: OkHttpClient? = null
@@ -66,7 +76,7 @@ class JanSunwaiVoIPService : Service() {
     private var userPhone: String = ""
     private var serverUrl: String = ""
 
-    private var ringtone: Ringtone? = null
+    private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -102,6 +112,11 @@ class JanSunwaiVoIPService : Service() {
         val action = intent?.action ?: ACTION_START
 
         when (action) {
+            ACTION_SET_IN_CALL -> {
+                val inCall = intent?.getBooleanExtra(EXTRA_IN_CALL, false) ?: false
+                setInCallState(inCall)
+                return START_STICKY
+            }
             ACTION_STOP_RINGING -> {
                 Log.i(TAG, "ACTION_STOP_RINGING received")
                 stopRinging()
@@ -119,9 +134,10 @@ class JanSunwaiVoIPService : Service() {
             }
             ACTION_ACCEPT -> {
                 stopRinging()
-                // Launch MainActivity
+                setInCallState(true)
+                // Launch MainActivity with accepted call data
                 val launchIntent = Intent(this, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     putExtra("action", "accept_call")
                     putExtra(EXTRA_CALL_DATA, lastReceivedCallData)
                 }
@@ -168,20 +184,14 @@ class JanSunwaiVoIPService : Service() {
             }
             notificationManager.createNotificationChannel(standbyChannel)
 
-            // 2. Incoming call channel (high importance with vibration & sound)
+            // 2. Incoming call channel (high importance, sound=null so MediaPlayer has exclusive control)
             val callChannel = NotificationChannel(
                 CALL_CHANNEL_ID,
                 "Incoming Video Hearings",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Alerts for incoming official video hearings from the District Collector"
-                setSound(
-                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE),
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                        .build()
-                )
+                setSound(null, null)
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 1000, 1000, 1000)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
@@ -238,6 +248,10 @@ class JanSunwaiVoIPService : Service() {
                         val json = JSONObject(text)
                         val type = json.optString("type")
                         if (type == "incoming_call") {
+                            if (isInCall) {
+                                Log.i(TAG, "Ignoring incoming call because user is currently in a call")
+                                return
+                            }
                             val data = json.optJSONObject("data") ?: json
                             handleIncomingCall(data.toString())
                         } else if (type == "call_ended" || type == "call_declined") {
@@ -286,7 +300,7 @@ class JanSunwaiVoIPService : Service() {
     }
 
     private fun checkIncomingCallHttp() {
-        if (serverUrl.isEmpty() || userPhone.isEmpty() || isCallRinging) return
+        if (isInCall || serverUrl.isEmpty() || userPhone.isEmpty() || isCallRinging) return
 
         Thread {
             try {
@@ -301,9 +315,9 @@ class JanSunwaiVoIPService : Service() {
                 if (res.isSuccessful) {
                     val body = res.body?.string() ?: ""
                     val json = JSONObject(body)
-                    if (json.optBoolean("hasIncomingCall", false)) {
+                    if (json.optBoolean("hasIncomingCall", false) && !isInCall) {
                         val callObj = json.optJSONObject("incomingCall")
-                        if (callObj != null && !isCallRinging) {
+                        if (callObj != null && !isCallRinging && !isInCall) {
                             handler.post {
                                 handleIncomingCall(callObj.toString())
                             }
@@ -318,7 +332,7 @@ class JanSunwaiVoIPService : Service() {
     }
 
     fun handleIncomingCall(callJsonString: String) {
-        if (isCallRinging) return
+        if (isInCall || isCallRinging) return
         isCallRinging = true
         lastReceivedCallData = callJsonString
 
@@ -340,13 +354,28 @@ class JanSunwaiVoIPService : Service() {
                 }
             }
 
-            // 2. Play ringtone
+            // 2. Play ringtone reliably with MediaPlayer (supports clean stop)
             try {
+                mediaPlayer?.let {
+                    if (it.isPlaying) it.stop()
+                    it.reset()
+                    it.release()
+                }
                 val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-                ringtone = RingtoneManager.getRingtone(applicationContext, ringtoneUri)
-                ringtone?.play()
+                mediaPlayer = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                            .build()
+                    )
+                    setDataSource(applicationContext, ringtoneUri)
+                    isLooping = true
+                    prepare()
+                    start()
+                }
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to play ringtone", e)
+                Log.w(TAG, "Failed to play ringtone with MediaPlayer", e)
             }
 
             // 3. Start continuous vibration
@@ -362,18 +391,20 @@ class JanSunwaiVoIPService : Service() {
                 Log.w(TAG, "Failed to vibrate", e)
             }
 
-            // 4. Build Full-Screen Intent to launch MainActivity over lock screen
-            val fullScreenIntent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("action", "incoming_call")
+            // 4. Intent for Native Full-Screen Incoming Call Activity (IncomingCallActivity)
+            val incomingCallIntent = Intent(this, IncomingCallActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                putExtra(EXTRA_CALL_ID, callId)
                 putExtra(EXTRA_CALL_DATA, callJsonString)
+                putExtra(EXTRA_SERVER_URL, serverUrl)
+                putExtra(EXTRA_PHONE, userPhone)
             }
             val fullScreenPendingIntent = PendingIntent.getActivity(
-                this, 101, fullScreenIntent,
+                this, 101, incomingCallIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            // Accept intent
+            // Accept intent from notification action button
             val acceptIntent = Intent(this, JanSunwaiVoIPService::class.java).apply {
                 action = ACTION_ACCEPT
                 putExtra(EXTRA_CALL_ID, callId)
@@ -384,7 +415,7 @@ class JanSunwaiVoIPService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            // Decline intent
+            // Decline intent from notification action button
             val declineIntent = Intent(this, JanSunwaiVoIPService::class.java).apply {
                 action = ACTION_DECLINE
                 putExtra(EXTRA_CALL_ID, callId)
@@ -401,6 +432,7 @@ class JanSunwaiVoIPService : Service() {
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setSound(null)
                 .setFullScreenIntent(fullScreenPendingIntent, true)
                 .setContentIntent(fullScreenPendingIntent)
                 .setOngoing(true)
@@ -409,18 +441,18 @@ class JanSunwaiVoIPService : Service() {
                 .addAction(R.mipmap.ic_launcher, "❌ DECLINE", declinePendingIntent)
                 .setStyle(
                     NotificationCompat.BigTextStyle()
-                        .bigText("$callerName ($callerDesig) is calling you into the official Jan Sunwai video hearing for Case #$grievanceId.\n\nTap ACCEPT to join or DECLINE to reject.")
+                        .bigText("$callerName ($callerDesig) is calling you into the official Jan Sunwai video hearing for Case #$grievanceId.\n\nTap to answer full-screen.")
                 )
                 .build()
 
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(NOTIFICATION_ID_CALL, notification)
 
-            // Try to launch fullScreenIntent directly if allowed, but NEVER let OS restrictions cancel the notification
+            // Launch native full-screen incoming call UI immediately
             try {
-                startActivity(fullScreenIntent)
+                startActivity(incomingCallIntent)
             } catch (e: Exception) {
-                Log.i(TAG, "Direct startActivity deferred to heads-up notification: ${e.message}")
+                Log.i(TAG, "Direct launch will show via fullScreenIntent: ${e.message}")
             }
 
             // 60-second auto-dismiss if not answered
@@ -438,18 +470,22 @@ class JanSunwaiVoIPService : Service() {
     }
 
     fun stopRinging() {
-        if (!isCallRinging && ringtone == null) return
+        if (!isCallRinging && mediaPlayer == null) return
         isCallRinging = false
         currentRingingCallId = null
 
         handler.post {
             try {
-                if (ringtone != null) {
-                    ringtone?.stop()
-                    ringtone = null
+                mediaPlayer?.let { mp ->
+                    if (mp.isPlaying) {
+                        mp.stop()
+                    }
+                    mp.reset()
+                    mp.release()
                 }
+                mediaPlayer = null
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to stop ringtone", e)
+                Log.w(TAG, "Failed to stop mediaPlayer", e)
             }
 
             try {
@@ -472,6 +508,14 @@ class JanSunwaiVoIPService : Service() {
             } catch (e: Exception) {
                 // ignore
             }
+
+            // Also dismiss native IncomingCallActivity if open
+            try {
+                IncomingCallActivity.activeInstance?.finish()
+            } catch (e: Exception) {
+                // ignore
+            }
+
             Log.i(TAG, "Stopped ringing, silenced audio and cleared call notification")
         }
     }
