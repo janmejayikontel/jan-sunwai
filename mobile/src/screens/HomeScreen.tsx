@@ -204,7 +204,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         (inspectedGrievance?.grievanceId.toUpperCase() === targetCaseId ? inspectedGrievance : null) ||
         grievances.find((g) => g.grievanceId.toUpperCase() === targetCaseId);
 
-      const initiateRes = await fetch(`${base}/api/calls/initiate`, {
+      const initiateRes = await fetchWithRetry(`${base}/api/calls/initiate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

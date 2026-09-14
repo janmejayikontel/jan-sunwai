@@ -120,6 +120,7 @@ class JanSunwaiVoIPService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var pollRunnable: Runnable? = null
     private var isCallRinging = false
+    private var isWebSocketConnected = false
 
     override fun onCreate() {
         super.onCreate()
@@ -384,6 +385,7 @@ class JanSunwaiVoIPService : Service() {
             webSocket = okHttpClient!!.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     Log.i(TAG, "Native WebSocket connected as $userPhone")
+                    isWebSocketConnected = true
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
@@ -414,16 +416,19 @@ class JanSunwaiVoIPService : Service() {
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     Log.i(TAG, "WebSocket closed: $reason. Reconnecting in 5s...")
+                    isWebSocketConnected = false
                     scheduleReconnect()
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     Log.w(TAG, "WebSocket failure: ${t.message}. Reconnecting in 5s...")
+                    isWebSocketConnected = false
                     scheduleReconnect()
                 }
             })
         } catch (e: Exception) {
             Log.e(TAG, "Failed to connect native WebSocket", e)
+            isWebSocketConnected = false
             scheduleReconnect()
         }
     }
@@ -443,14 +448,14 @@ class JanSunwaiVoIPService : Service() {
             override fun run() {
                 if (!isServiceRunning) return
                 checkIncomingCallHttp()
-                handler.postDelayed(this, 3500)
+                handler.postDelayed(this, 15000)
             }
         }
-        handler.postDelayed(pollRunnable!!, 3500)
+        handler.postDelayed(pollRunnable!!, 15000)
     }
 
     private fun checkIncomingCallHttp() {
-        if (isInCall || serverUrl.isEmpty() || userPhone.isEmpty() || isCallRinging) return
+        if (isInCall || isWebSocketConnected || serverUrl.isEmpty() || userPhone.isEmpty() || isCallRinging) return
 
         Thread {
             try {

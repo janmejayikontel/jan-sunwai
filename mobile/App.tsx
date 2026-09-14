@@ -487,11 +487,12 @@ export default function App() {
 
     connectWebSocket();
 
-    // Secondary polling fallback: checks every 3s to discover any missed incoming call
-    // Note: NEVER auto-disconnect an active incoming call here; dismissal is handled
-    // by WebSocket (call_ended / call_declined), user button presses, or 60s timeout.
+    // Secondary polling fallback: ONLY poll if WebSocket is disconnected (woken from background or network lost)
+    // When WebSocket is open, all signaling is real-time; do not spam the network!
     const pollInterval = setInterval(async () => {
       if (!isSubscribed || activeHearing) return;
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
+
       try {
         const checkUrl = `${base}/api/calls/check-incoming/${encodeURIComponent(currentUser.phone)}`;
         const res = await fetch(checkUrl, {
@@ -517,7 +518,7 @@ export default function App() {
       } catch (err) {
         // network polling silent
       }
-    }, 3000);
+    }, 12000);
 
     return () => {
       isSubscribed = false;
