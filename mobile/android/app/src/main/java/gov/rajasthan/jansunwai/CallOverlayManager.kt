@@ -352,10 +352,22 @@ object CallOverlayManager {
                             callJsonString
                         }
 
+                        // Save synchronously to SharedPreferences so MainActivity reads it across processes
+                        try {
+                            val prefs = context.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                            prefs.edit().putString("pending_accepted_call", updatedCallData).commit()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Error saving pending_accepted_call to prefs", e)
+                        }
+
                         JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
 
-                        val launchIntent = Intent(context, MainActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                            putExtra("action", "accept_call")
+                            putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
+                        } ?: Intent(context, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                             putExtra("action", "accept_call")
                             putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
                         }

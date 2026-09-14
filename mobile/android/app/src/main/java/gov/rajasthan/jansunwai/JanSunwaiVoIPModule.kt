@@ -195,7 +195,12 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun getPendingCall(promise: Promise) {
-        val callData = pendingIncomingCallJson ?: JanSunwaiVoIPService.lastReceivedCallData
+        val prefs = reactContext.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+        val savedCall = prefs.getString("pending_accepted_call", null)
+        if (savedCall != null) {
+            prefs.edit().remove("pending_accepted_call").commit()
+        }
+        val callData = savedCall ?: pendingIncomingCallJson ?: JanSunwaiVoIPService.lastReceivedCallData
         pendingIncomingCallJson = null
         JanSunwaiVoIPService.lastReceivedCallData = null // One-shot consumption so it never rings again on leave!
         promise.resolve(callData)
