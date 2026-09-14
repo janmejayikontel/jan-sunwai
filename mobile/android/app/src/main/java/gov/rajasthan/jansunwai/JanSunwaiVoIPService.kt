@@ -377,7 +377,10 @@ class JanSunwaiVoIPService : Service() {
                 .pingInterval(15, TimeUnit.SECONDS)
                 .build()
 
-            val request = Request.Builder().url(wsUrl).build()
+            val request = Request.Builder()
+                .url(wsUrl)
+                .addHeader("Bypass-Tunnel-Reminder", "true")
+                .build()
             webSocket = okHttpClient!!.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     Log.i(TAG, "Native WebSocket connected as $userPhone")
@@ -721,6 +724,7 @@ class JanSunwaiVoIPService : Service() {
                 val client = OkHttpClient()
                 val req = Request.Builder()
                     .url(url)
+                    .addHeader("Bypass-Tunnel-Reminder", "true")
                     .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
                     .build()
                 client.newCall(req).execute().close()

@@ -83,7 +83,10 @@ export const JoinHearingScreen: React.FC<JoinHearingScreenProps> = ({ onJoin }) 
 
       const response = await fetch(tokenUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Bypass-Tunnel-Reminder': 'true',
+        },
         body: JSON.stringify({
           roomName: `hearing_${grievanceId.trim().toUpperCase()}`,
           participantName: userName.trim(),

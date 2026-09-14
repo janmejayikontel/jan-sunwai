@@ -73,6 +73,28 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
+  const fetchWithRetry = async (url: string, init?: any, retries = 2): Promise<Response> => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url, init);
+        if (res.status === 429 || res.status === 503 || res.status === 504) {
+          if (attempt < retries) {
+            await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+            continue;
+          }
+        }
+        return res;
+      } catch (e) {
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+          continue;
+        }
+        throw e;
+      }
+    }
+    return fetch(url, init);
+  };
+
   // ─── Grievance Inspection for Officer ────────────────────────
   const handleInspectGrievance = async (targetId?: string) => {
     const idToLookup = (targetId || inspectGrievanceId).trim().toUpperCase();
@@ -81,20 +103,29 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     setInspectError(null);
     try {
       const base = cleanServerUrl(serverUrl);
-      const res = await fetch(`${base}/api/sampark/grievance/${encodeURIComponent(idToLookup)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.grievance) {
-          setInspectedGrievance(data.grievance);
-          setInspectError(null);
-          return;
-        }
+      const res = await fetchWithRetry(`${base}/api/sampark/grievance/${encodeURIComponent(idToLookup)}`, {
+        headers: {
+          'Bypass-Tunnel-Reminder': 'true',
+        },
+      });
+      const raw = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        console.warn('Inspect grievance non-json response:', raw.slice(0, 100));
+      }
+
+      if (res.ok && data?.grievance) {
+        setInspectedGrievance(data.grievance);
+        setInspectError(null);
+        return;
       }
       setInspectedGrievance(null);
-      setInspectError(`Grievance #${idToLookup} not found in database.`);
+      setInspectError(data?.message || data?.error || `Grievance #${idToLookup} not found in database.`);
     } catch (err: any) {
       console.warn('Inspect grievance error:', err);
-      setInspectError('Unable to reach server to fetch grievance details.');
+      setInspectError('Unable to reach server to fetch grievance details. Please check connection.');
     } finally {
       setIsInspecting(false);
     }
@@ -105,13 +136,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     setIsLoading(true);
     try {
       const url = `${cleanServerUrl(serverUrl)}/api/sampark/by-phone/${encodeURIComponent(user.phone)}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.grievances && Array.isArray(data.grievances)) {
-          setGrievances(data.grievances);
-          return;
-        }
+      const res = await fetchWithRetry(url, {
+        headers: {
+          'Bypass-Tunnel-Reminder': 'true',
+        },
+      });
+      const raw = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        console.warn('Fetch grievances non-json response:', raw.slice(0, 100));
+      }
+
+      if (res.ok && data?.grievances && Array.isArray(data.grievances)) {
+        setGrievances(data.grievances);
+        return;
       }
       setGrievances([]);
     } catch (e) {
@@ -166,7 +206,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
       const initiateRes = await fetch(`${base}/api/calls/initiate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Bypass-Tunnel-Reminder': 'true',
+        },
         body: JSON.stringify({
           grievanceId: targetCaseId,
           title: targetGrievance
