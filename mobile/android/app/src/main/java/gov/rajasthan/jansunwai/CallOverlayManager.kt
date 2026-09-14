@@ -345,6 +345,8 @@ object CallOverlayManager {
                             val j = if (callJsonString.isNotEmpty()) JSONObject(callJsonString) else JSONObject()
                             j.put("autoAccept", true)
                             j.put("callId", callId)
+                            if (serverUrl.isNotEmpty()) j.put("serverUrl", serverUrl)
+                            if (userPhone.isNotEmpty()) j.put("userPhone", userPhone)
                             j.toString()
                         } catch (e: Exception) {
                             callJsonString
@@ -406,11 +408,7 @@ object CallOverlayManager {
             overlayView?.let { view ->
                 try {
                     val windowManager = (context.applicationContext ?: context).getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && view.isAttachedToWindow) {
-                        windowManager.removeViewImmediate(view)
-                    } else {
-                        windowManager.removeView(view)
-                    }
+                    windowManager.removeViewImmediate(view)
                     Log.i(TAG, "CallOverlay successfully removed from WindowManager")
                 } catch (e: Exception) {
                     try {
@@ -422,7 +420,11 @@ object CallOverlayManager {
                 }
                 overlayView = null
             }
-            IncomingCallActivity.activeInstance?.finish()
+            try {
+                IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+            } catch (e: Exception) {
+                IncomingCallActivity.activeInstance?.finish()
+            }
         }
     }
 }

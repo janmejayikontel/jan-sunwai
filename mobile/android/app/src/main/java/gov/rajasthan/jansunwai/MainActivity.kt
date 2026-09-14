@@ -32,7 +32,11 @@ class MainActivity : ReactActivity() {
     }
 
     CallOverlayManager.dismiss(this)
-    IncomingCallActivity.activeInstance?.finish()
+    try {
+      IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+    } catch (e: Exception) {
+      IncomingCallActivity.activeInstance?.finish()
+    }
 
     intent?.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
       JanSunwaiVoIPModule.pendingIncomingCallJson = it
@@ -43,7 +47,11 @@ class MainActivity : ReactActivity() {
     super.onNewIntent(intent)
     setIntent(intent)
     CallOverlayManager.dismiss(this)
-    IncomingCallActivity.activeInstance?.finish()
+    try {
+      IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+    } catch (e: Exception) {
+      IncomingCallActivity.activeInstance?.finish()
+    }
     intent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
       JanSunwaiVoIPModule.pendingIncomingCallJson = it
     }

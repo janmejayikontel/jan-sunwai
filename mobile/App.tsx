@@ -167,17 +167,25 @@ export default function App() {
     userOverride?: UserProfile | null
   ) => {
     const target = overrideCall || incomingCall;
-    const user = userOverride || currentUser;
     if (!target) return;
 
     JanSunwaiVoIP?.stopRinging?.();
     JanSunwaiVoIP?.setInCall?.(true);
 
+    let user = userOverride || currentUser;
+    if (!user && (target.userPhone || target.phone)) {
+      user = {
+        phone: target.userPhone || target.phone,
+        name: target.userName || 'Citizen',
+        role: target.yourRole || 'citizen',
+      } as UserProfile;
+    }
+
     // If pre-fetched LiveKit token exists from IncomingCallActivity, enter room in 0ms!
     if (target.livekitToken && target.livekitRoomName) {
       console.log('[App] Entering meeting room immediately with pre-fetched LiveKit token');
       setActiveHearing({
-        serverUrl: target.livekitUrl || cleanServerUrl(serverUrl),
+        serverUrl: target.livekitUrl || cleanServerUrl(target.serverUrl || serverUrl),
         token: target.livekitToken,
         roomName: target.livekitRoomName,
         grievanceId: target.grievanceId,
@@ -196,8 +204,9 @@ export default function App() {
     }
 
     try {
-      const base = cleanServerUrl(serverUrl);
-      const res = await fetch(`${base}/api/calls/${target.callId}/respond`, {
+      const base = cleanServerUrl(target.serverUrl || serverUrl);
+      console.log(`[App] Accepting call ${target.callId} for ${user.phone} via ${base}...`);
+      const res = await fetch(`${base}/api/calls/${encodeURIComponent(target.callId)}/respond`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -207,6 +216,7 @@ export default function App() {
       });
 
       const data = await res.json();
+      console.log('[App] Accept response:', data);
 
       if (data.success && data.livekit) {
         setActiveHearing({
@@ -508,8 +518,8 @@ export default function App() {
     }
   };
 
-  // Splash screen while restoring session from storage
-  if (isRestoringSession) {
+  // Splash screen while restoring session from storage (unless active call was answered)
+  if (isRestoringSession && !activeHearing) {
     return (
       <View style={styles.splashContainer}>
         <View style={styles.splashEmblem}>

@@ -253,11 +253,29 @@ class JanSunwaiVoIPService : Service() {
                 dismissCall(callId)
                 stopRinging()
                 setInCallState(true)
+                CallOverlayManager.dismiss(applicationContext)
+                try {
+                    IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+                } catch (e: Exception) {
+                    IncomingCallActivity.activeInstance?.finish()
+                }
+                val updatedCallData = try {
+                    val raw = lastReceivedCallData ?: ""
+                    val j = if (raw.isNotEmpty()) JSONObject(raw) else JSONObject()
+                    j.put("autoAccept", true)
+                    if (callId != null) j.put("callId", callId)
+                    if (serverUrl.isNotEmpty()) j.put("serverUrl", serverUrl)
+                    if (userPhone.isNotEmpty()) j.put("userPhone", userPhone)
+                    j.toString()
+                } catch (e: Exception) {
+                    lastReceivedCallData
+                }
+                JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
                 // Launch MainActivity with accepted call data
                 val launchIntent = Intent(this, MainActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     putExtra("action", "accept_call")
-                    putExtra(EXTRA_CALL_DATA, lastReceivedCallData)
+                    putExtra(EXTRA_CALL_DATA, updatedCallData)
                 }
                 startActivity(launchIntent)
                 return START_STICKY

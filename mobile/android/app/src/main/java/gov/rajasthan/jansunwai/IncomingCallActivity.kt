@@ -393,14 +393,17 @@ class IncomingCallActivity : AppCompatActivity() {
     private fun onAcceptClicked() {
         Log.i(TAG, "User tapped ACCEPT on incoming call screen")
         isPulseActive = false
-        CallOverlayManager.dismiss(applicationContext)
 
-        // Stop ringing sound and vibration immediately and mark inCall
+        // 1. Immediately dismiss CallOverlay and stop ringing/vibration
+        CallOverlayManager.dismiss(applicationContext)
         JanSunwaiVoIPService.dismissCall(callId)
         JanSunwaiVoIPService.stopActiveRinging()
         JanSunwaiVoIPService.setInCallState(true)
 
-        // If serverUrl and userPhone are present, fetch LiveKit token immediately in background
+        // 2. Immediately launch MainActivity so user sees the meeting room right away
+        launchMainActivity("", "", "")
+
+        // 3. Post accept response to server in background thread as non-blocking confirmation
         if (callId.isNotEmpty() && serverUrl.isNotEmpty() && userPhone.isNotEmpty()) {
             Thread {
                 try {
@@ -416,28 +419,11 @@ class IncomingCallActivity : AppCompatActivity() {
                         .url(url)
                         .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
                         .build()
-                    val res = client.newCall(req).execute()
-                    val resBody = res.body?.string() ?: ""
-                    res.close()
-
-                    val resJson = JSONObject(resBody)
-                    val livekitObj = resJson.optJSONObject("livekit")
-                    val token = livekitObj?.optString("token", "") ?: ""
-                    val roomName = livekitObj?.optString("roomName", "") ?: ""
-                    val lkUrl = livekitObj?.optString("url", "") ?: ""
-
-                    handler.post {
-                        launchMainActivity(token, roomName, lkUrl)
-                    }
+                    client.newCall(req).execute().close()
                 } catch (e: Exception) {
-                    Log.w(TAG, "Error posting accept to server, using local fallback", e)
-                    handler.post {
-                        launchMainActivity("", "", "")
-                    }
+                    Log.w(TAG, "Background accept notify error", e)
                 }
             }.start()
-        } else {
-            launchMainActivity("", "", "")
         }
     }
 
@@ -446,6 +432,8 @@ class IncomingCallActivity : AppCompatActivity() {
             val j = if (callDataStr.isNotEmpty()) JSONObject(callDataStr) else JSONObject()
             j.put("autoAccept", true)
             j.put("callId", callId)
+            if (serverUrl.isNotEmpty()) j.put("serverUrl", serverUrl)
+            if (userPhone.isNotEmpty()) j.put("userPhone", userPhone)
             if (token.isNotEmpty()) j.put("livekitToken", token)
             if (roomName.isNotEmpty()) j.put("livekitRoomName", roomName)
             if (lkUrl.isNotEmpty()) j.put("livekitUrl", lkUrl)
@@ -463,7 +451,11 @@ class IncomingCallActivity : AppCompatActivity() {
         }
         CallOverlayManager.dismiss(applicationContext)
         startActivity(launchIntent)
-        finish()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            finishAndRemoveTask()
+        } else {
+            finish()
+        }
     }
 
     override fun onDestroy() {

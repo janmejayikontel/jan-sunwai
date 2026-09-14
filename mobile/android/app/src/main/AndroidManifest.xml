@@ -47,7 +47,6 @@
     <activity android:name=".CrashActivity" android:theme="@style/AppTheme" android:exported="false" android:process=":crash"/>
     <activity
       android:name=".IncomingCallActivity"
-      android:process=":voip"
       android:theme="@style/Theme.AppCompat.NoActionBar"
       android:showWhenLocked="true"
       android:turnScreenOn="true"
@@ -63,7 +62,6 @@
       android:exported="false" />
     <service
       android:name=".JanSunwaiVoIPService"
-      android:process=":voip"
       android:foregroundServiceType="phoneCall|specialUse"
       android:stopWithTask="false"
       android:exported="false">
@@ -73,7 +71,6 @@
     </service>
     <receiver
       android:name=".BootReceiver"
-      android:process=":voip"
       android:enabled="true"
       android:exported="true">
       <intent-filter>
@@ -85,7 +82,6 @@
     </receiver>
     <receiver
       android:name=".VoIPRestartReceiver"
-      android:process=":voip"
       android:enabled="true"
       android:exported="false">
       <intent-filter>
