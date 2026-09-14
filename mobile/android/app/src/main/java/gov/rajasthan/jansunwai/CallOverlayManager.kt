@@ -67,6 +67,13 @@ object CallOverlayManager {
                 }
 
                 val grievanceId = json.optString("grievanceId", "Hearing")
+                val effectiveCallId = if (callId.isNotEmpty() && callId != "undefined" && callId != "null") {
+                    callId
+                } else {
+                    val fromJson = json.optString("callId", "")
+                    if (fromJson.isNotEmpty() && fromJson != "undefined" && fromJson != "null") fromJson else grievanceId
+                }
+
                 val callerName = json.optString("callerName", "District Collector")
                 val callerDesig = json.optString("callerDesignation", "Presiding Officer")
                 val title = json.optString("title", "Jan Sunwai Video Hearing")
@@ -287,19 +294,21 @@ object CallOverlayManager {
                         JanSunwaiVoIPService.dismissCall(callId)
                         JanSunwaiVoIPService.stopActiveRinging()
 
-                        if (callId.isNotEmpty() && serverUrl.isNotEmpty() && userPhone.isNotEmpty()) {
+                        if (effectiveCallId.isNotEmpty() && serverUrl.isNotEmpty() && userPhone.isNotEmpty()) {
                             Thread {
                                 try {
                                     val cleanBase = serverUrl.trim().trimEnd('/')
-                                    val url = "${cleanBase}/api/calls/${callId}/respond"
+                                    val url = "${cleanBase}/api/calls/${effectiveCallId}/respond"
                                     val body = JSONObject().apply {
                                         put("phone", userPhone)
                                         put("action", "decline")
+                                        put("callId", effectiveCallId)
                                     }.toString()
 
                                     val client = OkHttpClient()
                                     val req = Request.Builder()
                                         .url(url)
+                                        .addHeader("Bypass-Tunnel-Reminder", "true")
                                         .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
                                         .build()
                                     client.newCall(req).execute().close()
@@ -336,7 +345,7 @@ object CallOverlayManager {
                         dismiss(context)
                         IncomingCallActivity.activeInstance?.finish()
 
-                        JanSunwaiVoIPService.dismissCall(callId)
+                        JanSunwaiVoIPService.dismissCall(effectiveCallId)
                         JanSunwaiVoIPService.stopActiveRinging()
                         JanSunwaiVoIPService.setInCallState(true)
 
@@ -344,7 +353,7 @@ object CallOverlayManager {
                         val updatedCallData = try {
                             val j = if (callJsonString.isNotEmpty()) JSONObject(callJsonString) else JSONObject()
                             j.put("autoAccept", true)
-                            j.put("callId", callId)
+                            j.put("callId", effectiveCallId)
                             if (serverUrl.isNotEmpty()) j.put("serverUrl", serverUrl)
                             if (userPhone.isNotEmpty()) j.put("userPhone", userPhone)
                             j.toString()

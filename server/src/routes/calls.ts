@@ -190,16 +190,16 @@ router.post('/initiate', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/calls/:id/respond
+ * POST /api/calls/:id/respond and POST /api/calls/respond
  *
  * Participant responds to an incoming call (accept or decline).
  * On accept, returns the LiveKit token to join the video room.
  *
- * Body: { phone: "+919876543210", action: "accept" | "decline" }
+ * Body: { phone: "+919876543210", action: "accept" | "decline", grievanceId?: string, roomName?: string, callId?: string }
  */
-router.post('/:id/respond', async (req: Request, res: Response) => {
+const handleCallResponse = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { phone, action } = req.body;
+  const { phone, action, grievanceId, roomName, callId } = req.body;
 
   if (!phone || !action || !['accept', 'decline'].includes(action)) {
     res.status(400).json({
@@ -209,8 +209,12 @@ router.post('/:id/respond', async (req: Request, res: Response) => {
     return;
   }
 
+  const effectiveId = (id && id !== 'respond' && id !== 'undefined' && id !== 'null')
+    ? id
+    : (callId || grievanceId || '');
+
   try {
-    const result = await callManager.respondToCall(id, phone, action);
+    const result = await callManager.respondToCall(effectiveId, phone, action, grievanceId, roomName);
 
     if (action === 'accept' && result) {
       res.json({
@@ -234,7 +238,10 @@ router.post('/:id/respond', async (req: Request, res: Response) => {
     console.error('[Calls] Error responding to call:', error);
     res.status(500).json({ error: 'Failed to process call response' });
   }
-});
+};
+
+router.post('/respond', handleCallResponse);
+router.post('/:id/respond', handleCallResponse);
 
 /**
  * POST /api/calls/:id/add-officer

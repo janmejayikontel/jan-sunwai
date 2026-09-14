@@ -100,11 +100,12 @@ class IncomingCallActivity : AppCompatActivity() {
             JSONObject()
         }
 
-        if (callId.isEmpty()) {
-            callId = json.optString("callId", "")
+        val grievanceId = json.optString("grievanceId", "Hearing")
+        if (callId.isEmpty() || callId == "undefined" || callId == "null") {
+            val fromJson = json.optString("callId", "")
+            callId = if (fromJson.isNotEmpty() && fromJson != "undefined" && fromJson != "null") fromJson else grievanceId
         }
 
-        val grievanceId = json.optString("grievanceId", "Hearing")
         val callerName = json.optString("callerName", "District Collector")
         val callerDesig = json.optString("callerDesignation", "Presiding Officer")
         val title = json.optString("title", "Jan Sunwai Video Hearing")
@@ -372,11 +373,13 @@ class IncomingCallActivity : AppCompatActivity() {
                     val body = JSONObject().apply {
                         put("phone", userPhone)
                         put("action", "decline")
+                        put("callId", callId)
                     }.toString()
 
                     val client = OkHttpClient()
                     val req = Request.Builder()
                         .url(url)
+                        .addHeader("Bypass-Tunnel-Reminder", "true")
                         .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
                         .build()
                     client.newCall(req).execute().close()
@@ -412,11 +415,13 @@ class IncomingCallActivity : AppCompatActivity() {
                     val body = JSONObject().apply {
                         put("phone", userPhone)
                         put("action", "accept")
+                        put("callId", callId)
                     }.toString()
 
                     val client = OkHttpClient()
                     val req = Request.Builder()
                         .url(url)
+                        .addHeader("Bypass-Tunnel-Reminder", "true")
                         .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
                         .build()
                     client.newCall(req).execute().close()

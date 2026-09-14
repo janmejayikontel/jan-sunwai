@@ -226,8 +226,17 @@ export default function App() {
 
     try {
       const base = cleanServerUrl(target.serverUrl || serverUrl);
-      console.log(`[App] Accepting call ${target.callId} for ${user.phone} via ${base}...`);
-      const res = await fetch(`${base}/api/calls/${encodeURIComponent(target.callId)}/respond`, {
+      const rawId = (target.callId || '').toString().trim();
+      const effectiveCallId = (rawId && rawId !== 'undefined' && rawId !== 'null')
+        ? rawId
+        : (target.grievanceId || target.id || target.roomName || 'respond');
+
+      console.log(`[App] Accepting call ${effectiveCallId} for ${user.phone} via ${base}...`);
+      const endpoint = effectiveCallId === 'respond'
+        ? `${base}/api/calls/respond`
+        : `${base}/api/calls/${encodeURIComponent(effectiveCallId)}/respond`;
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -236,10 +245,21 @@ export default function App() {
         body: JSON.stringify({
           phone: user.phone,
           action: 'accept',
+          callId: rawId && rawId !== 'undefined' ? rawId : undefined,
+          grievanceId: target.grievanceId,
+          roomName: target.roomName || target.livekitRoomName,
         }),
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        console.warn('[App] Non-JSON response received:', rawText.slice(0, 150));
+        throw new Error('Hearing call session ended or unavailable.');
+      }
+
       console.log('[App] Accept response:', data);
 
       if (data.success && data.livekit) {
@@ -250,7 +270,7 @@ export default function App() {
           grievanceId: target.grievanceId,
           userName: user.name || `User (${user.phone.slice(-4)})`,
           role: user.role || 'citizen',
-          callId: target.callId,
+          callId: target.callId || effectiveCallId,
         });
       } else {
         Alert.alert('Unable to Join', data.error || 'Failed to accept call session.');

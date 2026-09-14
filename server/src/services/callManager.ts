@@ -15,7 +15,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { WebSocket } from 'ws';
 import livekitService from './livekit';
-import db from '../db/database';
+import db, { lookupUserByPhone } from '../db/database';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -384,18 +384,30 @@ export async function initiateCall(input: InitiateCallInput): Promise<{
 export async function respondToCall(
   callId: string,
   phone: string,
-  action: 'accept' | 'decline'
+  action: 'accept' | 'decline',
+  grievanceIdHint?: string,
+  roomNameHint?: string
 ): Promise<{ token?: string; livekitUrl?: string; roomName?: string } | null> {
-  let call = activeCalls.get(callId);
+  const raw = (callId || '').trim();
+  const clean = raw.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+  const rawGrievance = (grievanceIdHint || '').trim().toUpperCase();
+  const rawRoom = (roomNameHint || '').trim();
+
+  let call: CallSession | undefined = undefined;
+
+  // 1. Direct ID lookup
+  if (raw && raw !== 'undefined' && raw !== 'null') {
+    call = activeCalls.get(raw);
+  }
+
+  // 2. Lookup by grievanceId or roomName match
   if (!call) {
-    const raw = (callId || '').trim();
-    const clean = raw.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
     for (const c of activeCalls.values()) {
       if (
         c.id === raw ||
-        c.grievanceId.toUpperCase() === clean ||
-        c.grievanceId.toUpperCase() === raw.toUpperCase() ||
-        c.livekitRoomName === raw ||
+        (clean && clean !== 'UNDEFINED' && c.grievanceId.toUpperCase() === clean) ||
+        (rawGrievance && c.grievanceId.toUpperCase() === rawGrievance) ||
+        (rawRoom && c.livekitRoomName === rawRoom) ||
         c.livekitRoomName === `JS-${clean}`
       ) {
         call = c;
@@ -403,23 +415,82 @@ export async function respondToCall(
       }
     }
   }
-  if (!call && activeCalls.size === 1) {
-    call = Array.from(activeCalls.values())[0];
+
+  // 3. Fallback: Search any call containing this participant's phone
+  if (!call && phone) {
+    for (const c of activeCalls.values()) {
+      const match = c.participants.some((p) => matchPhone(p.phone, phone));
+      if (match && c.status !== 'completed') {
+        call = c;
+        break;
+      }
+    }
   }
+
+  // 4. Fallback: If only 1 call in activeCalls (even if multiple exist, pick the most recent non-completed call)
   if (!call) {
-    console.log(`[CallManager] Call not found: ${callId}`);
+    const nonCompleted = Array.from(activeCalls.values()).filter((c) => c.status !== 'completed');
+    if (nonCompleted.length > 0) {
+      call = nonCompleted[nonCompleted.length - 1];
+    } else if (activeCalls.size > 0) {
+      // Pick the newest call session
+      call = Array.from(activeCalls.values())[activeCalls.size - 1];
+    }
+  }
+
+  if (!call) {
+    console.log(`[CallManager] Call not found for ID "${callId}", grievance "${grievanceIdHint}", phone "${phone}"`);
     return null;
   }
 
-  const participant = call.participants.find((p) => matchPhone(p.phone, phone));
+  // Find participant
+  let participant = call.participants.find((p) => matchPhone(p.phone, phone));
+
+  // If participant not found in call, auto-admit registered user from SQLite DB
+  if (!participant && phone) {
+    try {
+      const dbUser = lookupUserByPhone(phone);
+      const userName = dbUser?.name || `Citizen (${phone.slice(-4)})`;
+      const userRole = (dbUser?.role as ParticipantRole) || 'citizen';
+      participant = {
+        id: dbUser?.id || phone,
+        userId: dbUser?.id,
+        phone,
+        name: userName,
+        role: userRole,
+        designation: dbUser?.designation,
+        department: dbUser?.department,
+        ringStatus: 'ringing',
+        ringStartedAt: new Date(),
+      };
+      call.participants.push(participant);
+      console.log(`[CallManager] Auto-admitted user ${userName} (${phone}) to call ${call.id}`);
+    } catch (dbErr) {
+      console.warn(`[CallManager] Error auto-admitting user by phone:`, dbErr);
+    }
+  }
+
   if (!participant) {
-    console.log(`[CallManager] Participant ${phone} not in call ${callId}`);
+    console.log(`[CallManager] Participant ${phone} not in call ${call.id}`);
     return null;
   }
 
   if (action === 'accept') {
     participant.ringStatus = 'accepted';
     participant.answeredAt = new Date();
+
+    // Revive call status if it was ringing or timed-out/missed
+    if (call.status === 'ringing' || call.status === 'missed') {
+      call.status = 'active';
+      if (!call.startedAt) call.startedAt = new Date();
+    }
+
+    // Clear ring timeout
+    const timeout = ringTimeouts.get(call.id);
+    if (timeout) {
+      clearTimeout(timeout);
+      ringTimeouts.delete(call.id);
+    }
 
     // Generate LiveKit token for this participant
     const token = await livekitService.generateToken({
@@ -432,32 +503,16 @@ export async function respondToCall(
     // Broadcast acceptance to all connected participants
     sendToClient(phone, {
       type: 'call_accepted',
-      callId,
+      callId: call.id,
       data: { participantName: participant.name, role: participant.role },
     });
 
-    // Check if call should transition to active
-    const allRinging = call.participants.filter((p) => p.ringStatus === 'ringing');
-    if (allRinging.length === 0 && call.status === 'ringing') {
-      call.status = 'active';
-      call.startedAt = new Date();
-
-      // Clear ring timeout
-      const timeout = ringTimeouts.get(callId);
-      if (timeout) {
-        clearTimeout(timeout);
-        ringTimeouts.delete(callId);
-      }
-
-      // Start recording if auto-record is enabled
-      if (call.autoRecord) {
-        call.egressId = (await livekitService.startRecording(call.livekitRoomName, call.grievanceId)) ?? undefined;
-      }
-
-      console.log(`[CallManager] Call is now active: ${callId}`);
+    // Start recording if auto-record is enabled
+    if (call.autoRecord && !call.egressId) {
+      call.egressId = (await livekitService.startRecording(call.livekitRoomName, call.grievanceId)) ?? undefined;
     }
 
-    console.log(`[CallManager] ${participant.name} accepted call ${callId}`);
+    console.log(`[CallManager] ${participant.name} accepted call ${call.id} (room: ${call.livekitRoomName})`);
     return {
       token,
       livekitUrl: livekitService.getLiveKitUrl(),
@@ -469,11 +524,11 @@ export async function respondToCall(
 
     sendToClient(phone, {
       type: 'call_declined',
-      callId,
+      callId: call.id,
       data: { participantName: participant.name, role: participant.role },
     });
 
-    console.log(`[CallManager] ${participant.name} declined call ${callId}`);
+    console.log(`[CallManager] ${participant.name} declined call ${call.id}`);
     return null;
   }
 }
