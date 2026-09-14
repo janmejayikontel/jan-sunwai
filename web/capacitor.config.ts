@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'Jan Sunwai',
   webDir: 'public',
   server: {
-    url: 'https://display-filename-rapids-alberta.trycloudflare.com',
+    url: 'https://eighty-lions-switch.loca.lt',
     cleartext: true,
     androidScheme: 'https',
   },

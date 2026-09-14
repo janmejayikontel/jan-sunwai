@@ -39,8 +39,13 @@ import { initializeDatabase } from './db/database';
 // Services
 import callManager from './services/callManager';
 
-// Initialize SQLite Database
-initializeDatabase();
+// Initialize SQLite Database (async — sql.js requires WASM init)
+initializeDatabase().then(() => {
+  console.log('[Server] SQLite database ready.');
+}).catch((err) => {
+  console.error('[Server] FATAL: Failed to initialize database:', err);
+  process.exit(1);
+});
 
 // ─── Configuration ────────────────────────────────────────────
 
