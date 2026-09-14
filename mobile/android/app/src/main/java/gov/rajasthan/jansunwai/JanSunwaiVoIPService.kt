@@ -458,7 +458,10 @@ class JanSunwaiVoIPService : Service() {
                     .connectTimeout(3, TimeUnit.SECONDS)
                     .readTimeout(3, TimeUnit.SECONDS)
                     .build()
-                val req = Request.Builder().url(checkUrl).build()
+                val req = Request.Builder()
+                    .url(checkUrl)
+                    .addHeader("Bypass-Tunnel-Reminder", "true")
+                    .build()
                 val res = client.newCall(req).execute()
                 if (res.isSuccessful) {
                     val body = res.body?.string() ?: ""

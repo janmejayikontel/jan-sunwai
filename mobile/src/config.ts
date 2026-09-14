@@ -10,7 +10,7 @@
 
 import { Platform } from 'react-native';
 
-export const DEFAULT_SERVER_URL = 'https://infrastructure-campus-theft-factor.trycloudflare.com';
+export const DEFAULT_SERVER_URL = 'https://jansunwai-rajasthan.loca.lt';
 
 
 export const CONFIG = {

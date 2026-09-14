@@ -48,6 +48,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
+  React.useEffect(() => {
+    // Dynamically fetch live server endpoint from GitHub raw config
+    fetch('https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt')
+      .then((res) => res.text())
+      .then((txt) => {
+        const clean = txt.trim();
+        if (clean.startsWith('http')) {
+          console.log('[LoginScreen] Fetched remote live server URL:', clean);
+          setServerBase(clean);
+        }
+      })
+      .catch((e) => console.log('[LoginScreen] Using default server URL:', e.message));
+  }, []);
+
   // Step 1: Request OTP
   const handleSendOtp = async () => {
     const cleanPhone = phone.trim().replace(/\D/g, '');
@@ -64,7 +78,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       const url = `${cleanServerUrl(serverBase)}/api/auth/otp/send`;
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Bypass-Tunnel-Reminder': 'true',
+        },
         body: JSON.stringify({ phone: cleanPhone }),
       });
 
@@ -116,7 +133,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       const url = `${cleanServerUrl(serverBase)}/api/auth/otp/verify`;
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Bypass-Tunnel-Reminder': 'true',
+        },
         body: JSON.stringify({
           phone: cleanPhone,
           otp: cleanOtp,
@@ -241,7 +261,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <View style={styles.quickUrlRow}>
                       <TouchableOpacity
                         style={styles.quickUrlBtn}
-                        onPress={() => setServerBase('https://dressing-then-easier-wedding.trycloudflare.com')}
+                        onPress={() => setServerBase('https://jansunwai-rajasthan.loca.lt')}
+                      >
+                        <Text style={styles.quickUrlBtnText}>🏛️ Public Tunnel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.quickUrlBtn}
+                        onPress={() => setServerBase('https://infrastructure-campus-theft-factor.trycloudflare.com')}
                       >
                         <Text style={styles.quickUrlBtnText}>☁️ Cloudflare</Text>
                       </TouchableOpacity>
@@ -249,13 +275,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                         style={styles.quickUrlBtn}
                         onPress={() => setServerBase('http://192.168.1.9:8080')}
                       >
-                        <Text style={styles.quickUrlBtnText}>📶 Wi-Fi (8080)</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.quickUrlBtn}
-                        onPress={() => setServerBase('http://192.168.1.9:3000')}
-                      >
-                        <Text style={styles.quickUrlBtnText}>💻 Wi-Fi (3000)</Text>
+                        <Text style={styles.quickUrlBtnText}>📶 Wi-Fi</Text>
                       </TouchableOpacity>
                     </View>
                   </View>

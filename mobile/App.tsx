@@ -73,16 +73,35 @@ export default function App() {
   useEffect(() => {
     const restoreSavedSession = async () => {
       try {
+        let activeSrv = DEFAULT_SERVER_URL;
+        try {
+          const liveRes = await fetch('https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt');
+          const liveTxt = (await liveRes.text()).trim();
+          if (liveTxt.startsWith('http')) {
+            console.log('[App] Fetched live server URL from GitHub:', liveTxt);
+            activeSrv = liveTxt;
+          }
+        } catch (e) {
+          // ignore
+        }
+
         const saved = await AsyncStorage.getItem(STORAGE_SESSION_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
           if (parsed?.user?.phone) {
             console.log('[App/Session] Restored saved login for:', parsed.user.name, parsed.user.phone);
             setCurrentUser(parsed.user);
-            const targetSrv = parsed.serverUrl || DEFAULT_SERVER_URL;
-            if (parsed.serverUrl) {
-              setServerUrl(parsed.serverUrl);
+            let targetSrv = parsed.serverUrl || activeSrv;
+            // Automatically upgrade away from stale/blocked tunnels
+            if (targetSrv.includes('trycloudflare.com') || targetSrv.includes('lhr.life')) {
+              targetSrv = activeSrv;
             }
+            setServerUrl(targetSrv);
+            AsyncStorage.setItem(
+              STORAGE_SESSION_KEY,
+              JSON.stringify({ user: parsed.user, serverUrl: targetSrv })
+            ).catch(() => {});
+
             // Ensure native background VoIP service is active for this phone
             JanSunwaiVoIP?.startService?.(parsed.user.phone, cleanServerUrl(targetSrv));
 
@@ -93,6 +112,8 @@ export default function App() {
               handleAcceptIncomingCall(pCall, parsed.user);
             }
           }
+        } else {
+          setServerUrl(activeSrv);
         }
       } catch (e) {
         console.warn('[App/Session] Failed to restore session from AsyncStorage:', e);
@@ -208,7 +229,10 @@ export default function App() {
       console.log(`[App] Accepting call ${target.callId} for ${user.phone} via ${base}...`);
       const res = await fetch(`${base}/api/calls/${encodeURIComponent(target.callId)}/respond`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Bypass-Tunnel-Reminder': 'true',
+        },
         body: JSON.stringify({
           phone: user.phone,
           action: 'accept',
@@ -450,7 +474,9 @@ export default function App() {
       if (!isSubscribed || activeHearing) return;
       try {
         const checkUrl = `${base}/api/calls/check-incoming/${encodeURIComponent(currentUser.phone)}`;
-        const res = await fetch(checkUrl);
+        const res = await fetch(checkUrl, {
+          headers: { 'Bypass-Tunnel-Reminder': 'true' },
+        });
         if (res.ok) {
           const data = await res.json();
           if (data.hasIncomingCall && data.incomingCall) {

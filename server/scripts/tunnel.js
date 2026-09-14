@@ -2,7 +2,7 @@ const localtunnel = require('localtunnel');
 
 async function startTunnel() {
   try {
-    const tunnel = await localtunnel({ port: 8080 });
+    const tunnel = await localtunnel({ port: 8080, subdomain: 'jansunwai-rajasthan' });
     console.log('[Tunnel] Public URL:', tunnel.url);
 
     tunnel.on('close', () => {
