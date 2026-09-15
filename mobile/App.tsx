@@ -92,8 +92,8 @@ export default function App() {
             console.log('[App/Session] Restored saved login for:', parsed.user.name, parsed.user.phone);
             setCurrentUser(parsed.user);
             let targetSrv = parsed.serverUrl || activeSrv;
-            // Automatically upgrade away from stale/blocked tunnels
-            if (targetSrv.includes('trycloudflare.com') || targetSrv.includes('lhr.life')) {
+            // Always prioritize the latest active server URL from server-url.txt
+            if (activeSrv && activeSrv.startsWith('http')) {
               targetSrv = activeSrv;
             }
             setServerUrl(targetSrv);
