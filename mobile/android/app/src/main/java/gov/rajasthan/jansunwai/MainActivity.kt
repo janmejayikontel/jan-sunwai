@@ -40,6 +40,12 @@ class MainActivity : ReactActivity() {
 
     intent?.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
       JanSunwaiVoIPModule.pendingIncomingCallJson = it
+      try {
+        val prefs = getSharedPreferences("jansunwai_voip_prefs", android.content.Context.MODE_PRIVATE)
+        prefs.edit().putString("pending_accepted_call", it).commit()
+      } catch (e: Exception) {
+        // ignore
+      }
     }
   }
 
@@ -54,6 +60,12 @@ class MainActivity : ReactActivity() {
     }
     intent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
       JanSunwaiVoIPModule.pendingIncomingCallJson = it
+      try {
+        val prefs = getSharedPreferences("jansunwai_voip_prefs", android.content.Context.MODE_PRIVATE)
+        prefs.edit().putString("pending_accepted_call", it).commit()
+      } catch (e: Exception) {
+        // ignore
+      }
     }
   }
 

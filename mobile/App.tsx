@@ -194,6 +194,20 @@ export default function App() {
     JanSunwaiVoIP?.setInCall?.(true);
 
     let user = userOverride || currentUser;
+    if (!user) {
+      try {
+        const saved = await AsyncStorage.getItem(STORAGE_SESSION_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.user) {
+            user = parsed.user;
+            setCurrentUser(parsed.user);
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
     if (!user && (target.userPhone || target.phone)) {
       user = {
         phone: target.userPhone || target.phone,
@@ -369,12 +383,14 @@ export default function App() {
           if (data?.callId || data?.grievanceId) {
             const checkId = data.callId || '';
             const checkGrievance = data.grievanceId || '';
-            if (
-              (checkId && dismissedCallIdsRef.current.has(checkId)) ||
-              (checkGrievance && dismissedCallIdsRef.current.has(checkGrievance))
-            ) {
-              console.log('[App] Ignoring call previously left/dismissed:', checkId, checkGrievance);
-              return;
+            if (!data.autoAccept) {
+              if (
+                (checkId && dismissedCallIdsRef.current.has(checkId)) ||
+                (checkGrievance && dismissedCallIdsRef.current.has(checkGrievance))
+              ) {
+                console.log('[App] Ignoring call previously left/dismissed:', checkId, checkGrievance);
+                return;
+              }
             }
             if (data.autoAccept) {
               handleAcceptIncomingCall(data, currentUser);

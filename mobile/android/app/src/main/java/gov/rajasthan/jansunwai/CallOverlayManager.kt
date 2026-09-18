@@ -345,7 +345,6 @@ object CallOverlayManager {
                         dismiss(context)
                         IncomingCallActivity.activeInstance?.finish()
 
-                        JanSunwaiVoIPService.dismissCall(effectiveCallId)
                         JanSunwaiVoIPService.stopActiveRinging()
                         JanSunwaiVoIPService.setInCallState(true)
 

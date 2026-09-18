@@ -25,11 +25,13 @@ export interface UserProfile {
   id: string;
   phone: string;
   name: string;
-  role: 'officer' | 'employee' | 'citizen' | 'admin';
+  role: 'officer' | 'call_center' | 'citizen' | 'admin' | 'employee';
   designation?: string;
   department?: string;
   district?: string;
   employeeCode?: string;
+  deskNumber?: string;
+  shift?: string;
 }
 
 // ─── Mock OTP Store (Development) ─────────────────────────────
@@ -41,8 +43,11 @@ const otpStore = new Map<string, { otp: string; expiresAt: number }>();
 const DEV_OTP = '987654';
 
 /**
- * Look up user profile dynamically from SQLite database (officers, employees, citizens).
- * Automatically detects whether the number belongs to a Collector, SDM, Engineer, Employee, or Citizen.
+ * Look up user profile dynamically from SQLite database across the 4 personas:
+ * 1. Admin (Super Administrator)
+ * 2. Officer (District Collector, DM, SDM, SP, Magistrate)
+ * 3. Call Centre Representative (181 Sampark Helpdesk)
+ * 4. Citizen (Registered Complainant)
  */
 export function getUserProfileByPhone(phone: string): UserProfile | null {
   const dbUser = lookupUserByPhone(phone);
@@ -56,6 +61,8 @@ export function getUserProfileByPhone(phone: string): UserProfile | null {
       department: dbUser.department,
       district: dbUser.district,
       employeeCode: dbUser.employeeCode,
+      deskNumber: dbUser.deskNumber,
+      shift: dbUser.shift,
     };
   }
   return null;
@@ -204,18 +211,51 @@ router.post('/otp/verify', (req: Request, res: Response) => {
   let user: UserProfile | null = getUserProfileByPhone(normalizedPhone);
 
   if (!user) {
-    const assignedRole = requestedRole === 'employee' ? 'employee' : requestedRole === 'officer' ? 'officer' : 'citizen';
-    const assignedName = name || (assignedRole === 'citizen' ? `Citizen (${normalizedPhone.slice(-4)})` : `Officer (${normalizedPhone.slice(-4)})`);
-    const newId = `cit-${Date.now()}`;
+    const assignedRole: 'citizen' | 'call_center' | 'officer' | 'admin' =
+      requestedRole === 'admin'
+        ? 'admin'
+        : requestedRole === 'call_center' || requestedRole === 'employee'
+        ? 'call_center'
+        : requestedRole === 'officer'
+        ? 'officer'
+        : 'citizen';
 
-    // Automatically persist newly registered citizen into SQLite database!
+    const defaultDesig =
+      assignedRole === 'admin'
+        ? 'System Administrator'
+        : assignedRole === 'call_center'
+        ? 'Call Centre Representative'
+        : assignedRole === 'officer'
+        ? 'Hearing Officer'
+        : 'Citizen Complainant';
+
+    const assignedName =
+      name ||
+      (assignedRole === 'citizen'
+        ? `Citizen (${normalizedPhone.slice(-4)})`
+        : assignedRole === 'call_center'
+        ? `Agent (${normalizedPhone.slice(-4)})`
+        : assignedRole === 'admin'
+        ? `Admin (${normalizedPhone.slice(-4)})`
+        : `Officer (${normalizedPhone.slice(-4)})`);
+
+    const newId = `${assignedRole.slice(0, 3)}-${Date.now()}`;
+
+    // Automatically persist newly registered user into SQLite database!
     try {
-      db.prepare(`
-        INSERT OR IGNORE INTO citizens (id, name, phone, village, district, tehsil)
-        VALUES (?, ?, ?, 'Jaipur', 'Rajasthan', 'Jaipur')
-      `).run(newId, assignedName, normalizedPhone);
+      if (assignedRole === 'citizen') {
+        db.prepare(`
+          INSERT OR IGNORE INTO citizens (id, name, phone, village, district, tehsil)
+          VALUES (?, ?, ?, 'Jaipur', 'Rajasthan', 'Jaipur')
+        `).run(newId, assignedName, normalizedPhone);
+      } else if (assignedRole === 'call_center') {
+        db.prepare(`
+          INSERT OR IGNORE INTO call_center_reps (id, name, phone, designation, department, desk_number, shift)
+          VALUES (?, ?, ?, ?, '181 Rajasthan Sampark Call Centre', 'DESK-AUTO', 'General')
+        `).run(newId, assignedName, normalizedPhone, defaultDesig);
+      }
     } catch (e) {
-      console.error('[Auth] Error inserting new citizen into SQLite:', e);
+      console.error('[Auth] Error inserting new user into SQLite:', e);
     }
 
     user = {
@@ -223,7 +263,7 @@ router.post('/otp/verify', (req: Request, res: Response) => {
       phone: normalizedPhone,
       name: assignedName,
       role: assignedRole,
-      designation: assignedRole === 'citizen' ? 'Citizen' : 'Field Officer',
+      designation: defaultDesig,
       district: 'Rajasthan',
     };
   }

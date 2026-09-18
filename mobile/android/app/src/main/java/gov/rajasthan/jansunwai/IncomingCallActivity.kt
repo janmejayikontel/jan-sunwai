@@ -399,7 +399,6 @@ class IncomingCallActivity : AppCompatActivity() {
 
         // 1. Immediately dismiss CallOverlay and stop ringing/vibration
         CallOverlayManager.dismiss(applicationContext)
-        JanSunwaiVoIPService.dismissCall(callId)
         JanSunwaiVoIPService.stopActiveRinging()
         JanSunwaiVoIPService.setInCallState(true)
 

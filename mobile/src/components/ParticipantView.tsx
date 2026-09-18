@@ -76,6 +76,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#020617',
     borderWidth: 1.5,
     borderColor: '#059669',
+    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   localShareOverlay: {
     position: 'absolute',

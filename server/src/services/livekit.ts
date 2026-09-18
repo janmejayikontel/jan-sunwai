@@ -102,7 +102,7 @@ export async function generateToken(options: TokenOptions): Promise<string> {
 export interface CreateRoomOptions {
   /** Unique room name (e.g. "JS-RAJ-2024-88421") */
   name: string;
-  /** Max participants allowed (default: 10 for multi-party hearings) */
+  /** Max participants allowed (default: 1500 for massive 1000+ person hearing sessions) */
   maxParticipants?: number;
   /** Seconds to keep room alive after last participant leaves (default: 300) */
   emptyTimeout?: number;
@@ -111,12 +111,10 @@ export interface CreateRoomOptions {
 /**
  * Create a new LiveKit room for a Jan Sunwai hearing session.
  *
- * Note: Per LiveKit docs, rooms are also auto-created when the first
- * participant connects with a valid token. Explicit creation lets us
- * set room constraints (max participants, empty timeout) upfront.
+ * Configured with capacity for 1500 participants (comfortably supporting 1000+).
  */
 export async function createRoom(options: CreateRoomOptions) {
-  const { name, maxParticipants = 10, emptyTimeout = 300 } = options;
+  const { name, maxParticipants = 1500, emptyTimeout = 300 } = options;
 
   const room = await roomService.createRoom({
     name,
@@ -124,7 +122,7 @@ export async function createRoom(options: CreateRoomOptions) {
     emptyTimeout,
   });
 
-  console.log(`[LiveKit] Room created: ${name}`);
+  console.log(`[LiveKit] Room created: ${name} (capacity: ${maxParticipants})`);
   return room;
 }
 
@@ -140,11 +138,6 @@ export async function listParticipants(roomName: string) {
 /**
  * Mute a specific participant's published audio/video track.
  * Used by the host officer to moderate the hearing.
- *
- * @param roomName - The room containing the participant
- * @param identity - The participant's identity string (phone number)
- * @param trackSid - The SID of the specific track to mute
- * @param muted - true to mute, false to unmute
  */
 export async function muteParticipantTrack(
   roomName: string,
@@ -154,6 +147,108 @@ export async function muteParticipantTrack(
 ) {
   await roomService.mutePublishedTrack(roomName, identity, trackSid, muted);
   console.log(`[LiveKit] ${muted ? 'Muted' : 'Unmuted'} track ${trackSid} for ${identity} in ${roomName}`);
+}
+
+/**
+ * Mute participant's microphone (Officer/Magistrate Moderation)
+ */
+export async function muteParticipantAudio(roomName: string, identity: string, muted: boolean = true) {
+  try {
+    const p = await roomService.getParticipant(roomName, identity);
+    let count = 0;
+    for (const track of p.tracks) {
+      if (track.type === 0 || track.source === TrackSource.MICROPHONE) {
+        await roomService.mutePublishedTrack(roomName, identity, track.sid, muted);
+        count++;
+      }
+    }
+    console.log(`[LiveKit] ${muted ? 'Muted' : 'Unmuted'} audio for ${identity} in ${roomName} (${count} tracks)`);
+    return true;
+  } catch (err) {
+    console.warn(`[LiveKit] Failed to mute audio for ${identity}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Disable a participant's video (Officer/Magistrate Moderation)
+ */
+export async function muteParticipantVideo(roomName: string, identity: string, muted: boolean = true) {
+  try {
+    const p = await roomService.getParticipant(roomName, identity);
+    let count = 0;
+    for (const track of p.tracks) {
+      if (track.type === 1 || track.source === TrackSource.CAMERA || track.source === TrackSource.SCREEN_SHARE) {
+        await roomService.mutePublishedTrack(roomName, identity, track.sid, muted);
+        count++;
+      }
+    }
+    console.log(`[LiveKit] ${muted ? 'Disabled' : 'Enabled'} video for ${identity} in ${roomName} (${count} tracks)`);
+    return true;
+  } catch (err) {
+    console.warn(`[LiveKit] Failed to mute video for ${identity}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Mute all remote participants' microphones in a room (excluding the officer host)
+ */
+export async function muteAllParticipantsAudio(roomName: string, excludeIdentity?: string): Promise<number> {
+  try {
+    const participants = await roomService.listParticipants(roomName);
+    let count = 0;
+    for (const p of participants) {
+      if (excludeIdentity && (p.identity === excludeIdentity || p.identity.includes(excludeIdentity))) {
+        continue;
+      }
+      for (const track of p.tracks) {
+        if (track.type === 0 || track.source === TrackSource.MICROPHONE) {
+          try {
+            await roomService.mutePublishedTrack(roomName, p.identity, track.sid, true);
+            count++;
+          } catch (e) {
+            console.warn(`[LiveKit] Failed to mute track for ${p.identity}:`, e);
+          }
+        }
+      }
+    }
+    console.log(`[LiveKit] Muted all participants audio in ${roomName} (${count} tracks)`);
+    return count;
+  } catch (err) {
+    console.warn(`[LiveKit] Failed to mute all participants in ${roomName}:`, err);
+    return 0;
+  }
+}
+
+/**
+ * Disable all remote participants' cameras in a room (excluding the officer host)
+ */
+export async function disableAllParticipantsVideo(roomName: string, excludeIdentity?: string): Promise<number> {
+  try {
+    const participants = await roomService.listParticipants(roomName);
+    let count = 0;
+    for (const p of participants) {
+      if (excludeIdentity && (p.identity === excludeIdentity || p.identity.includes(excludeIdentity))) {
+        continue;
+      }
+      for (const track of p.tracks) {
+        if (track.type === 1 || track.source === TrackSource.CAMERA || track.source === TrackSource.SCREEN_SHARE) {
+          try {
+            await roomService.mutePublishedTrack(roomName, p.identity, track.sid, true);
+            count++;
+          } catch (e) {
+            console.warn(`[LiveKit] Failed to disable track for ${p.identity}:`, e);
+          }
+        }
+      }
+    }
+    console.log(`[LiveKit] Disabled all participants video in ${roomName} (${count} tracks)`);
+    return count;
+  } catch (err) {
+    console.warn(`[LiveKit] Failed to disable all video in ${roomName}:`, err);
+    return 0;
+  }
 }
 
 /**
@@ -219,7 +314,9 @@ export async function startRecording(roomName: string, grievanceId: string): Pro
 }
 
 /**
- * Stop an active recording by its egress ID.
+ * Stop an ongoing recording.
+ *
+ * @param egressId - The ID returned by startRecording
  */
 export async function stopRecording(egressId: string) {
   try {
@@ -237,6 +334,10 @@ export const livekitService = {
   createRoom,
   listParticipants,
   muteParticipantTrack,
+  muteParticipantAudio,
+  muteParticipantVideo,
+  muteAllParticipantsAudio,
+  disableAllParticipantsVideo,
   removeParticipant,
   deleteRoom,
   listRooms,

@@ -30,6 +30,8 @@ import { URL } from 'url';
 import authRoutes from './routes/auth';
 import samparkRoutes from './routes/sampark';
 import callRoutes from './routes/calls';
+import adminRoutes from './routes/admin';
+import callCenterRoutes from './routes/callCenter';
 import livekitService from './services/livekit';
 
 // Database
@@ -75,6 +77,8 @@ app.use((req, _res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/sampark', samparkRoutes);
 app.use('/api/calls', callRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/call-center', callCenterRoutes);
 
 // ─── LiveKit Token Endpoint (Web & Mobile Apps) ───────────────
 app.post('/api/livekit/token', async (req, res) => {
@@ -84,7 +88,11 @@ app.post('/api/livekit/token', async (req, res) => {
       res.status(400).json({ error: 'roomName and participantName are required' });
       return;
     }
-    const isHost = participantRole === 'officer' || participantRole === 'collector';
+    const isHost =
+      participantRole === 'officer' ||
+      participantRole === 'collector' ||
+      participantRole === 'admin' ||
+      participantRole === 'call_center';
     const userIdentity = identity || `${participantRole || 'user'}_${Date.now()}`;
     const userPhone = req.body.phone || identity || '';
 

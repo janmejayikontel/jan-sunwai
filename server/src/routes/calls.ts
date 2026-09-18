@@ -22,7 +22,7 @@ import { Router, Request, Response } from 'express';
 import callManager from '../services/callManager';
 import livekitService from '../services/livekit';
 import samparkService from '../services/sampark';
-import db from '../db/database';
+import db, { insertAuditLog } from '../db/database';
 
 const router = Router();
 
@@ -431,6 +431,118 @@ router.get('/:id/participants', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/calls/:id/mute-audio
+ *
+ * Officer/Magistrate mutes a participant's microphone or all participants in the hearing.
+ * Body: { participantPhone?: "+91..." | "all", muted?: boolean, muteAll?: boolean }
+ */
+router.post('/:id/mute-audio', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { participantPhone, muted = true, actorName, actorRole, actorPhone, muteAll } = req.body;
+
+  try {
+    const call = callManager.getCall(id);
+    const roomName = call ? call.livekitRoomName : `JS-${id}`;
+
+    // 1. Mute All Remote Participants in hearing room
+    if (!participantPhone || participantPhone === 'all' || muteAll) {
+      const count = await livekitService.muteAllParticipantsAudio(roomName, actorPhone || call?.hostPhone);
+      insertAuditLog({
+        eventType: 'ALL_PARTICIPANTS_AUDIO_MUTED',
+        actorName: actorName || 'Presiding Officer',
+        actorRole: actorRole || 'officer',
+        targetId: roomName,
+        targetName: 'All Participants',
+        details: `Muted all remote microphones in room ${roomName} (${count} streams muted)`,
+      });
+      res.json({
+        success: true,
+        message: `All remote microphones muted (${count} streams)`,
+        mutedAll: true,
+        count,
+      });
+      return;
+    }
+
+    // 2. Mute / Unmute Specific Participant
+    const success = await livekitService.muteParticipantAudio(roomName, participantPhone, Boolean(muted));
+
+    insertAuditLog({
+      eventType: muted ? 'PARTICIPANT_AUDIO_MUTED' : 'PARTICIPANT_AUDIO_UNMUTED',
+      actorName: actorName || 'Presiding Officer',
+      actorRole: actorRole || 'officer',
+      targetId: participantPhone,
+      targetName: participantPhone,
+      details: `${muted ? 'Muted' : 'Unmuted'} microphone for ${participantPhone} in call ${id} (room ${roomName})`,
+    });
+
+    res.json({
+      success: true,
+      message: `${muted ? 'Muted' : 'Unmuted'} audio for ${participantPhone}`,
+    });
+  } catch (error: any) {
+    console.error('[Calls] Error muting participant audio:', error);
+    res.status(500).json({ error: error.message || 'Failed to mute audio' });
+  }
+});
+
+/**
+ * POST /api/calls/:id/disable-video
+ *
+ * Officer/Magistrate disables a participant's video or all participants' cameras in the hearing.
+ * Body: { participantPhone?: "+91..." | "all", disabled?: boolean, disableAll?: boolean }
+ */
+router.post('/:id/disable-video', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { participantPhone, disabled = true, actorName, actorRole, actorPhone, disableAll } = req.body;
+
+  try {
+    const call = callManager.getCall(id);
+    const roomName = call ? call.livekitRoomName : `JS-${id}`;
+
+    // 1. Disable All Remote Cameras in hearing room
+    if (!participantPhone || participantPhone === 'all' || disableAll) {
+      const count = await livekitService.disableAllParticipantsVideo(roomName, actorPhone || call?.hostPhone);
+      insertAuditLog({
+        eventType: 'ALL_PARTICIPANTS_VIDEO_DISABLED',
+        actorName: actorName || 'Presiding Officer',
+        actorRole: actorRole || 'officer',
+        targetId: roomName,
+        targetName: 'All Participants',
+        details: `Disabled all remote cameras in room ${roomName} (${count} streams disabled)`,
+      });
+      res.json({
+        success: true,
+        message: `All remote cameras disabled (${count} streams)`,
+        disabledAll: true,
+        count,
+      });
+      return;
+    }
+
+    // 2. Disable / Enable Specific Participant's Camera
+    const success = await livekitService.muteParticipantVideo(roomName, participantPhone, Boolean(disabled));
+
+    insertAuditLog({
+      eventType: disabled ? 'PARTICIPANT_VIDEO_DISABLED' : 'PARTICIPANT_VIDEO_ENABLED',
+      actorName: actorName || 'Presiding Officer',
+      actorRole: actorRole || 'officer',
+      targetId: participantPhone,
+      targetName: participantPhone,
+      details: `${disabled ? 'Disabled' : 'Enabled'} video for ${participantPhone} in call ${id} (room ${roomName})`,
+    });
+
+    res.json({
+      success: true,
+      message: `${disabled ? 'Disabled' : 'Enabled'} video for ${participantPhone}`,
+    });
+  } catch (error: any) {
+    console.error('[Calls] Error disabling participant video:', error);
+    res.status(500).json({ error: error.message || 'Failed to disable video' });
+  }
+});
+
+/**
  * POST /api/calls/:id/remove-participant
  *
  * Collector/Officer disconnects a specific participant from the hearing.
@@ -438,7 +550,7 @@ router.get('/:id/participants', async (req: Request, res: Response) => {
  */
 router.post('/:id/remove-participant', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { participantPhone } = req.body;
+  const { participantPhone, actorName, actorRole } = req.body;
 
   if (!participantPhone) {
     res.status(400).json({ error: 'participantPhone is required' });
@@ -451,6 +563,16 @@ router.post('/:id/remove-participant', async (req: Request, res: Response) => {
       res.status(404).json({ error: 'Call or participant not found' });
       return;
     }
+
+    insertAuditLog({
+      eventType: 'PARTICIPANT_EJECTED',
+      actorName: actorName || 'Officer',
+      actorRole: actorRole || 'officer',
+      targetId: participantPhone,
+      targetName: participantPhone,
+      details: `Ejected participant ${participantPhone} from hearing ${id}`,
+    });
+
     res.json({ success: true, message: `Disconnected participant ${participantPhone}` });
   } catch (error) {
     console.error('[Calls] Error removing participant:', error);

@@ -10,6 +10,7 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  Modal,
 } from 'react-native';
 import { DEFAULT_SERVER_URL } from '../config';
 
@@ -27,43 +28,90 @@ interface JoinHearingScreenProps {
 const DEMO_PERSONAS = [
   {
     role: 'citizen',
-    label: '👤 Citizen (Ramesh Kumar)',
-    phone: '9876543210',
-    name: 'Ramesh Kumar',
-    grievanceId: 'GRV-2024-001',
+    label: '👤 Citizen (Janmejay Sethi)',
+    phone: '7735807328',
+    name: 'Janmejay Sethi',
+    grievanceId: 'RAJ-2024-88421',
     badge: 'Complainant',
     badgeColor: '#10b981',
   },
   {
-    role: 'employee',
-    label: '👷 Field Officer (Anita Sharma)',
-    phone: '9876543212',
-    name: 'Anita Sharma',
-    grievanceId: 'GRV-2024-001',
-    badge: 'Gram Vikas Adhikari',
-    badgeColor: '#3b82f6',
+    role: 'call_center',
+    label: '🎧 181 Rep (Priya Sharma)',
+    phone: '7749852013',
+    name: 'Priya Sharma',
+    grievanceId: 'RAJ-2024-88421',
+    badge: '181 Helpdesk Officer',
+    badgeColor: '#f59e0b',
   },
   {
     role: 'officer',
-    label: '🏛️ District Collector (Rajesh Meena)',
-    phone: '9876543211',
-    name: 'Rajesh Meena IAS',
-    grievanceId: 'GRV-2024-001',
+    label: '🏛️ District Collector (Sh. Alok Sharma, IAS)',
+    phone: '9414000001',
+    name: 'Sh. Alok Sharma, IAS',
+    grievanceId: 'RAJ-2024-88421',
     badge: 'District Magistrate',
     badgeColor: '#8b5cf6',
+  },
+  {
+    role: 'admin',
+    label: '🛡️ Super Admin (Rajasthan DOIT&C)',
+    phone: '9999999999',
+    name: 'Rajasthan DOIT&C Admin',
+    grievanceId: 'RAJ-2024-88421',
+    badge: 'State Administrator',
+    badgeColor: '#ef4444',
   },
 ];
 
 export const JoinHearingScreen: React.FC<JoinHearingScreenProps> = ({ onJoin }) => {
   const [serverBase, setServerBase] = useState(DEFAULT_SERVER_URL);
-  const [grievanceId, setGrievanceId] = useState('GRV-2024-001');
-  const [userName, setUserName] = useState('Ramesh Kumar');
-  const [phone, setPhone] = useState('9876543210');
-  const [role, setRole] = useState<'citizen' | 'employee' | 'officer'>('citizen');
+  const [grievanceId, setGrievanceId] = useState('RAJ-2024-88421');
+  const [userName, setUserName] = useState('Janmejay Sethi');
+  const [phone, setPhone] = useState('7735807328');
+  const [role, setRole] = useState<'citizen' | 'call_center' | 'employee' | 'officer' | 'admin'>('citizen');
   const [isLoading, setIsLoading] = useState(false);
   const [showServerConfig, setShowServerConfig] = useState(false);
+  const [showAdminPinModal, setShowAdminPinModal] = useState(false);
+  const [adminPinInput, setAdminPinInput] = useState('');
+  const [adminPinError, setAdminPinError] = useState('');
+  const [adminVerified, setAdminVerified] = useState(false);
+
+  const generate6CharRoomCode = () => {
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setGrievanceId(`JS-${code}`);
+  };
+
+  const handleVerifyAdminPin = () => {
+    if (adminPinInput.trim() === '8899') {
+      setAdminVerified(true);
+      setShowAdminPinModal(false);
+      setRole('admin');
+      const adminPersona = DEMO_PERSONAS.find((p) => p.role === 'admin');
+      if (adminPersona) {
+        setUserName(adminPersona.name);
+        setPhone(adminPersona.phone);
+        setGrievanceId(adminPersona.grievanceId);
+      }
+      setAdminPinInput('');
+      setAdminPinError('');
+      Alert.alert('PIN Verified', 'Administrator credentials verified (PIN: 8899).');
+    } else {
+      setAdminPinError('Invalid Security PIN. Enter 8899 to proceed.');
+    }
+  };
 
   const handleSelectPersona = (persona: (typeof DEMO_PERSONAS)[0]) => {
+    if (persona.role === 'admin' && !adminVerified) {
+      setAdminPinInput('');
+      setAdminPinError('');
+      setShowAdminPinModal(true);
+      return;
+    }
     setRole(persona.role as any);
     setUserName(persona.name);
     setPhone(persona.phone);
@@ -71,6 +119,13 @@ export const JoinHearingScreen: React.FC<JoinHearingScreenProps> = ({ onJoin }) 
   };
 
   const handleConnect = async () => {
+    if (role === 'admin' && !adminVerified) {
+      setAdminPinInput('');
+      setAdminPinError('');
+      setShowAdminPinModal(true);
+      return;
+    }
+
     if (!grievanceId.trim() || !userName.trim()) {
       Alert.alert('Required', 'Please enter Grievance ID and your Name');
       return;
@@ -168,12 +223,27 @@ export const JoinHearingScreen: React.FC<JoinHearingScreenProps> = ({ onJoin }) 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>📋 Hearing Credentials</Text>
 
-          <Text style={styles.label}>Grievance / Case ID</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 6 }}>
+            <Text style={[styles.label, { marginTop: 0, marginBottom: 0 }]}>Grievance / Room ID</Text>
+            <TouchableOpacity
+              onPress={generate6CharRoomCode}
+              style={{
+                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                borderWidth: 1,
+                borderColor: '#38bdf8',
+                borderRadius: 6,
+                paddingVertical: 3,
+                paddingHorizontal: 8,
+              }}
+            >
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#38bdf8' }}>🎲 6-Char Code</Text>
+            </TouchableOpacity>
+          </View>
           <TextInput
             style={styles.input}
             value={grievanceId}
             onChangeText={setGrievanceId}
-            placeholder="e.g. GRV-2024-001"
+            placeholder="e.g. JS-8F2K9M or GRV-2024-001"
             placeholderTextColor="#64748b"
             autoCapitalize="characters"
           />
@@ -242,6 +312,71 @@ export const JoinHearingScreen: React.FC<JoinHearingScreenProps> = ({ onJoin }) 
           </View>
         )}
       </ScrollView>
+
+      {/* Admin PIN Gate Modal */}
+      <Modal
+        visible={showAdminPinModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAdminPinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={{ fontSize: 30 }}>🛡️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Super Admin Access</Text>
+                <Text style={styles.modalSub}>Restricted Administrative Profile</Text>
+              </View>
+            </View>
+
+            <Text style={styles.modalPrompt}>
+              Enter the 4-digit security PIN to unlock Administrator privileges:
+            </Text>
+
+            <TextInput
+              style={styles.modalPinInput}
+              value={adminPinInput}
+              onChangeText={(text) => {
+                setAdminPinInput(text);
+                setAdminPinError('');
+              }}
+              placeholder="• • • •"
+              placeholderTextColor="#64748b"
+              keyboardType="number-pad"
+              maxLength={4}
+              secureTextEntry
+              autoFocus
+            />
+
+            {adminPinError ? (
+              <Text style={styles.modalErrorText}>{adminPinError}</Text>
+            ) : (
+              <Text style={styles.modalHelpText}>Security PIN is 8899</Text>
+            )}
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => {
+                  setShowAdminPinModal(false);
+                  setAdminPinInput('');
+                  setAdminPinError('');
+                }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalConfirmBtn}
+                onPress={handleVerifyAdminPin}
+              >
+                <Text style={styles.modalConfirmText}>Verify PIN ➔</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -406,5 +541,102 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 8,
     lineHeight: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(2, 6, 23, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalBox: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#0f172a',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#ef4444',
+    padding: 22,
+    shadowColor: '#ef4444',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  modalSub: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#f87171',
+    textTransform: 'uppercase',
+  },
+  modalPrompt: {
+    fontSize: 13,
+    color: '#cbd5e1',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  modalPinInput: {
+    backgroundColor: '#020617',
+    borderWidth: 1.5,
+    borderColor: '#38bdf8',
+    borderRadius: 12,
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#ffffff',
+    textAlign: 'center',
+    letterSpacing: 10,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  modalErrorText: {
+    fontSize: 12,
+    color: '#f87171',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  modalHelpText: {
+    fontSize: 11,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#94a3b8',
+  },
+  modalConfirmBtn: {
+    flex: 1.5,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+  },
+  modalConfirmText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });

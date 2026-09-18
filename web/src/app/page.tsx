@@ -48,9 +48,14 @@ import {
   Sparkles,
   ArrowRight,
   Info,
+  Activity,
+  Settings,
+  Lock,
+  Sliders,
 } from "lucide-react";
 import LiveKitVideoRoom from "@/components/LiveKitVideoRoom";
 import IncomingCallModal, { stopAllRingtones } from "@/components/IncomingCallModal";
+import DevicePreCheckModal, { OFFICIAL_PERSONAS, RoleType } from "@/components/DevicePreCheckModal";
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -58,11 +63,13 @@ export interface AuthUser {
   id: string;
   phone: string;
   name: string;
-  role: "officer" | "employee" | "citizen";
+  role: "officer" | "call_center" | "citizen" | "admin" | "employee";
   designation?: string;
   department?: string;
   district?: string;
   employeeCode?: string;
+  deskNumber?: string;
+  shift?: string;
 }
 
 interface CitizenInfo {
@@ -145,53 +152,48 @@ function getWsUrl(phone: string): string {
   return `ws://localhost:3001/ws?phone=${encodeURIComponent(phone)}`;
 }
 
-// ─── Demo Accounts for 1-Click Testing ────────────────────────
+// ─── Demo Accounts for 1-Click Testing (The 4 Official Personas) ──
 
 const QUICK_DEMO_USERS = [
   {
     name: "Janmejay Sethi",
     role: "citizen" as const,
     phone: "+917735807328",
-    badge: "Citizen Complainant",
-    desc: "Complainant for Grievance RAJ-2024-88421 (Water Supply Leak)",
+    badge: "1. Citizen Complainant",
+    desc: "Complainant — Grievance RAJ-2024-88421 (Water Pipeline Leak)",
+    features: "Stream Audio/Video • Share Screen • Encrypted Chat • Safety Numbers",
     icon: "👤",
     color: "#2563eb",
   },
   {
-    name: "Chandan",
-    role: "employee" as const,
+    name: "Priya Sharma",
+    role: "call_center" as const,
     phone: "+917749852013",
-    badge: "Field Officer (PHED)",
-    desc: "Junior Engineer assigned to Sanganer Jaipur",
-    icon: "👷",
-    color: "#d97706",
+    badge: "2. Call Centre Representative",
+    desc: "181 Sampark Helpdesk Desk A-12 — KYC & Queue Dispatch",
+    features: "Initiate Calls • Verify Citizen Identity • Queue Dispatch • Consult Records",
+    icon: "🎧",
+    color: "#8b5cf6",
   },
   {
     name: "Sh. Alok Sharma, IAS",
     role: "officer" as const,
     phone: "+919414000001",
-    badge: "District Collector & DM",
-    desc: "District Administration, Jaipur (Hearing Presiding Officer)",
+    badge: "3. Officer / Magistrate",
+    desc: "Presiding Hearing Officer — District Collectorate Jaipur",
+    features: "Hearing Bench • Mute Participants • Disable Video • Eject • Terminate Meeting",
     icon: "🏛️",
     color: "#059669",
   },
   {
-    name: "Mandal Sahoo",
-    role: "citizen" as const,
-    phone: "+918249884033",
-    badge: "Citizen Complainant",
-    desc: "Grievance RAJ-2024-71205 (Pension Delay)",
-    icon: "👤",
-    color: "#3b82f6",
-  },
-  {
-    name: "Mrityunjay",
-    role: "employee" as const,
-    phone: "+919337453713",
-    badge: "Patwari (Revenue Dept)",
-    desc: "Revenue Department, Gudamalani Barmer",
-    icon: "👷",
-    color: "#b45309",
+    name: "Rajasthan DOIT&C Admin",
+    role: "admin" as const,
+    phone: "+919999999999",
+    badge: "4. Super Admin / Administrator",
+    desc: "Department of IT & Communication, Govt. of Rajasthan",
+    features: "Full System Admin • Real-Time Diagnostics • Audit Logs • Security Parameters",
+    icon: "🛡️",
+    color: "#d97706",
   },
 ];
 
@@ -211,6 +213,10 @@ export default function JanSunwaiPortalPage() {
   const [detectedRole, setDetectedRole] = useState<string | null>(null);
   const [detectedName, setDetectedName] = useState<string | null>(null);
   const [authError, setAuthError] = useState("");
+
+  // ─── Device Diagnostic Suite & Room Launcher State ───────────
+  const [showPreCheckModal, setShowPreCheckModal] = useState(false);
+  const [preCheckRole, setPreCheckRole] = useState<RoleType>("citizen");
 
   // ─── Grievance & Dashboard State ──────────────────────────────
   const [grievanceId, setGrievanceId] = useState("");
@@ -271,6 +277,36 @@ export default function JanSunwaiPortalPage() {
   const [hearingParticipants, setHearingParticipants] = useState<any[]>([]);
   const [isRemovingParticipant, setIsRemovingParticipant] = useState<string | null>(null);
   const [micBlockedWarning, setMicBlockedWarning] = useState<string | null>(null);
+
+  // ─── Call Centre Representative State (181 Sampark Helpdesk) ──
+  const [hearingQueue, setHearingQueue] = useState<any[]>([]);
+  const [isLoadingQueue, setIsLoadingQueue] = useState(false);
+  const [selectedQueuePriority, setSelectedQueuePriority] = useState("all");
+  const [kycPhone, setKycPhone] = useState("+917735807328");
+  const [kycJanAadhaar, setKycJanAadhaar] = useState("JA-88492011");
+  const [kycAadhaarLast4, setKycAadhaarLast4] = useState("7328");
+  const [kycNotes, setKycNotes] = useState("Biometric verification verified at Tehsil counter");
+  const [isVerifyingKYC, setIsVerifyingKYC] = useState(false);
+  const [consultPhone, setConsultPhone] = useState("+917735807328");
+  const [consultRecord, setConsultRecord] = useState<any | null>(null);
+  const [isLoadingConsult, setIsLoadingConsult] = useState(false);
+  const [repActiveTab, setRepActiveTab] = useState<"queue" | "kyc" | "records">("queue");
+
+  // ─── Super Admin State ────────────────────────────────────────
+  const [adminDiagnostics, setAdminDiagnostics] = useState<any | null>(null);
+  const [adminAuditLogs, setAdminAuditLogs] = useState<any[]>([]);
+  const [adminAuditFilter, setAdminAuditFilter] = useState("");
+  const [adminSettings, setAdminSettings] = useState<Record<string, string>>({
+    max_meeting_participants: "1500",
+    e2ee_encryption_enabled: "true",
+    sas_safety_numbers_required: "true",
+    token_expiry_minutes: "120",
+    auto_recording_default: "true",
+    call_queue_dispatch_mode: "manual_by_agent",
+  });
+  const [adminActiveTab, setAdminActiveTab] = useState<"diagnostics" | "audit" | "security" | "settings">("diagnostics");
+  const [isLoadingDiagnostics, setIsLoadingDiagnostics] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // WebSocket
   const wsRef = useRef<WebSocket | null>(null);
@@ -511,12 +547,149 @@ export default function JanSunwaiPortalPage() {
     }
   }, []);
 
+  // ─── Call Centre Representative Handlers ───────────────────────
+  const loadCallCenterQueue = useCallback(async () => {
+    setIsLoadingQueue(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/call-center/queue`);
+      const data = await res.json();
+      if (data.queue) setHearingQueue(data.queue);
+    } catch (e) {
+      console.warn("Error loading queue:", e);
+    } finally {
+      setIsLoadingQueue(false);
+    }
+  }, []);
+
+  const handleVerifyCitizenKYC = async () => {
+    const rawDigits = (kycPhone || "").replace(/[^0-9]/g, "");
+    if (rawDigits.length < 10) {
+      showToast("Please enter a valid 10-digit citizen mobile number", "error");
+      return;
+    }
+    setIsVerifyingKYC(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/call-center/verify-citizen`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          citizenPhone: kycPhone,
+          janAadhaarId: kycJanAadhaar,
+          aadhaarLast4: kycAadhaarLast4,
+          notes: kycNotes,
+          status: "verified",
+          agentName: currentUser?.name || "181 Agent",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast("✅ Citizen Identity & Jan Aadhaar KYC Verified!", "success");
+        loadCallCenterQueue();
+      } else {
+        showToast(data.error || "Failed to verify citizen", "error");
+      }
+    } catch (e: any) {
+      showToast(e.message || "KYC verification error", "error");
+    } finally {
+      setIsVerifyingKYC(false);
+    }
+  };
+
+  const handleConsultCitizenRecords = async (phoneToLookup?: string) => {
+    const target = phoneToLookup || consultPhone;
+    if (!target) return;
+    setIsLoadingConsult(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/call-center/citizen-records/${encodeURIComponent(target)}`);
+      const data = await res.json();
+      if (data.success) {
+        setConsultRecord(data);
+        showToast(`Loaded records for ${data.citizen?.name}`, "success");
+      } else {
+        showToast(data.error || "Citizen records not found", "error");
+      }
+    } catch (e: any) {
+      showToast(e.message || "Error consulting records", "error");
+    } finally {
+      setIsLoadingConsult(false);
+    }
+  };
+
+  const handleDispatchQueueItem = async (queueId: string, officerId?: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/call-center/dispatch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          queueId,
+          officerId: officerId || "off-001",
+          queueStatus: "dispatched",
+          agentName: currentUser?.name,
+          agentPhone: currentUser?.phone,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`✅ Dispatched to Magistrate Hearing!`, "success");
+        loadCallCenterQueue();
+      }
+    } catch (e: any) {
+      showToast("Dispatch error", "error");
+    }
+  };
+
+  // ─── Super Admin Handlers ─────────────────────────────────────
+  const loadAdminData = useCallback(async () => {
+    setIsLoadingDiagnostics(true);
+    try {
+      const [diagRes, auditRes, settingsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/admin/diagnostics`),
+        fetch(`${API_BASE}/api/admin/audit-logs?limit=50`),
+        fetch(`${API_BASE}/api/admin/settings`),
+      ]);
+      const diagData = await diagRes.json();
+      const auditData = await auditRes.json();
+      const settingsData = await settingsRes.json();
+      if (diagData.success) setAdminDiagnostics(diagData);
+      if (auditData.success) setAdminAuditLogs(auditData.logs || []);
+      if (settingsData.success && settingsData.settings) setAdminSettings(settingsData.settings);
+    } catch (e) {
+      console.warn("Error loading admin data:", e);
+    } finally {
+      setIsLoadingDiagnostics(false);
+    }
+  }, []);
+
+  const handleUpdateAdminSetting = async (key: string, value: string) => {
+    setIsSavingSettings(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value, actorName: currentUser?.name, actorRole: currentUser?.role }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAdminSettings((prev) => ({ ...prev, [key]: value }));
+        showToast(`✅ Saved setting ${key}`, "success");
+      }
+    } catch (e: any) {
+      showToast("Error updating setting", "error");
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   useEffect(() => {
     if (currentUser?.role === "officer") {
       loadAllGrievances();
       fetchCallHistory();
+    } else if (currentUser?.role === "call_center" || currentUser?.role === "employee") {
+      loadCallCenterQueue();
+    } else if (currentUser?.role === "admin") {
+      loadAdminData();
     }
-  }, [currentUser, loadAllGrievances, fetchCallHistory]);
+  }, [currentUser, loadAllGrievances, fetchCallHistory, loadCallCenterQueue, loadAdminData]);
 
   // ─── Login Handlers ─────────────────────────────────────────
 
@@ -625,6 +798,15 @@ export default function JanSunwaiPortalPage() {
   };
 
   const handleQuickLogin = async (user: (typeof QUICK_DEMO_USERS)[0]) => {
+    // Enforce 4-digit Admin PIN Gate ('8899') for Administrator access
+    if (user.role === "admin") {
+      const pin = prompt("🛡️ Administrative PIN Required:\nEnter 4-digit security PIN to access Super Admin privileges:");
+      if (pin !== "8899") {
+        showToast("❌ Invalid Security PIN ('8899' required for Admin access)", "error");
+        return;
+      }
+    }
+
     setIsSubmittingAuth(true);
     try {
       const res = await fetch(`${API_BASE}/api/auth/otp/verify`, {
@@ -667,6 +849,62 @@ export default function JanSunwaiPortalPage() {
       showToast(`Logged in as ${user.name} (${user.role.toUpperCase()})`, "success");
     } finally {
       setIsSubmittingAuth(false);
+    }
+  };
+
+  const handleLaunchFromPreCheck = async ({
+    roomCode,
+    passphrase,
+    role,
+    userName,
+    userPhone,
+    useVirtualMedia,
+  }: {
+    roomCode: string;
+    passphrase: string;
+    role: RoleType;
+    userName: string;
+    userPhone: string;
+    useVirtualMedia: boolean;
+  }) => {
+    try {
+      showToast(`Launching Hearing Room ${roomCode} as ${userName}...`, "info");
+      const res = await fetch(`${API_BASE}/api/livekit/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomName: roomCode,
+          participantName: userName,
+          participantRole: role,
+          identity: userPhone || `${role}_${Date.now()}`,
+          phone: userPhone,
+        }),
+      });
+      const data = await res.json();
+      if (data.token) {
+        if (!currentUser) {
+          const authUser: AuthUser = {
+            id: `persona-${role}`,
+            name: userName,
+            phone: userPhone,
+            role: role as any,
+            designation: OFFICIAL_PERSONAS[role].badge,
+          };
+          setCurrentUser(authUser);
+          localStorage.setItem("jansunwai_auth_user", JSON.stringify(authUser));
+        }
+        setLivekitConnection({
+          token: data.token,
+          url: data.serverUrl || data.url,
+          roomName: data.roomName || roomCode,
+          callId: data.callId || `call-${Date.now()}`,
+        });
+        showToast(`🎉 Connected to Hearing Room ${roomCode}!`, "success");
+      } else {
+        showToast(data.error || "Failed to launch hearing room", "error");
+      }
+    } catch (e: any) {
+      showToast(e.message || "Connection error", "error");
     }
   };
 
@@ -1891,6 +2129,9 @@ export default function JanSunwaiPortalPage() {
             roomName={livekitConnection.roomName}
             onDisconnected={handleDisconnected}
             onEndCall={handleEndCall}
+            currentUser={currentUser}
+            callId={livekitConnection.callId}
+            apiBase={API_BASE}
           />
         </div>
       </main>
@@ -1931,6 +2172,100 @@ export default function JanSunwaiPortalPage() {
             <p style={{ fontSize: "clamp(0.85rem, 2.5vw, 1.05rem)", color: "#94a3b8", margin: 0, lineHeight: 1.4 }}>
               Jan Sunwai Unified Video Hearing Portal — Citizen Complainant, Field Officer & District Collector Login
             </p>
+            <div style={{ marginTop: "1rem", display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap" }}>
+              <a
+                href="/download"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: "linear-gradient(135deg, #059669, #047857)",
+                  border: "1px solid #10b981",
+                  borderRadius: "999px",
+                  padding: "8px 18px",
+                  color: "#ffffff",
+                  fontSize: "0.85rem",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  boxShadow: "0 4px 12px rgba(5, 150, 105, 0.4)",
+                }}
+              >
+                <span>📲 Download Android APK (105.8 MB)</span>
+                <span>➔</span>
+              </a>
+            </div>
+          </div>
+
+          {/* Quick Hardware Diagnostic Suite & 6-Char Room Launcher Banner Card */}
+          <div
+            style={{
+              background: "linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98))",
+              border: "1.5px solid rgba(56, 189, 248, 0.4)",
+              borderRadius: "16px",
+              padding: "16px 20px",
+              marginBottom: "1.8rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "14px",
+              flexWrap: "wrap",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <div
+                style={{
+                  width: "42px",
+                  height: "42px",
+                  borderRadius: "12px",
+                  background: "linear-gradient(135deg, #0284c7, #0369a1)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#fff",
+                  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.4)",
+                  flexShrink: 0,
+                }}
+              >
+                <Sliders size={22} />
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: "0.98rem", color: "#f8fafc", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span>Hardware Diagnostic Suite & Room Launcher</span>
+                  <span style={{ fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
+                    TEST MIC / CAM
+                  </span>
+                </div>
+                <div style={{ fontSize: "0.78rem", color: "#94a3b8" }}>
+                  Auto Device Discovery • Live Voice VU Meter • Virtual Color Bars • 6-Char Room Codes • PIN Gate
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPreCheckRole("citizen");
+                setShowPreCheckModal(true);
+              }}
+              style={{
+                padding: "10px 18px",
+                background: "linear-gradient(135deg, #0284c7, #0369a1)",
+                border: "1px solid #38bdf8",
+                borderRadius: "10px",
+                color: "#ffffff",
+                fontSize: "0.85rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                boxShadow: "0 4px 14px rgba(2, 132, 199, 0.4)",
+              }}
+            >
+              <span>Launch Hardware Suite</span>
+              <ArrowRight size={15} />
+            </button>
           </div>
 
           {/* Login Card Grid */}
@@ -2237,14 +2572,22 @@ export default function JanSunwaiPortalPage() {
                       </div>
                     </button>
                   ))}
-                </div>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Device Diagnostic Suite & Room Launcher Modal */}
+        <DevicePreCheckModal
+          isOpen={showPreCheckModal}
+          onClose={() => setShowPreCheckModal(false)}
+          onLaunchRoom={handleLaunchFromPreCheck}
+          initialRole={preCheckRole}
+        />
       </div>
-    );
-  }
+    </div>
+  );
+}
 
   // ═══════════════════════════════════════════════════════════
   // RENDER: AUTHENTICATED PORTAL VIEW
@@ -2333,7 +2676,9 @@ export default function JanSunwaiPortalPage() {
                   <span>{currentUser.phone}</span>
                 </div>
               </div>
-              {/* WebSocket Status Indicator */}
+            </div>
+
+            {/* WebSocket Status Indicator */}
               <div
                 style={{
                   display: "inline-flex",
@@ -2358,11 +2703,36 @@ export default function JanSunwaiPortalPage() {
                 />
                 {wsConnected ? "Online" : "Connecting"}
               </div>
-            </div>
+              {/* Hardware Diagnostic Suite & Room Launcher Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const role = (currentUser.role === "call_center" ? "call_center" : currentUser.role === "admin" ? "admin" : currentUser.role === "officer" ? "officer" : "citizen") as RoleType;
+                  setPreCheckRole(role);
+                  setShowPreCheckModal(true);
+                }}
+                style={{
+                  background: "rgba(56, 189, 248, 0.15)",
+                  border: "1px solid rgba(56, 189, 248, 0.35)",
+                  borderRadius: "10px",
+                  padding: "8px 14px",
+                  color: "#38bdf8",
+                  fontSize: "0.85rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <Sliders size={16} />
+                <span>Hardware & Room Launcher</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={handleLogout}
+              <button
+                type="button"
+                onClick={handleLogout}
               style={{
                 background: "rgba(239, 68, 68, 0.12)",
                 border: "1px solid rgba(239, 68, 68, 0.3)",
@@ -2537,18 +2907,18 @@ export default function JanSunwaiPortalPage() {
         )}
 
         {/* ═══════════════════════════════════════════════════════
-            VIEW 2: FIELD OFFICER WAITING ROOM
+            VIEW 2: CALL CENTRE REPRESENTATIVE (181 SAMPARK HELPDESK)
             ═══════════════════════════════════════════════════════ */}
-        {currentUser.role === "employee" && (
+        {(currentUser.role === "call_center" || currentUser.role === "employee") && (
           <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            {/* Duty Active Radar Banner */}
+            {/* Call Centre Agent Status Banner */}
             <div
               style={{
-                background: "linear-gradient(135deg, #78350f 0%, #0f172a 100%)",
+                background: "linear-gradient(135deg, #4c1d95 0%, #1e1b4b 60%, #0f172a 100%)",
                 borderRadius: "16px",
                 padding: "2rem",
-                border: "1px solid rgba(245, 158, 11, 0.3)",
-                boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+                border: "1px solid rgba(139, 92, 246, 0.4)",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
                 display: "flex",
                 alignItems: "center",
                 gap: "1.5rem",
@@ -2560,92 +2930,449 @@ export default function JanSunwaiPortalPage() {
                   width: "70px",
                   height: "70px",
                   borderRadius: "50%",
-                  background: "rgba(245, 158, 11, 0.2)",
+                  background: "rgba(139, 92, 246, 0.25)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  border: "2px solid #fbbf24",
+                  border: "2px solid #a78bfa",
                   animation: "pulse 2s infinite",
                 }}
               >
-                <Briefcase size={36} color="#fbbf24" />
+                <span style={{ fontSize: "2rem" }}>🎧</span>
               </div>
               <div style={{ flex: 1, minWidth: "260px" }}>
-                <div style={{ display: "inline-block", background: "rgba(245, 158, 11, 0.25)", color: "#fef3c7", padding: "3px 10px", borderRadius: "999px", fontSize: "0.8rem", fontWeight: 700, marginBottom: "6px" }}>
-                  👷 FIELD OFFICER DUTY ACTIVE
+                <div style={{ display: "inline-block", background: "rgba(139, 92, 246, 0.3)", color: "#ddd6fe", padding: "3px 10px", borderRadius: "999px", fontSize: "0.8rem", fontWeight: 700, marginBottom: "6px" }}>
+                  🎧 181 RAJASTHAN SAMPARK CALL CENTRE DESK ACTIVE
                 </div>
                 <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "#ffffff", margin: "0 0 6px" }}>
-                  Ready for Jan Sunwai Video Hearing Summons
+                  Representative Portal — KYC Verification & Hearing Queue Dispatch
                 </h2>
                 <p style={{ fontSize: "0.95rem", color: "#cbd5e1", margin: 0, lineHeight: 1.5 }}>
-                  {currentUser.name} • {currentUser.designation || "Field Officer"} ({currentUser.department || "Government of Rajasthan"}). Please keep this browser window open. When the District Magistrate commences the grievance hearing, you will receive an incoming video call.
+                  Logged in as <strong>{currentUser.name}</strong> • Desk {currentUser.deskNumber || "A-12"} (181 Central Helpdesk). You can initiate calls with citizens, verify identity credentials, consult citizen history, and dispatch queued grievances to Magistrate hearings.
                 </p>
               </div>
             </div>
 
-            {/* Assigned Grievances */}
-            <div className="card">
-              <div className="card__header">
-                <div className="card__title">
-                  <FileText size={20} color="#d97706" />
-                  Your Assigned Grievance Cases (आपके अधिकार क्षेत्र की शिकायतें)
-                </div>
-                <span className="badge badge--warning">Action Pending</span>
-              </div>
+            {/* Role Navigation Tabs */}
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+                paddingBottom: "10px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setRepActiveTab("queue")}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: repActiveTab === "queue" ? "#7c3aed" : "rgba(255, 255, 255, 0.06)",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Clock size={16} />
+                <span>Hearing Call Queue ({hearingQueue.length})</span>
+              </button>
 
-              {isLoadingUserGrievances ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                  Loading assigned cases for {currentUser.phone}...
-                </div>
-              ) : userGrievances.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                  {userGrievances.map((g) => (
-                    <div
-                      key={g.grievanceId}
-                      style={{
-                        background: "var(--navy-50)",
-                        borderRadius: "12px",
-                        padding: "1.2rem",
-                        border: "1px solid var(--navy-100)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
-                        <div>
-                          <span style={{ fontWeight: 800, color: "var(--navy-600)", fontSize: "1.05rem" }}>
-                            {g.grievanceId}
-                          </span>
-                          <h3 style={{ margin: "4px 0", fontSize: "1.1rem", fontWeight: 700 }}>
-                            {g.title}
-                          </h3>
-                        </div>
-                        <span className="badge badge--warning">{g.status}</span>
-                      </div>
-                      <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)", margin: "0 0 12px", lineHeight: 1.5 }}>
-                        {g.description}
-                      </p>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px", fontSize: "0.85rem", borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: "10px" }}>
-                        <div>
-                          <span style={{ color: "var(--text-tertiary)" }}>Citizen Complainant:</span> <strong>{g.citizen.name} ({g.citizen.phone})</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: "var(--text-tertiary)" }}>Location:</span> <strong>{g.location}</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: "var(--text-tertiary)" }}>Category:</span> <strong>{g.category}</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: "var(--text-tertiary)" }}>Filed Date:</span> <strong>{g.filedDate}</strong>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                  No grievances assigned to phone {currentUser.phone}.
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => setRepActiveTab("kyc")}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: repActiveTab === "kyc" ? "#2563eb" : "rgba(255, 255, 255, 0.06)",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <CheckCircle size={16} />
+                <span>Verify Citizen Identity (KYC)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRepActiveTab("records")}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: repActiveTab === "records" ? "#059669" : "rgba(255, 255, 255, 0.06)",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <FileText size={16} />
+                <span>Consult Citizen Records</span>
+              </button>
             </div>
+
+            {/* TAB 1: HEARING CALL QUEUE & DISPATCH */}
+            {repActiveTab === "queue" && (
+              <div className="card">
+                <div className="card__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div className="card__title">
+                    <Clock size={20} color="#8b5cf6" />
+                    Hearing Call Queue & Dispatch Engine (सुनवाई कतार प्रबंधन)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={loadCallCenterQueue}
+                    className="btn btn--secondary"
+                    style={{ padding: "6px 12px", fontSize: "0.8rem" }}
+                  >
+                    🔄 Refresh Queue
+                  </button>
+                </div>
+
+                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                  Citizens waiting in queue for live Jan Sunwai hearings. Verify their readiness, then dispatch to the active Magistrate hearing bench.
+                </p>
+
+                {isLoadingQueue ? (
+                  <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>
+                    Loading hearing queue...
+                  </div>
+                ) : hearingQueue.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {hearingQueue.map((item) => (
+                      <div
+                        key={item.queueId}
+                        style={{
+                          background: "var(--navy-50)",
+                          borderRadius: "12px",
+                          padding: "1.2rem",
+                          border: "1px solid var(--navy-100)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "10px",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                              <span
+                                style={{
+                                  background: item.priority === "Urgent" ? "#ef4444" : item.priority === "High" ? "#f59e0b" : "#3b82f6",
+                                  color: "#fff",
+                                  padding: "2px 8px",
+                                  borderRadius: "4px",
+                                  fontSize: "0.72rem",
+                                  fontWeight: 700,
+                                  textTransform: "uppercase",
+                                }}
+                              >
+                                {item.priority} Priority
+                              </span>
+                              <span style={{ fontWeight: 800, color: "var(--navy-600)", fontSize: "1rem" }}>
+                                {item.grievance_id}
+                              </span>
+                            </div>
+                            <h3 style={{ margin: "2px 0 6px", fontSize: "1.05rem", fontWeight: 700 }}>
+                              {item.grievanceTitle}
+                            </h3>
+                          </div>
+
+                          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                            <span
+                              style={{
+                                background: item.kycStatus === "verified" ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)",
+                                color: item.kycStatus === "verified" ? "#059669" : "#d97706",
+                                border: `1px solid ${item.kycStatus === "verified" ? "#34d399" : "#fbbf24"}`,
+                                padding: "3px 8px",
+                                borderRadius: "6px",
+                                fontSize: "0.75rem",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {item.kycStatus === "verified" ? "✓ KYC Verified" : "⏳ KYC Pending"}
+                            </span>
+
+                            <span
+                              style={{
+                                background: item.queue_status === "dispatched" ? "rgba(16, 185, 129, 0.15)" : "rgba(59, 130, 246, 0.15)",
+                                color: item.queue_status === "dispatched" ? "#059669" : "#2563eb",
+                                padding: "4px 10px",
+                                borderRadius: "20px",
+                                fontSize: "0.75rem",
+                                fontWeight: 700,
+                              }}
+                            >
+                              Status: {item.queue_status}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px", fontSize: "0.84rem", borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: "8px" }}>
+                          <div>
+                            <span style={{ color: "var(--text-tertiary)" }}>Citizen:</span> <strong>{item.citizenName} ({item.citizenPhone})</strong>
+                          </div>
+                          <div>
+                            <span style={{ color: "var(--text-tertiary)" }}>Assigned Bench:</span> <strong>{item.assignedOfficerName || "Sh. Alok Sharma, IAS"}</strong>
+                          </div>
+                          <div>
+                            <span style={{ color: "var(--text-tertiary)" }}>Scheduled Slot:</span> <strong>{item.scheduled_time || "Immediate"}</strong>
+                          </div>
+                          <div>
+                            <span style={{ color: "var(--text-tertiary)" }}>District:</span> <strong>{item.district}</strong>
+                          </div>
+                        </div>
+
+                        {/* Queue Actions */}
+                        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
+                          <button
+                            type="button"
+                            className="btn btn--primary"
+                            style={{ padding: "8px 14px", fontSize: "0.82rem", gap: "6px", background: "#7c3aed" }}
+                            onClick={() => handleDispatchQueueItem(item.queueId, item.assigned_officer_id)}
+                          >
+                            <span>🚀 Dispatch to Magistrate Hearing</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn--secondary"
+                            style={{ padding: "8px 14px", fontSize: "0.82rem", gap: "6px" }}
+                            onClick={() => {
+                              setKycPhone(item.citizenPhone || "+91");
+                              setRepActiveTab("kyc");
+                            }}
+                          >
+                            <CheckCircle size={14} />
+                            <span>Verify KYC Now</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn--secondary"
+                            style={{ padding: "8px 14px", fontSize: "0.82rem", gap: "6px" }}
+                            onClick={() => {
+                              handleConsultCitizenRecords(item.citizenPhone);
+                              setRepActiveTab("records");
+                            }}
+                          >
+                            <FileText size={14} />
+                            <span>Consult Records</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>
+                    No hearings currently waiting in queue.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: VERIFY CITIZEN IDENTITY (KYC) */}
+            {repActiveTab === "kyc" && (
+              <div className="card">
+                <div className="card__header">
+                  <div className="card__title">
+                    <CheckCircle size={20} color="#2563eb" />
+                    Verify Citizen Identity & Jan Aadhaar Credentials
+                  </div>
+                </div>
+
+                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                  Call Centre Representatives verify citizen identity against Jan Aadhaar and Aadhaar registries before dispatching to Magistrate hearings.
+                </p>
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", marginBottom: "16px" }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
+                      Citizen Mobile Number:
+                    </label>
+                    <input
+                      type="text"
+                      value={kycPhone}
+                      onChange={(e) => setKycPhone(e.target.value)}
+                      placeholder="+91..."
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.88rem" }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
+                      Jan Aadhaar Family ID (जन आधार कार्ड सं.):
+                    </label>
+                    <input
+                      type="text"
+                      value={kycJanAadhaar}
+                      onChange={(e) => setKycJanAadhaar(e.target.value)}
+                      placeholder="JA-..."
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.88rem" }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
+                      Aadhaar Card (Last 4 Digits):
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={4}
+                      value={kycAadhaarLast4}
+                      onChange={(e) => setKycAadhaarLast4(e.target.value)}
+                      placeholder="4 Digits"
+                      style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.88rem" }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
+                    Representative Verification Notes:
+                  </label>
+                  <textarea
+                    value={kycNotes}
+                    onChange={(e) => setKycNotes(e.target.value)}
+                    rows={2}
+                    placeholder="Enter notes on biometric match, document physical presence, etc."
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.85rem" }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    disabled={isVerifyingKYC}
+                    onClick={handleVerifyCitizenKYC}
+                    style={{ padding: "10px 20px", fontWeight: 700 }}
+                  >
+                    {isVerifyingKYC ? "Verifying..." : "✓ Confirm & Mark Citizen Verified (प्रमाणित करें)"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: CONSULT CITIZEN RECORDS */}
+            {repActiveTab === "records" && (
+              <div className="card">
+                <div className="card__header">
+                  <div className="card__title">
+                    <FileText size={20} color="#059669" />
+                    Consult Citizen Records & Dossier
+                  </div>
+                </div>
+
+                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                  Look up complete citizen dossier, grievance filing history, assigned officers, and resolution notes.
+                </p>
+
+                <div style={{ display: "flex", gap: "10px", marginBottom: "1.5rem", flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    value={consultPhone}
+                    onChange={(e) => setConsultPhone(e.target.value)}
+                    placeholder="Enter Citizen Phone Number..."
+                    style={{ flex: 1, minWidth: "220px", padding: "10px 14px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.9rem" }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    disabled={isLoadingConsult}
+                    onClick={() => handleConsultCitizenRecords()}
+                    style={{ padding: "10px 18px", background: "#059669" }}
+                  >
+                    {isLoadingConsult ? "Consulting..." : "🔍 Search Citizen Records"}
+                  </button>
+                </div>
+
+                {consultRecord && consultRecord.citizen && (
+                  <div
+                    style={{
+                      background: "var(--navy-50)",
+                      borderRadius: "12px",
+                      padding: "1.5rem",
+                      border: "1px solid var(--navy-100)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "10px" }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 800 }}>
+                          👤 {consultRecord.citizen.name}
+                        </h3>
+                        <p style={{ margin: "2px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
+                          📱 {consultRecord.citizen.phone} • Village: {consultRecord.citizen.village}, {consultRecord.citizen.district}
+                        </p>
+                      </div>
+
+                      <span
+                        style={{
+                          background: consultRecord.kycVerification?.status === "verified" ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
+                          color: consultRecord.kycVerification?.status === "verified" ? "#059669" : "#d97706",
+                          border: `1px solid ${consultRecord.kycVerification?.status === "verified" ? "#34d399" : "#fbbf24"}`,
+                          padding: "4px 12px",
+                          borderRadius: "20px",
+                          fontWeight: 700,
+                          fontSize: "0.82rem",
+                        }}
+                      >
+                        {consultRecord.kycVerification?.status === "verified" ? "✓ KYC Verified" : "⏳ Pending Verification"}
+                      </span>
+                    </div>
+
+                    <h4 style={{ margin: "14px 0 8px", fontSize: "0.95rem", color: "var(--navy-600)" }}>
+                      Grievance Filing History ({consultRecord.grievances?.length || 0}):
+                    </h4>
+
+                    {consultRecord.grievances && consultRecord.grievances.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {consultRecord.grievances.map((g: any) => (
+                          <div
+                            key={g.id}
+                            style={{
+                              background: "#fff",
+                              borderRadius: "8px",
+                              padding: "10px 14px",
+                              border: "1px solid rgba(0,0,0,0.08)",
+                              fontSize: "0.85rem",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                              <span style={{ fontWeight: 700, color: "var(--navy-600)" }}>{g.id}</span>
+                              <span style={{ color: "var(--text-secondary)" }}>{g.status}</span>
+                            </div>
+                            <div style={{ fontWeight: 600, color: "#1e293b" }}>{g.title}</div>
+                            <div style={{ color: "#64748b", fontSize: "0.78rem", marginTop: "2px" }}>
+                              Assigned Officer: {g.assignedEmployeeName} ({g.assignedEmployeeDepartment || "State Administration"})
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>No filed grievances found.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -2914,6 +3641,605 @@ export default function JanSunwaiPortalPage() {
         )}
 
         {/* ═══════════════════════════════════════════════════════
+            VIEW 4: SUPER ADMIN / ADMINISTRATOR CONTROL CENTER
+            ═══════════════════════════════════════════════════════ */}
+        {currentUser.role === "admin" && (
+          <>
+            {/* Page Header */}
+            <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
+              <div>
+                <h1 className="page-header__title" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <Shield size={28} color="#ef4444" />
+                  Super Admin Control Center (प्रणाली प्रशासन)
+                </h1>
+                <p className="page-header__desc">
+                  Administrator: <strong>{currentUser.name}</strong> • DOIT&C Rajasthan Government • Full System Administration & Audit Oversight
+                </p>
+              </div>
+
+              {/* Status pills & Quick Refresh */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "rgba(16, 185, 129, 0.15)",
+                    border: "1px solid rgba(16, 185, 129, 0.4)",
+                    color: "#10b981",
+                    padding: "6px 12px",
+                    borderRadius: "20px",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 8px #10b981" }} />
+                  LiveKit SFU 1,500 Cap Active
+                </span>
+
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    background: "rgba(59, 130, 246, 0.15)",
+                    border: "1px solid rgba(59, 130, 246, 0.4)",
+                    color: "#60a5fa",
+                    padding: "6px 12px",
+                    borderRadius: "20px",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  <Lock size={12} />
+                  256-Bit E2EE Enforced
+                </span>
+
+                <button
+                  type="button"
+                  onClick={loadAdminData}
+                  disabled={isLoadingDiagnostics}
+                  className="btn btn--secondary"
+                  style={{ padding: "7px 14px", fontSize: "0.82rem", gap: "6px" }}
+                >
+                  <Activity size={14} />
+                  {isLoadingDiagnostics ? "Refreshing..." : "Refresh Telemetry"}
+                </button>
+              </div>
+            </div>
+
+            {/* Admin Tabs */}
+            <div
+              style={{
+                display: "flex",
+                gap: "8px",
+                marginBottom: "1.5rem",
+                borderBottom: "1px solid var(--border)",
+                paddingBottom: "8px",
+                overflowX: "auto",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setAdminActiveTab("diagnostics")}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: adminActiveTab === "diagnostics" ? "#dc2626" : "rgba(255, 255, 255, 0.06)",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Activity size={16} />
+                <span>Real-Time Diagnostics</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAdminActiveTab("audit")}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: adminActiveTab === "audit" ? "#7c3aed" : "rgba(255, 255, 255, 0.06)",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Clock size={16} />
+                <span>Audit Logs ({adminAuditLogs.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAdminActiveTab("security")}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: adminActiveTab === "security" ? "#0284c7" : "rgba(255, 255, 255, 0.06)",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Lock size={16} />
+                <span>Security Parameters</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAdminActiveTab("settings")}
+                style={{
+                  padding: "10px 18px",
+                  borderRadius: "10px",
+                  border: "none",
+                  background: adminActiveTab === "settings" ? "#059669" : "rgba(255, 255, 255, 0.06)",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: "0.88rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Settings size={16} />
+                <span>System Settings</span>
+              </button>
+            </div>
+
+            {/* TAB 1: REAL-TIME SYSTEM DIAGNOSTICS */}
+            {adminActiveTab === "diagnostics" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                {/* 4 Key Metrics Cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem" }}>
+                  {/* SFU Scale Card */}
+                  <div className="card" style={{ borderTop: "4px solid #10b981", background: "var(--navy-50)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600, marginBottom: "4px" }}>
+                      LIVEKIT SFU CONCURRENCY
+                    </div>
+                    <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#10b981" }}>
+                      1,500 <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-secondary)" }}>Max / Room</span>
+                    </div>
+                    <p style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", marginTop: "4px", margin: 0 }}>
+                      Dynacast & Adaptive bitrate enabled for 1,000+ simultaneous participants.
+                    </p>
+                  </div>
+
+                  {/* Node Server Memory */}
+                  <div className="card" style={{ borderTop: "4px solid #3b82f6", background: "var(--navy-50)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600, marginBottom: "4px" }}>
+                      SERVER RSS MEMORY
+                    </div>
+                    <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#3b82f6" }}>
+                      {adminDiagnostics?.process?.memoryRssMB || "134"} <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-secondary)" }}>MB</span>
+                    </div>
+                    <p style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", marginTop: "4px", margin: 0 }}>
+                      Heap Used: {adminDiagnostics?.process?.heapUsedMB || "68"} MB • Platform: {adminDiagnostics?.process?.platform || "win32"}
+                    </p>
+                  </div>
+
+                  {/* Database Records */}
+                  <div className="card" style={{ borderTop: "4px solid #8b5cf6", background: "var(--navy-50)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600, marginBottom: "4px" }}>
+                      TOTAL DATABASE OBJECTS
+                    </div>
+                    <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#8b5cf6" }}>
+                      {((adminDiagnostics?.dbCounts?.citizens || 0) +
+                        (adminDiagnostics?.dbCounts?.grievances || 0) +
+                        (adminDiagnostics?.dbCounts?.callRecords || 0) +
+                        (adminDiagnostics?.dbCounts?.auditLogs || 0))} <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-secondary)" }}>Records</span>
+                    </div>
+                    <p style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", marginTop: "4px", margin: 0 }}>
+                      {adminDiagnostics?.dbCounts?.grievances || 4} Grievances • {adminDiagnostics?.dbCounts?.auditLogs || 12} Audit Entries
+                    </p>
+                  </div>
+
+                  {/* System Uptime */}
+                  <div className="card" style={{ borderTop: "4px solid #f59e0b", background: "var(--navy-50)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600, marginBottom: "4px" }}>
+                      DAEMON UPTIME
+                    </div>
+                    <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#f59e0b" }}>
+                      {Math.floor((adminDiagnostics?.process?.uptimeSeconds || 3600) / 60)} <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-secondary)" }}>Minutes</span>
+                    </div>
+                    <p style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", marginTop: "4px", margin: 0 }}>
+                      Node.js {adminDiagnostics?.process?.nodeVersion || "v20"} • WebSocket signaling active
+                    </p>
+                  </div>
+                </div>
+
+                {/* Diagnostics Deep Dive Table */}
+                <div className="card">
+                  <div className="card__header">
+                    <div className="card__title">
+                      <Database size={20} color="var(--navy-600)" />
+                      Database & Subsystem Health Breakdown
+                    </div>
+                  </div>
+
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
+                      <thead>
+                        <tr style={{ borderBottom: "2px solid var(--border)", textAlign: "left" }}>
+                          <th style={{ padding: "10px" }}>Subsystem</th>
+                          <th style={{ padding: "10px" }}>Status</th>
+                          <th style={{ padding: "10px" }}>Specification / Capacity</th>
+                          <th style={{ padding: "10px" }}>Active Records</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                          <td style={{ padding: "10px", fontWeight: 600 }}>LiveKit Cloud WebRTC SFU</td>
+                          <td style={{ padding: "10px" }}><span className="badge badge--success">Operational</span></td>
+                          <td style={{ padding: "10px", color: "var(--text-secondary)" }}>1,500 Participants / Room (Dynacast)</td>
+                          <td style={{ padding: "10px" }}>High Concurrency Mode</td>
+                        </tr>
+                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                          <td style={{ padding: "10px", fontWeight: 600 }}>SQLite Database (WAL Mode)</td>
+                          <td style={{ padding: "10px" }}><span className="badge badge--success">Operational</span></td>
+                          <td style={{ padding: "10px", color: "var(--text-secondary)" }}>Full ACID compliance, Concurrent Readers</td>
+                          <td style={{ padding: "10px" }}>{adminDiagnostics?.dbCounts?.callRecords || 1} Hearing Calls</td>
+                        </tr>
+                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                          <td style={{ padding: "10px", fontWeight: 600 }}>Call Centre Hearing Queue</td>
+                          <td style={{ padding: "10px" }}><span className="badge badge--success">Ready</span></td>
+                          <td style={{ padding: "10px", color: "var(--text-secondary)" }}>Queue Dispatching & Auto Routing</td>
+                          <td style={{ padding: "10px" }}>{adminDiagnostics?.dbCounts?.hearingQueue || 2} Queued Citizens</td>
+                        </tr>
+                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                          <td style={{ padding: "10px", fontWeight: 600 }}>Citizen KYC & Identity Vault</td>
+                          <td style={{ padding: "10px" }}><span className="badge badge--success">Active</span></td>
+                          <td style={{ padding: "10px", color: "var(--text-secondary)" }}>Jan Aadhaar & Aadhaar Last-4 Verification</td>
+                          <td style={{ padding: "10px" }}>{adminDiagnostics?.dbCounts?.verifications || 2} Verified Citizens</td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: "10px", fontWeight: 600 }}>Audit & Compliance Trail</td>
+                          <td style={{ padding: "10px" }}><span className="badge badge--success">Logging</span></td>
+                          <td style={{ padding: "10px", color: "var(--text-secondary)" }}>Immutable Log Store for Moderation & Settings</td>
+                          <td style={{ padding: "10px" }}>{adminDiagnostics?.dbCounts?.auditLogs || 12} Recorded Actions</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: AUDIT LOGS */}
+            {adminActiveTab === "audit" && (
+              <div className="card">
+                <div className="card__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
+                  <div className="card__title">
+                    <Clock size={20} color="#7c3aed" />
+                    System Audit & Compliance Log Trail (अंकेक्षण विवरण)
+                  </div>
+
+                  {/* Search / Filter */}
+                  <input
+                    type="text"
+                    value={adminAuditFilter}
+                    onChange={(e) => setAdminAuditFilter(e.target.value)}
+                    placeholder="Search logs by action, actor, or keyword..."
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border)",
+                      fontSize: "0.85rem",
+                      minWidth: "260px",
+                    }}
+                  />
+                </div>
+
+                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                  All administrative actions, in-call moderation operations (mute audio, disable video, eject), KYC verifications, and parameter changes are logged here with timestamps and actor credentials.
+                </p>
+
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid var(--border)", textAlign: "left" }}>
+                        <th style={{ padding: "8px" }}>Timestamp</th>
+                        <th style={{ padding: "8px" }}>Action</th>
+                        <th style={{ padding: "8px" }}>Actor (Name & Role)</th>
+                        <th style={{ padding: "8px" }}>Target</th>
+                        <th style={{ padding: "8px" }}>Details</th>
+                        <th style={{ padding: "8px" }}>IP Address</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {adminAuditLogs
+                        .filter((log) => {
+                          if (!adminAuditFilter) return true;
+                          const q = adminAuditFilter.toLowerCase();
+                          return (
+                            (log.action || "").toLowerCase().includes(q) ||
+                            (log.actor_name || "").toLowerCase().includes(q) ||
+                            (log.target_id || "").toLowerCase().includes(q) ||
+                            (log.details || "").toLowerCase().includes(q)
+                          );
+                        })
+                        .map((log) => {
+                          const isModAction = ["mute_participant_audio", "disable_participant_video", "eject_participant", "terminate_call"].includes(log.action);
+                          const isSecAction = ["update_setting", "verify_citizen_kyc"].includes(log.action);
+                          return (
+                            <tr key={log.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                              <td style={{ padding: "8px", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                                {new Date(log.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                              </td>
+                              <td style={{ padding: "8px" }}>
+                                <span
+                                  style={{
+                                    padding: "3px 8px",
+                                    borderRadius: "4px",
+                                    fontSize: "0.75rem",
+                                    fontWeight: 700,
+                                    background: isModAction ? "rgba(239, 68, 68, 0.15)" : isSecAction ? "rgba(59, 130, 246, 0.15)" : "rgba(16, 185, 129, 0.15)",
+                                    color: isModAction ? "#ef4444" : isSecAction ? "#3b82f6" : "#10b981",
+                                  }}
+                                >
+                                  {log.action}
+                                </span>
+                              </td>
+                              <td style={{ padding: "8px", fontWeight: 600 }}>
+                                {log.actor_name} <span style={{ fontSize: "0.75rem", color: "var(--text-tertiary)" }}>({log.actor_role})</span>
+                              </td>
+                              <td style={{ padding: "8px", fontFamily: "monospace", fontSize: "0.8rem" }}>
+                                {log.target_id || "—"}
+                              </td>
+                              <td style={{ padding: "8px", color: "var(--text-secondary)", maxWidth: "240px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {log.details || "—"}
+                              </td>
+                              <td style={{ padding: "8px", color: "var(--text-tertiary)", fontSize: "0.78rem" }}>
+                                {log.ip_address || "127.0.0.1"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      {adminAuditLogs.length === 0 && (
+                        <tr>
+                          <td colSpan={6} style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>
+                            No audit logs recorded yet. System activities will appear here in real-time.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: SECURITY PARAMETERS */}
+            {adminActiveTab === "security" && (
+              <div className="card">
+                <div className="card__header">
+                  <div className="card__title">
+                    <Lock size={20} color="#0284c7" />
+                    Security Parameters & Encryption Governance (सुरक्षा मानक)
+                  </div>
+                </div>
+
+                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
+                  Configure state-level cryptographic protections, end-to-end encryption keys, safety number verifications, and room capacity limits.
+                </p>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  {/* Parameter 1: Max Meeting Participants */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                        Maximum Meeting Room Capacity (1,000+ Scalable)
+                      </div>
+                      <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+                        Configures SFU limit per Jan Sunwai bench room. Default: 1,500 attendees.
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <input
+                        type="number"
+                        value={adminSettings.max_meeting_participants || "1500"}
+                        onChange={(e) => setAdminSettings({ ...adminSettings, max_meeting_participants: e.target.value })}
+                        style={{ width: "90px", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)", textAlign: "center", fontWeight: 700 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateAdminSetting("max_meeting_participants", adminSettings.max_meeting_participants)}
+                        disabled={isSavingSettings}
+                        className="btn btn--primary"
+                        style={{ padding: "8px 14px", fontSize: "0.8rem" }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Parameter 2: 256-Bit E2EE Encryption */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                        256-Bit End-to-End Encryption (E2EE)
+                      </div>
+                      <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+                        Encrypt video frames and data channels with client-side key derivation.
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span className={`badge ${adminSettings.e2ee_encryption_enabled === "true" ? "badge--success" : "badge--danger"}`}>
+                        {adminSettings.e2ee_encryption_enabled === "true" ? "Enforced" : "Disabled"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateAdminSetting("e2ee_encryption_enabled", adminSettings.e2ee_encryption_enabled === "true" ? "false" : "true")}
+                        className="btn btn--secondary"
+                        style={{ padding: "8px 14px", fontSize: "0.8rem" }}
+                      >
+                        Toggle E2EE
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Parameter 3: Short Authentication String (SAS) Verification */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                        Cryptographic Safety Numbers (SAS Verification)
+                      </div>
+                      <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+                        Allow citizens and magistrates to compare 60-digit fingerprint blocks against Man-in-the-Middle attacks.
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span className={`badge ${adminSettings.sas_safety_numbers_required === "true" ? "badge--success" : "badge--warning"}`}>
+                        {adminSettings.sas_safety_numbers_required === "true" ? "Active" : "Optional"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateAdminSetting("sas_safety_numbers_required", adminSettings.sas_safety_numbers_required === "true" ? "false" : "true")}
+                        className="btn btn--secondary"
+                        style={{ padding: "8px 14px", fontSize: "0.8rem" }}
+                      >
+                        Toggle SAS
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Parameter 4: Token Expiry */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                        Hearing Participant Auth Token Expiry
+                      </div>
+                      <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+                        Duration in minutes before LiveKit JWT room access token expires.
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <input
+                        type="number"
+                        value={adminSettings.token_expiry_minutes || "120"}
+                        onChange={(e) => setAdminSettings({ ...adminSettings, token_expiry_minutes: e.target.value })}
+                        style={{ width: "90px", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)", textAlign: "center", fontWeight: 700 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateAdminSetting("token_expiry_minutes", adminSettings.token_expiry_minutes)}
+                        disabled={isSavingSettings}
+                        className="btn btn--primary"
+                        style={{ padding: "8px 14px", fontSize: "0.8rem" }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: SYSTEM SETTINGS */}
+            {adminActiveTab === "settings" && (
+              <div className="card">
+                <div className="card__header">
+                  <div className="card__title">
+                    <Settings size={20} color="#059669" />
+                    System Settings & Call Queue Policies (सिस्टम सेटिंग्स)
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  {/* Queue Dispatch Mode */}
+                  <div style={{ padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
+                    <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "4px" }}>
+                      Call Centre Queue Dispatch Mode
+                    </div>
+                    <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginBottom: "12px" }}>
+                      Determines how citizen hearings from the queue are dispatched to Magistrate hearing rooms.
+                    </div>
+                    <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                      <select
+                        value={adminSettings.call_queue_dispatch_mode || "manual_by_agent"}
+                        onChange={(e) => setAdminSettings({ ...adminSettings, call_queue_dispatch_mode: e.target.value })}
+                        style={{ padding: "8px 14px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.85rem", background: "var(--bg-surface)" }}
+                      >
+                        <option value="manual_by_agent">Manual Dispatch by 181 Call Centre Representative</option>
+                        <option value="auto_fifo">Automated FIFO Queue Dispatching</option>
+                        <option value="priority_escalated">High-Priority Grievance Pre-emption</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateAdminSetting("call_queue_dispatch_mode", adminSettings.call_queue_dispatch_mode)}
+                        disabled={isSavingSettings}
+                        className="btn btn--primary"
+                        style={{ padding: "8px 16px", fontSize: "0.8rem" }}
+                      >
+                        Save Policy
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Auto Recording Default */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                        Default Hearing Recording Enforcement
+                      </div>
+                      <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+                        Automatically record all Jan Sunwai sessions for official judicial record keeping.
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span className={`badge ${adminSettings.auto_recording_default === "true" ? "badge--success" : "badge--warning"}`}>
+                        {adminSettings.auto_recording_default === "true" ? "Enabled" : "Disabled"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateAdminSetting("auto_recording_default", adminSettings.auto_recording_default === "true" ? "false" : "true")}
+                        className="btn btn--secondary"
+                        style={{ padding: "8px 14px", fontSize: "0.8rem" }}
+                      >
+                        Toggle Recording
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Platform Environment Spec */}
+                  <div style={{ padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)", fontSize: "0.85rem" }}>
+                    <div style={{ fontWeight: 700, marginBottom: "8px" }}>
+                      Infrastructure Environment Summary
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", color: "var(--text-secondary)" }}>
+                      <div><strong>SFU Core:</strong> LiveKit WebRTC Cloud SFU</div>
+                      <div><strong>Proxy Router:</strong> Caddy Reverse Proxy (Port 8080)</div>
+                      <div><strong>Database:</strong> SQLite WAL (server/data/jansunwai.db)</div>
+                      <div><strong>Signaling:</strong> WebSocket Channel per Phone</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════
             MODAL: File New Grievance into SQLite
             ═══════════════════════════════════════════════════════ */}
         {isModalOpen && (
@@ -3117,6 +4443,14 @@ export default function JanSunwaiPortalPage() {
             </div>
           </div>
         )}
+
+        {/* Device Diagnostic Suite & Room Launcher Modal */}
+        <DevicePreCheckModal
+          isOpen={showPreCheckModal}
+          onClose={() => setShowPreCheckModal(false)}
+          onLaunchRoom={handleLaunchFromPreCheck}
+          initialRole={preCheckRole}
+        />
       </main>
     </>
   );

@@ -251,7 +251,8 @@ class JanSunwaiVoIPService : Service() {
             }
             ACTION_ACCEPT -> {
                 val callId = intent?.getStringExtra(EXTRA_CALL_ID)
-                dismissCall(callId)
+                val intentCallData = intent?.getStringExtra(EXTRA_CALL_DATA)
+                Log.i(TAG, "ACTION_ACCEPT received for callId: $callId")
                 stopRinging()
                 setInCallState(true)
                 CallOverlayManager.dismiss(applicationContext)
@@ -260,20 +261,33 @@ class JanSunwaiVoIPService : Service() {
                 } catch (e: Exception) {
                     IncomingCallActivity.activeInstance?.finish()
                 }
+
+                val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                val raw = intentCallData?.takeIf { it.isNotBlank() }
+                    ?: lastReceivedCallData?.takeIf { it.isNotBlank() }
+                    ?: prefs.getString("last_call_json", "")
+                    ?: ""
+
                 val updatedCallData = try {
-                    val raw = lastReceivedCallData ?: ""
                     val j = if (raw.isNotEmpty()) JSONObject(raw) else JSONObject()
                     j.put("autoAccept", true)
-                    if (callId != null) j.put("callId", callId)
+                    if (!callId.isNullOrEmpty()) j.put("callId", callId)
                     if (serverUrl.isNotEmpty()) j.put("serverUrl", serverUrl)
                     if (userPhone.isNotEmpty()) j.put("userPhone", userPhone)
                     j.toString()
                 } catch (e: Exception) {
-                    lastReceivedCallData
+                    raw
                 }
+
+                prefs.edit().putString("pending_accepted_call", updatedCallData).commit()
                 JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
+
                 // Launch MainActivity with accepted call data
-                val launchIntent = Intent(this, MainActivity::class.java).apply {
+                val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                    putExtra("action", "accept_call")
+                    putExtra(EXTRA_CALL_DATA, updatedCallData)
+                } ?: Intent(this, MainActivity::class.java).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     putExtra("action", "accept_call")
                     putExtra(EXTRA_CALL_DATA, updatedCallData)
@@ -514,6 +528,12 @@ class JanSunwaiVoIPService : Service() {
 
             isCallRinging = true
             lastReceivedCallData = callJsonString
+            try {
+                val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putString("last_call_json", callJsonString).commit()
+            } catch (e: Exception) {
+                // ignore
+            }
 
             currentRingingCallId = callId
             Log.i(TAG, "TRIGGERING INCOMING CALL RING: $callerName for case $grievanceId")

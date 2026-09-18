@@ -902,9 +902,30 @@ export function markParticipantJoined(callIdOrRoom: string, phone: string): bool
 
 // ─── Query Functions ──────────────────────────────────────────
 
-/** Get a call session by ID */
-export function getCall(callId: string): CallSession | undefined {
-  return activeCalls.get(callId);
+/** Get a call session by ID, grievance ID, or room name */
+export function getCall(callIdOrGrievance: string): CallSession | undefined {
+  if (!callIdOrGrievance) return undefined;
+  const direct = activeCalls.get(callIdOrGrievance);
+  if (direct) return direct;
+
+  const raw = callIdOrGrievance.trim();
+  const clean = raw.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+  for (const c of activeCalls.values()) {
+    if (
+      c.id === raw ||
+      c.grievanceId.toUpperCase() === clean ||
+      c.grievanceId.toUpperCase() === raw.toUpperCase() ||
+      c.livekitRoomName === raw ||
+      c.livekitRoomName === `JS-${clean}` ||
+      c.livekitRoomName === `hearing_${clean}`
+    ) {
+      return c;
+    }
+  }
+  if (activeCalls.size === 1) {
+    return Array.from(activeCalls.values())[0];
+  }
+  return undefined;
 }
 
 /** List all active (non-completed) calls */
@@ -977,9 +998,20 @@ export function checkCanEnterRoom(
   callId?: string;
   roomName?: string;
 } {
-  // District Collector / Officer is presiding host and can always start and enter
-  if (role === 'officer' || role === 'collector') {
+  // District Collector / Officer / Super Admin / Call Center can always start and enter
+  if (role === 'officer' || role === 'collector' || role === 'admin' || role === 'call_center') {
     return { allowed: true };
+  }
+
+  // Direct 6-character room codes and custom pre-check rooms can be entered freely
+  const rawRoom = (caseOrRoomId || '').trim();
+  if (
+    rawRoom.startsWith('JS-') ||
+    rawRoom.startsWith('ROOM-') ||
+    rawRoom.startsWith('test_') ||
+    (!rawRoom.toUpperCase().includes('RAJ-') && rawRoom.length <= 12)
+  ) {
+    return { allowed: true, roomName: rawRoom };
   }
 
   const cleanCaseId = caseOrRoomId.replace(/^hearing_/, '').trim().toUpperCase();

@@ -1377,3 +1377,17 @@ h1, h2, h3, h4, h5, h6 {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ─── Screen Share Presentation Stage (Dominant, Non-cropped HD) ─── */
+.jan-sunwai-screenshare-stage video {
+  object-fit: contain !important;
+  width: 100% !important;
+  height: 100% !important;
+  background-color: #000 !important;
+}
+
+.jan-sunwai-screenshare-stage .lk-participant-tile {
+  width: 100% !important;
+  height: 100% !important;
+}
+
