@@ -22,11 +22,29 @@ interface Officer {
   employeeCode?: string;
 }
 
+const DEFAULT_DEPARTMENTS = [
+  'District Administration & Collectorate',
+  'Energy / JVVNL (विद्युत निगम)',
+  'Food & Civil Supplies (खाद्य एवं रसद विभाग)',
+  'General Administration Department',
+  'Medical & Health Department (चिकित्सा विभाग)',
+  'PHED (जल प्रदाय विभाग)',
+  'PHED — Public Health Engineering',
+  'PWD (सार्वजनिक निर्माण विभाग)',
+  'Panchayati Raj & Rural Development (पंचायती राज)',
+  'Rajasthan Police (राजस्थान पुलिस)',
+  'Revenue & Sub-Divisional Administration',
+  'Revenue Department (राजस्व विभाग)',
+  'Rural Development & Panchayati Raj',
+  'Social Justice & Empowerment (सामाजिक न्याय)',
+];
+
 interface AddParticipantModalProps {
   visible: boolean;
   grievanceId: string;
   callId?: string;
   serverUrl: string;
+  apiBaseUrl?: string;
   onClose: () => void;
 }
 
@@ -35,12 +53,13 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
   grievanceId,
   callId,
   serverUrl,
+  apiBaseUrl,
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<'directory' | 'phone'>('directory');
 
   // ─── TAB 1: Department, Designation & Name Search ───
-  const [departments, setDepartments] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<string[]>(DEFAULT_DEPARTMENTS);
   const [designations, setDesignations] = useState<string[]>([]);
   const [selectedDept, setSelectedDept] = useState<string>('');
   const [selectedDesig, setSelectedDesig] = useState<string>('');
@@ -71,7 +90,13 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
   const [isDialing, setIsDialing] = useState(false);
   const [dialingPhone, setDialingPhone] = useState<string | null>(null);
 
-  const cleanUrl = serverUrl.replace(/\/+$/, '');
+  const searchTimeoutRef = React.useRef<any>(null);
+
+  const rawUrl = apiBaseUrl || serverUrl || '';
+  const cleanUrl = rawUrl
+    .replace(/^wss:\/\//i, 'https://')
+    .replace(/^ws:\/\//i, 'http://')
+    .replace(/\/+$/, '');
 
   // 1. Fetch departments from SQLite
   const fetchDepartments = useCallback(async () => {
@@ -79,13 +104,15 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
       const res = await fetch(`${cleanUrl}/api/sampark/departments`);
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.departments)) {
+        if (Array.isArray(data.departments) && data.departments.length > 0) {
           setDepartments(data.departments);
+          return;
         }
       }
     } catch (e) {
       console.warn('[AddPerson] Error fetching departments:', e);
     }
+    setDepartments(DEFAULT_DEPARTMENTS);
   }, [cleanUrl]);
 
   // 2. Fetch designations from SQLite (optionally filtered by department)
@@ -125,11 +152,24 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
     handleSearch(nameQuery, dept, '');
   };
 
-  const handleDesignationSelect = (desig: string) => {
-    setSelectedDesig(desig);
-    setShowDesigPicker(false);
-    handleSearch(nameQuery, selectedDept, desig);
+  // Debounced Name Search handler
+  const handleNameInputChange = (text: string) => {
+    setNameQuery(text);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      handleSearch(text, selectedDept, selectedDesig);
+    }, 250);
   };
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // 3. Search Database
   const handleSearch = async (name: string, dept: string, desig: string) => {
@@ -188,8 +228,20 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
         }
       }
       setLookupResult({ found: false });
+      if (!customName.trim()) {
+        setCustomName('Guest Participant');
+      }
+      if (!customRole.trim()) {
+        setCustomRole('Guest User');
+      }
     } catch (err) {
       setLookupResult({ found: false });
+      if (!customName.trim()) {
+        setCustomName('Guest Participant');
+      }
+      if (!customRole.trim()) {
+        setCustomRole('Guest User');
+      }
     } finally {
       setIsLookingUp(false);
     }
@@ -220,7 +272,7 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
       const data = await res.json();
       if (res.ok && data.success) {
         Alert.alert(
-          '📞 Calling Official',
+          lookupResult?.found ? '📞 Calling Official' : '📞 Calling Guest Participant',
           `Calling ${participant.name} (${participant.phone}). Their phone is ringing now and they will enter the video hearing once they accept.`
         );
         onClose();
@@ -365,9 +417,7 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
                     placeholder="e.g. Sharma, Chandan, Priya..."
                     placeholderTextColor="#64748b"
                     value={nameQuery}
-                    onChangeText={(t) => {
-                      setNameQuery(t);
-                    }}
+                    onChangeText={handleNameInputChange}
                     onSubmitEditing={() => handleSearch(nameQuery, selectedDept, selectedDesig)}
                   />
                   <TouchableOpacity

@@ -154,16 +154,33 @@ export async function muteParticipantTrack(
  */
 export async function muteParticipantAudio(roomName: string, identity: string, muted: boolean = true) {
   try {
-    const p = await roomService.getParticipant(roomName, identity);
+    const participants = await roomService.listParticipants(roomName);
+    const cleanDigits = (s: string) => (s || '').replace(/\D/g, '').slice(-10);
+    const targetClean = cleanDigits(identity);
+
     let count = 0;
-    for (const track of p.tracks) {
-      if (track.type === 0 || track.source === TrackSource.MICROPHONE) {
-        await roomService.mutePublishedTrack(roomName, identity, track.sid, muted);
-        count++;
+    for (const p of participants) {
+      const pClean = cleanDigits(p.identity);
+      const isMatch =
+        p.identity === identity ||
+        p.identity.includes(identity) ||
+        (targetClean && pClean && targetClean === pClean);
+
+      if (isMatch) {
+        for (const track of p.tracks) {
+          if (track.type === 0 || track.source === TrackSource.MICROPHONE) {
+            try {
+              await roomService.mutePublishedTrack(roomName, p.identity, track.sid, muted);
+              count++;
+            } catch (e) {
+              console.warn(`[LiveKit] Failed to mute audio track for ${p.identity}:`, e);
+            }
+          }
+        }
       }
     }
     console.log(`[LiveKit] ${muted ? 'Muted' : 'Unmuted'} audio for ${identity} in ${roomName} (${count} tracks)`);
-    return true;
+    return count > 0;
   } catch (err) {
     console.warn(`[LiveKit] Failed to mute audio for ${identity}:`, err);
     return false;
@@ -175,16 +192,33 @@ export async function muteParticipantAudio(roomName: string, identity: string, m
  */
 export async function muteParticipantVideo(roomName: string, identity: string, muted: boolean = true) {
   try {
-    const p = await roomService.getParticipant(roomName, identity);
+    const participants = await roomService.listParticipants(roomName);
+    const cleanDigits = (s: string) => (s || '').replace(/\D/g, '').slice(-10);
+    const targetClean = cleanDigits(identity);
+
     let count = 0;
-    for (const track of p.tracks) {
-      if (track.type === 1 || track.source === TrackSource.CAMERA || track.source === TrackSource.SCREEN_SHARE) {
-        await roomService.mutePublishedTrack(roomName, identity, track.sid, muted);
-        count++;
+    for (const p of participants) {
+      const pClean = cleanDigits(p.identity);
+      const isMatch =
+        p.identity === identity ||
+        p.identity.includes(identity) ||
+        (targetClean && pClean && targetClean === pClean);
+
+      if (isMatch) {
+        for (const track of p.tracks) {
+          if (track.type === 1 || track.source === TrackSource.CAMERA || track.source === TrackSource.SCREEN_SHARE) {
+            try {
+              await roomService.mutePublishedTrack(roomName, p.identity, track.sid, muted);
+              count++;
+            } catch (e) {
+              console.warn(`[LiveKit] Failed to mute video track for ${p.identity}:`, e);
+            }
+          }
+        }
       }
     }
     console.log(`[LiveKit] ${muted ? 'Disabled' : 'Enabled'} video for ${identity} in ${roomName} (${count} tracks)`);
-    return true;
+    return count > 0;
   } catch (err) {
     console.warn(`[LiveKit] Failed to mute video for ${identity}:`, err);
     return false;

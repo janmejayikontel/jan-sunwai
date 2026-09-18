@@ -157,7 +157,7 @@ export function unregisterClient(phone: string, ws: WebSocket) {
  * Send a VoIP call event to all connected WebSocket sessions for a phone number.
  * In production, this is replaced by FCM/APNs high-priority push for mobile.
  */
-function sendToClient(phone: string, event: CallEvent) {
+export function sendToClient(phone: string, event: any) {
   const digits = phone.replace(/[^0-9]/g, '');
   const last10 = digits.slice(-10);
   const withPrefix = `+91${last10}`;
@@ -1071,6 +1071,7 @@ export const callManager = {
   getAllCalls,
   getIncomingCallForPhone,
   checkCanEnterRoom,
+  sendToClient,
 };
 
 export default callManager;

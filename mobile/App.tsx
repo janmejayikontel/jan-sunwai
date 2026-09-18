@@ -478,6 +478,8 @@ export default function App() {
             } else if (msg.type === 'call_ended' || msg.type === 'call_declined') {
               JanSunwaiVoIP?.stopRinging?.();
               setIncomingCall(null);
+            } else if (msg.type === 'moderation' && msg.data) {
+              DeviceEventEmitter.emit('onModeration', msg.data);
             }
           } catch (e) {
             console.warn('[Mobile/WS] Error parsing message:', e);
@@ -608,6 +610,7 @@ export default function App() {
       {activeHearing ? (
         <VideoHearingScreen
           serverUrl={activeHearing.serverUrl}
+          apiBaseUrl={cleanServerUrl(serverUrl)}
           token={activeHearing.token}
           roomName={activeHearing.roomName}
           grievanceId={activeHearing.grievanceId}

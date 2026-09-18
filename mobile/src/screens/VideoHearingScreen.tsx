@@ -11,6 +11,7 @@ import {
   Alert,
   NativeModules,
   TouchableOpacity,
+  DeviceEventEmitter,
 } from 'react-native';
 import {
   LiveKitRoom,
@@ -25,6 +26,7 @@ import { AddParticipantModal } from '../components/AddParticipantModal';
 
 interface VideoHearingScreenProps {
   serverUrl: string;
+  apiBaseUrl?: string;
   token: string;
   roomName: string;
   grievanceId: string;
@@ -41,11 +43,13 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  */
 const RoomContent: React.FC<{
   serverUrl: string;
+  apiBaseUrl?: string;
   grievanceId: string;
   callId?: string;
   role?: string;
+  userName?: string;
   onLeave: () => void;
-}> = ({ serverUrl, grievanceId, callId, role, onLeave }) => {
+}> = ({ serverUrl, apiBaseUrl, grievanceId, callId, role, userName, onLeave }) => {
   const room = useRoomContext();
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
@@ -232,55 +236,90 @@ const RoomContent: React.FC<{
     };
   }, [room]);
 
-  // Real-time synchronization for moderation commands via LiveKit Data Channel
+  // API Base URL for REST calls (ensure never calling LiveKit SFU port directly for APIs)
+  const rawApi = (apiBaseUrl || serverUrl || '').replace(/\/+$/, '');
+  const effectiveApiUrl = rawApi.replace(/^(wss?:\/\/)/i, (m) =>
+    m.toLowerCase().startsWith('wss') ? 'https://' : 'http://'
+  );
+
+  // Real-time synchronization for moderation commands via LiveKit Data Channel, TrackMuted & WebSocket
   useEffect(() => {
     if (!room) return;
+
+    const processModerationAction = (data: any) => {
+      if (!data) return;
+      const myIdentity = room.localParticipant?.identity || '';
+      const cleanDigits = (p: string) => (p || '').replace(/\D/g, '').slice(-10);
+      const myPhone = cleanDigits(myIdentity);
+
+      const target = data.target || data.targetPhone || data.targetIdentity || '';
+      const targetPhone = cleanDigits(target);
+
+      const isTarget =
+        target === 'all' ||
+        data.action === 'disable_all_video' ||
+        data.action === 'mute_all' ||
+        target === myIdentity ||
+        data.targetIdentity === myIdentity ||
+        data.targetPhone === myIdentity ||
+        (targetPhone && myPhone && targetPhone === myPhone);
+
+      if ((data.action === 'mute_all' || data.action === 'mute_mic') && !isOfficer && isTarget) {
+        room.localParticipant?.setMicrophoneEnabled(false);
+        setIsMuted(true);
+        Alert.alert('🔇 Microphone Muted', 'The Presiding Officer has muted your microphone.');
+      } else if (data.action === 'unmute_mic' && isTarget) {
+        Alert.alert('🎙️ Speak Request', 'The Presiding Officer has requested you to unmute your microphone.');
+      } else if (
+        (data.action === 'disable_all_video' || data.action === 'disable_video') &&
+        !isOfficer &&
+        isTarget
+      ) {
+        room.localParticipant?.setCameraEnabled(false);
+        setIsCameraOff(true);
+        Alert.alert('📷 Video Disabled', 'The Presiding Officer has disabled your video camera.');
+      } else if (data.action === 'enable_video' && isTarget) {
+        Alert.alert('📹 Video Request', 'The Presiding Officer has requested you to turn on your camera.');
+      } else if (data.action === 'eject' && isTarget) {
+        Alert.alert('⛔ Disconnected', 'You have been disconnected from the hearing by the Presiding Officer.', [
+          { text: 'OK', onPress: onLeave },
+        ]);
+        onLeave();
+      }
+    };
 
     const handleData = (payload: Uint8Array) => {
       try {
         const text = new TextDecoder().decode(payload);
         const data = JSON.parse(text);
-
         if (data.type === 'moderation') {
-          const myPhone = (room.localParticipant?.identity || '').replace(/\D/g, '').slice(-10);
-          const targetPhone = (data.targetPhone || data.targetIdentity || '').replace(/\D/g, '').slice(-10);
-          const isTarget = !targetPhone || targetPhone === myPhone;
-
-          if (data.action === 'mute_all' && !isOfficer) {
-            room.localParticipant?.setMicrophoneEnabled(false);
-            setIsMuted(true);
-            Alert.alert('🔇 Microphone Muted', 'The Presiding Officer has muted all participant microphones.');
-          } else if (data.action === 'mute_mic' && isTarget) {
-            room.localParticipant?.setMicrophoneEnabled(false);
-            setIsMuted(true);
-            Alert.alert('🔇 Microphone Muted', 'The Presiding Officer has muted your microphone.');
-          } else if (data.action === 'unmute_mic' && isTarget) {
-            Alert.alert('🎙️ Speak Request', 'The Presiding Officer has requested you to unmute your microphone.');
-          } else if (data.action === 'disable_all_video' && !isOfficer) {
-            room.localParticipant?.setCameraEnabled(false);
-            setIsCameraOff(true);
-            Alert.alert('📷 Video Disabled', 'The Presiding Officer has disabled participant video cameras.');
-          } else if (data.action === 'disable_video' && isTarget) {
-            room.localParticipant?.setCameraEnabled(false);
-            setIsCameraOff(true);
-            Alert.alert('📷 Video Disabled', 'The Presiding Officer has disabled your video camera.');
-          } else if (data.action === 'enable_video' && isTarget) {
-            Alert.alert('📹 Video Request', 'The Presiding Officer has requested you to turn on your camera.');
-          } else if (data.action === 'eject' && isTarget) {
-            Alert.alert('⛔ Disconnected', 'You have been disconnected from the hearing by the Presiding Officer.', [
-              { text: 'OK', onPress: onLeave },
-            ]);
-            onLeave();
-          }
+          processModerationAction(data);
         }
       } catch (err) {
         console.warn('Failed to parse moderation packet:', err);
       }
     };
 
+    // SFU track mute listener (fires on hardware stream when server mutes track)
+    const handleTrackMuted = (publication: any, participant: any) => {
+      if (participant === room.localParticipant && publication?.source === Track.Source.Camera) {
+        room.localParticipant?.setCameraEnabled(false);
+        setIsCameraOff(true);
+      }
+    };
+
+    // WebSocket moderation fallback listener
+    const wsSub = DeviceEventEmitter.addListener('onModeration', (modData) => {
+      processModerationAction(modData);
+    });
+
     room.on(RoomEvent.DataReceived, handleData);
+    room.on(RoomEvent.TrackMuted, handleTrackMuted);
+
     return () => {
+      wsSub.remove();
       room.off(RoomEvent.DataReceived, handleData);
+      room.off(RoomEvent.TrackMuted, handleTrackMuted);
     };
   }, [room, isOfficer, onLeave]);
 
@@ -314,22 +353,22 @@ const RoomContent: React.FC<{
   const handleToggleMic = async () => {
     if (!room?.localParticipant) return;
     try {
-      const nextMuted = !isMuted;
-      await room.localParticipant.setMicrophoneEnabled(!nextMuted);
-      setIsMuted(nextMuted);
+      const nextState = isMuted; // if currently muted, next state is unmuted (true)
+      await room.localParticipant.setMicrophoneEnabled(nextState);
+      setIsMuted(!nextState);
     } catch (err) {
-      console.error('Failed to toggle mic:', err);
+      console.warn('Toggle mic error:', err);
     }
   };
 
   const handleToggleCamera = async () => {
     if (!room?.localParticipant) return;
     try {
-      const nextOff = !isCameraOff;
-      await room.localParticipant.setCameraEnabled(!nextOff);
-      setIsCameraOff(nextOff);
+      const nextState = isCameraOff; // if currently off, next state is on (true)
+      await room.localParticipant.setCameraEnabled(nextState);
+      setIsCameraOff(!nextState);
     } catch (err) {
-      console.error('Failed to toggle camera:', err);
+      console.warn('Toggle camera error:', err);
     }
   };
 
@@ -353,11 +392,11 @@ const RoomContent: React.FC<{
   // 1. Mute all remote microphones
   const handleMuteAll = async () => {
     try {
-      await sendModerationPacket({ type: 'moderation', action: 'mute_all' });
-      await fetch(`${cleanServerUrl(serverUrl)}/api/calls/${effectiveCallId}/mute-audio`, {
+      await sendModerationPacket({ type: 'moderation', action: 'mute_all', target: 'all' });
+      await fetch(`${effectiveApiUrl}/api/calls/${effectiveCallId}/mute-audio`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ muteAll: true, actorName: 'Presiding Officer' }),
+        body: JSON.stringify({ muteAll: true, actorName: userName || 'Presiding Officer' }),
       });
       Alert.alert('🔇 Muted All', 'All participant microphones have been muted by bench order.');
     } catch (e) {
@@ -368,11 +407,11 @@ const RoomContent: React.FC<{
   // 2. Disable all remote cameras
   const handleDisableAllVideo = async () => {
     try {
-      await sendModerationPacket({ type: 'moderation', action: 'disable_all_video' });
-      await fetch(`${cleanServerUrl(serverUrl)}/api/calls/${effectiveCallId}/disable-video`, {
+      await sendModerationPacket({ type: 'moderation', action: 'disable_all_video', target: 'all' });
+      await fetch(`${effectiveApiUrl}/api/calls/${effectiveCallId}/disable-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ disableAll: true, actorName: 'Presiding Officer' }),
+        body: JSON.stringify({ disableAll: true, actorName: userName || 'Presiding Officer' }),
       });
       Alert.alert('📷 Cameras Disabled', 'All remote participant cameras have been disabled.');
     } catch (e) {
@@ -387,15 +426,18 @@ const RoomContent: React.FC<{
       await sendModerationPacket({
         type: 'moderation',
         action: willMute ? 'mute_mic' : 'unmute_mic',
+        target: member.identity,
         targetPhone: member.identity,
+        targetIdentity: member.identity,
       });
-      await fetch(`${cleanServerUrl(serverUrl)}/api/calls/${effectiveCallId}/mute-audio`, {
+      await fetch(`${effectiveApiUrl}/api/calls/${effectiveCallId}/mute-audio`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           participantPhone: member.identity,
+          targetIdentity: member.identity,
           muted: willMute,
-          actorName: 'Presiding Officer',
+          actorName: userName || 'Presiding Officer',
         }),
       });
       Alert.alert(
@@ -414,15 +456,18 @@ const RoomContent: React.FC<{
       await sendModerationPacket({
         type: 'moderation',
         action: willDisable ? 'disable_video' : 'enable_video',
+        target: member.identity,
         targetPhone: member.identity,
+        targetIdentity: member.identity,
       });
-      await fetch(`${cleanServerUrl(serverUrl)}/api/calls/${effectiveCallId}/disable-video`, {
+      await fetch(`${effectiveApiUrl}/api/calls/${effectiveCallId}/disable-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           participantPhone: member.identity,
+          targetIdentity: member.identity,
           disabled: willDisable,
-          actorName: 'Presiding Officer',
+          actorName: userName || 'Presiding Officer',
         }),
       });
       Alert.alert(
@@ -585,7 +630,8 @@ const RoomContent: React.FC<{
         visible={showAddParticipant}
         grievanceId={grievanceId}
         callId={callId}
-        serverUrl={serverUrl}
+        serverUrl={effectiveApiUrl}
+        apiBaseUrl={effectiveApiUrl}
         onClose={() => setShowAddParticipant(false)}
       />
 
@@ -787,6 +833,7 @@ const RoomContent: React.FC<{
 
 export const VideoHearingScreen: React.FC<VideoHearingScreenProps> = ({
   serverUrl,
+  apiBaseUrl,
   token,
   roomName,
   grievanceId,
@@ -828,9 +875,11 @@ export const VideoHearingScreen: React.FC<VideoHearingScreenProps> = ({
         ) : (
           <RoomContent
             serverUrl={serverUrl}
+            apiBaseUrl={apiBaseUrl}
             grievanceId={grievanceId}
             callId={callId}
             role={role}
+            userName={userName}
             onLeave={onLeave}
           />
         )}

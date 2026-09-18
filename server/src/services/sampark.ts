@@ -280,13 +280,19 @@ export async function createGrievance(input: CreateGrievanceInput): Promise<Grie
 }
 
 /**
- * Get distinct departments from SQLite employees and officers tables.
+ * Get distinct departments from SQLite officers and employees tables.
  */
 export function listDepartments(): string[] {
   const rows = db.prepare(`
-    SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND department != ''
-    UNION
-    SELECT DISTINCT department FROM officers WHERE department IS NOT NULL AND department != ''
+    SELECT DISTINCT department FROM (
+      SELECT department FROM officers WHERE department IS NOT NULL AND department != ''
+      UNION
+      SELECT department FROM employees WHERE department IS NOT NULL AND department != ''
+      UNION
+      SELECT department FROM call_center_reps WHERE department IS NOT NULL AND department != ''
+      UNION
+      SELECT department FROM admins WHERE department IS NOT NULL AND department != ''
+    )
     ORDER BY department ASC
   `).all() as any[];
   return rows.map((r) => r.department);
@@ -331,28 +337,29 @@ export async function searchOfficers(
   const phonePattern = digitsOnly.length >= 6 ? `%${digitsOnly.slice(-10)}%` : lower;
   const cleanDesig = (designation || '').trim();
 
-  // 1. Search officers table (Collectors, SDM, SP, etc.)
-  let offRows: any[] = [];
-  if (!department || department === 'ALL' || department.trim() === '') {
-    let offSql = `
-      SELECT name, phone, designation, department, posting_location as postingDistrict, cadre as employeeCode
-      FROM officers
-      WHERE 1=1
-    `;
-    const offParams: any[] = [];
-    if (cleanQ) {
-      offSql += ` AND (LOWER(name) LIKE ? OR LOWER(designation) LIKE ? OR LOWER(department) LIKE ? OR phone LIKE ? OR phone LIKE ?)`;
-      offParams.push(lower, lower, lower, lower, phonePattern);
-    }
-    if (cleanDesig && cleanDesig !== 'ALL') {
-      offSql += ` AND (designation = ? OR LOWER(designation) LIKE ?)`;
-      offParams.push(cleanDesig, `%${cleanDesig.toLowerCase()}%`);
-    }
-    offSql += ` ORDER BY name ASC LIMIT 15`;
-    offRows = db.prepare(offSql).all(...offParams) as any[];
+  // 1. Search officers table (Collectors, SDM, SP, Tehsildar, etc.)
+  let offSql = `
+    SELECT name, phone, designation, department, posting_location as postingDistrict, cadre as employeeCode
+    FROM officers
+    WHERE 1=1
+  `;
+  const offParams: any[] = [];
+  if (cleanQ) {
+    offSql += ` AND (LOWER(name) LIKE ? OR LOWER(designation) LIKE ? OR LOWER(department) LIKE ? OR phone LIKE ? OR phone LIKE ?)`;
+    offParams.push(lower, lower, lower, lower, phonePattern);
   }
+  if (department && department !== 'ALL' && department.trim() !== '') {
+    offSql += ` AND (department = ? OR department LIKE ?)`;
+    offParams.push(department.trim(), `%${department.trim()}%`);
+  }
+  if (cleanDesig && cleanDesig !== 'ALL') {
+    offSql += ` AND (designation = ? OR LOWER(designation) LIKE ?)`;
+    offParams.push(cleanDesig, `%${cleanDesig.toLowerCase()}%`);
+  }
+  offSql += ` ORDER BY name ASC LIMIT 30`;
+  const offRows = db.prepare(offSql).all(...offParams) as any[];
 
-  // 2. Search employees table
+  // 2. Search employees table (JEn, Patwari, AEn, SHO, etc.)
   let empSql = `
     SELECT name, phone, designation, department, posting_location as postingDistrict, employee_code as employeeCode
     FROM employees

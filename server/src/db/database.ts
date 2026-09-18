@@ -353,6 +353,15 @@ function seedInitialData(): void {
       { id: 'off-004', name: 'Jasobanta, IAS', phone: '+918093868707', designation: 'District Collector & DM', department: 'District Administration & Collectorate', district: 'Barmer', cadre: 'IAS', posting_location: 'Collectorate Campus, Barmer' },
       { id: 'off-005', name: 'Sanjit, IPS', phone: '+918249963060', designation: 'Superintendent of Police (SP)', department: 'Rajasthan Police (राजस्थान पुलिस)', district: 'Jaipur', cadre: 'IPS', posting_location: 'Police Headquarters, Jaipur City' },
       { id: 'off-006', name: 'Pragyan, IAS', phone: '+917008318289', designation: 'District Collector & DM', department: 'District Administration & Collectorate', district: 'Jodhpur', cadre: 'IAS', posting_location: 'Collectorate Campus, Jodhpur' },
+      { id: 'off-007', name: 'Sh. Rameshwar Meena, RAS', phone: '+919414000010', designation: 'Tehsildar', department: 'Revenue & Sub-Divisional Administration', district: 'Jaipur', cadre: 'RAS', posting_location: 'Tehsil Office Sanganer, Jaipur' },
+      { id: 'off-008', name: 'Smt. Kavita Choudhary, RPS', phone: '+919414000011', designation: 'Circle Officer / DySP', department: 'Rajasthan Police (राजस्थान पुलिस)', district: 'Jaipur', cadre: 'RPS', posting_location: 'Circle Office Sanganer, Jaipur' },
+      { id: 'off-009', name: 'Dr. Sunita Sharma', phone: '+919414000012', designation: 'Chief Medical & Health Officer (CMHO)', department: 'Medical, Health & Family Welfare', district: 'Jaipur', cadre: 'M&H', posting_location: 'Swasthya Bhawan, Jaipur' },
+      { id: 'off-010', name: 'Sh. Rajesh Mathur', phone: '+919414000013', designation: 'Superintending Engineer (SE)', department: 'Energy & Discom (JVVNL)', district: 'Jaipur', cadre: 'JVVNL', posting_location: 'Vidhyut Bhawan, Jyoti Nagar, Jaipur' },
+      { id: 'off-011', name: 'Sh. Mahesh Verma', phone: '+919414000014', designation: 'Superintending Engineer (SE)', department: 'Public Health Engineering (PHED) — Water Supply', district: 'Jaipur', cadre: 'PHED', posting_location: 'Jal Bhawan, 2-Civil Lines, Jaipur' },
+      { id: 'off-012', name: 'Sh. Vikramaditya Rathore', phone: '+919414000015', designation: 'Executive Engineer (XEn)', department: 'Public Works Department (PWD)', district: 'Jaipur', cadre: 'PWD', posting_location: 'PWD Circle Office, Jacob Road, Jaipur' },
+      { id: 'off-013', name: 'Sh. Dinesh Rawat', phone: '+919414000016', designation: 'District Social Welfare Officer', department: 'Social Justice & Empowerment', district: 'Jaipur', cadre: 'SJED', posting_location: 'Ambedkar Bhawan, Jaipur' },
+      { id: 'off-014', name: 'Smt. Seema Gupta', phone: '+919414000017', designation: 'District Supply Officer (DSO)', department: 'Food, Civil Supplies & Consumer Affairs', district: 'Jaipur', cadre: 'FCS', posting_location: 'Collectorate Campus, Jaipur' },
+      { id: 'off-015', name: 'Sh. Ashok Bishnoi', phone: '+919414000018', designation: 'Block Development Officer (BDO)', department: 'Panchayati Raj & Rural Development', district: 'Jaipur', cadre: 'RDPR', posting_location: 'Panchayat Samiti Sanganer, Jaipur' },
     ];
 
     for (const off of officersSeed) {
@@ -375,9 +384,15 @@ function seedInitialData(): void {
     insertCitizen.run('cit-001', 'Janmejay Sethi', '+917735807328', 'Sanganer', 'Jaipur', 'Sanganer');
     insertCitizen.run('cit-002', 'Mandal Sahoo', '+918249884033', 'Gudamalani', 'Barmer', 'Barmer');
 
-    // Employees (mapped for backward compatibility)
-    insertEmployee.run('emp-001', 'Chandan Kumar', '+917749852014', 'Junior Engineer (JEn)', 'PHED — Public Health Engineering', 'PHED-JP-2019-0342', 'Sub-Division Sanganer, Jaipur');
-    insertEmployee.run('emp-002', 'Mrityunjay Singh', '+919337453714', 'Patwari', 'Revenue Department', 'REV-BM-2015-0187', 'Patwar Circle Gudamalani, Barmer');
+    // Employees across distinct departments
+    insertEmployee.run('emp-001', 'Chandan Kumar', '+917749852014', 'Junior Engineer (JEn)', 'Public Health Engineering (PHED) — Water Supply', 'PHED-JP-2019-0342', 'Sub-Division Sanganer, Jaipur');
+    insertEmployee.run('emp-002', 'Mrityunjay Singh', '+919337453714', 'Patwari', 'Revenue & Sub-Divisional Administration', 'REV-BM-2015-0187', 'Patwar Circle Gudamalani, Barmer');
+    insertEmployee.run('emp-003', 'Rakesh Sharma', '+919414000021', 'Assistant Engineer (AEn)', 'Energy & Discom (JVVNL)', 'JVVNL-JP-2018-0911', 'Sanganer Discom Sub-Division, Jaipur');
+    insertEmployee.run('emp-004', 'Suresh Meena', '+919414000022', 'Station House Officer (SHO)', 'Rajasthan Police (राजस्थान पुलिस)', 'POL-JP-2014-0412', 'Sanganer Police Station, Jaipur');
+    insertEmployee.run('emp-005', 'Dr. Amit Pareek', '+919414000023', 'Medical Officer Incharge', 'Medical, Health & Family Welfare', 'MH-JP-2016-0158', 'Community Health Centre (CHC) Sanganer');
+    insertEmployee.run('emp-006', 'Hemant Saini', '+919414000024', 'Junior Engineer (JEn)', 'Public Works Department (PWD)', 'PWD-JP-2020-0714', 'PWD Sub-Division Jaipur South');
+    insertEmployee.run('emp-007', 'Smt. Pooja Yadav', '+919414000025', 'Enforcement Inspector', 'Food, Civil Supplies & Consumer Affairs', 'FCS-JP-2017-0239', 'DSO Office Sanganer Circle, Jaipur');
+    insertEmployee.run('emp-008', 'Gopal Lal Jat', '+919414000026', 'Gram Vikas Adhikari (VDO)', 'Panchayati Raj & Rural Development', 'PR-JP-2019-0825', 'Gram Panchayat Sanganer Rural, Jaipur');
 
     // Grievances
     insertGrievance.run(

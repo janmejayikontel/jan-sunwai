@@ -461,11 +461,31 @@ router.post('/:id/mute-audio', async (req: Request, res: Response) => {
         mutedAll: true,
         count,
       });
+
+      // Notify all connected clients via WebSocket
+      if (call?.participants) {
+        for (const p of call.participants) {
+          if (p.phone !== actorPhone && p.role !== 'host') {
+            callManager.sendToClient(p.phone, {
+              type: 'moderation',
+              callId: id,
+              data: { action: 'mute_all', target: 'all' },
+            });
+          }
+        }
+      }
       return;
     }
 
     // 2. Mute / Unmute Specific Participant
     const success = await livekitService.muteParticipantAudio(roomName, participantPhone, Boolean(muted));
+
+    // Notify target client via WebSocket
+    callManager.sendToClient(participantPhone, {
+      type: 'moderation',
+      callId: id,
+      data: { action: muted ? 'mute_mic' : 'unmute_mic', target: participantPhone, targetPhone: participantPhone },
+    });
 
     insertAuditLog({
       eventType: muted ? 'PARTICIPANT_AUDIO_MUTED' : 'PARTICIPANT_AUDIO_UNMUTED',
@@ -511,6 +531,20 @@ router.post('/:id/disable-video', async (req: Request, res: Response) => {
         targetName: 'All Participants',
         details: `Disabled all remote cameras in room ${roomName} (${count} streams disabled)`,
       });
+
+      // Notify all connected clients via WebSocket
+      if (call?.participants) {
+        for (const p of call.participants) {
+          if (p.phone !== actorPhone && p.role !== 'host') {
+            callManager.sendToClient(p.phone, {
+              type: 'moderation',
+              callId: id,
+              data: { action: 'disable_all_video', target: 'all' },
+            });
+          }
+        }
+      }
+
       res.json({
         success: true,
         message: `All remote cameras disabled (${count} streams)`,
@@ -522,6 +556,17 @@ router.post('/:id/disable-video', async (req: Request, res: Response) => {
 
     // 2. Disable / Enable Specific Participant's Camera
     const success = await livekitService.muteParticipantVideo(roomName, participantPhone, Boolean(disabled));
+
+    // Notify target client via WebSocket
+    callManager.sendToClient(participantPhone, {
+      type: 'moderation',
+      callId: id,
+      data: {
+        action: disabled ? 'disable_video' : 'enable_video',
+        target: participantPhone,
+        targetPhone: participantPhone,
+      },
+    });
 
     insertAuditLog({
       eventType: disabled ? 'PARTICIPANT_VIDEO_DISABLED' : 'PARTICIPANT_VIDEO_ENABLED',

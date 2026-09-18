@@ -520,22 +520,32 @@ function PermanentControlBar({
             })
           );
         } else if (data.type === "moderation") {
-          // Officer Presiding Moderation Directive
+          // Officer / Super Admin Presiding Moderation Directive
           const myId = localParticipant?.identity;
           const myPhone = currentUser?.phone || myId;
+          const getDigits = (s?: string) => (s ? s.replace(/\D/g, "").slice(-10) : "");
+          const myDigits = getDigits(myId) || getDigits(myPhone);
+          const targetDigits = getDigits(data.target) || getDigits(data.targetPhone) || getDigits(data.targetIdentity);
+
           const isTargetMe =
             data.target === "all" ||
+            data.targetIdentity === "all" ||
             data.target === myId ||
-            data.target === myPhone ||
-            data.targetPhone === myPhone;
+            data.targetIdentity === myId ||
+            data.targetPhone === myPhone ||
+            (targetDigits && myDigits && targetDigits === myDigits);
 
-          if (isTargetMe && currentUser?.role !== "officer") {
+          const isSenderMe =
+            data.senderIdentity === myId ||
+            (data.senderPhone && getDigits(data.senderPhone) === myDigits);
+
+          if (isTargetMe && !isSenderMe) {
             if (data.action === "mute_audio" || data.action === "mute_all") {
               localParticipant.setMicrophoneEnabled(false);
               window.dispatchEvent(
                 new CustomEvent("jan-sunwai-toast", {
                   detail: {
-                    message: "🔇 Presiding Officer has muted your microphone",
+                    message: "🔇 Presiding Officer / Super Admin has muted your microphone",
                     type: "warning",
                   },
                 })
@@ -545,7 +555,7 @@ function PermanentControlBar({
               window.dispatchEvent(
                 new CustomEvent("jan-sunwai-toast", {
                   detail: {
-                    message: "📹 Presiding Officer has disabled your camera",
+                    message: "📹 Presiding Officer / Super Admin has disabled your camera",
                     type: "warning",
                   },
                 })
@@ -558,9 +568,37 @@ function PermanentControlBar({
       }
     };
 
+    const handleTrackMuted = (pub: any, participant: any) => {
+      if (participant?.isLocal) {
+        if (pub?.source === Track.Source.Camera) {
+          localParticipant.setCameraEnabled(false);
+          window.dispatchEvent(
+            new CustomEvent("jan-sunwai-toast", {
+              detail: {
+                message: "📹 Presiding Officer / Super Admin has disabled your camera",
+                type: "warning",
+              },
+            })
+          );
+        } else if (pub?.source === Track.Source.Microphone) {
+          localParticipant.setMicrophoneEnabled(false);
+          window.dispatchEvent(
+            new CustomEvent("jan-sunwai-toast", {
+              detail: {
+                message: "🔇 Presiding Officer / Super Admin has muted your microphone",
+                type: "warning",
+              },
+            })
+          );
+        }
+      }
+    };
+
     room.on(RoomEvent.DataReceived, handleData);
+    room.on(RoomEvent.TrackMuted, handleTrackMuted);
     return () => {
       room.off(RoomEvent.DataReceived, handleData);
+      room.off(RoomEvent.TrackMuted, handleTrackMuted);
     };
   }, [room, showChat, localParticipant, currentUser]);
 
@@ -612,7 +650,7 @@ function PermanentControlBar({
     );
   };
 
-  // Officer Bench Global Actions
+  // Officer / Super Admin Bench Global Actions
   const handleOfficerMuteAll = async () => {
     if (!callId || !apiBase) return;
     try {
@@ -627,13 +665,20 @@ function PermanentControlBar({
       });
       if (room && room.localParticipant) {
         const pkt = new TextEncoder().encode(
-          JSON.stringify({ type: "moderation", action: "mute_audio", target: "all" })
+          JSON.stringify({
+            type: "moderation",
+            action: "mute_audio",
+            target: "all",
+            targetIdentity: "all",
+            senderIdentity: localParticipant?.identity,
+            senderPhone: currentUser?.phone,
+          })
         );
         await room.localParticipant.publishData(pkt, { reliable: true });
       }
       window.dispatchEvent(
         new CustomEvent("jan-sunwai-toast", {
-          detail: { message: "🔇 All remote microphones have been muted by Presiding Officer", type: "success" },
+          detail: { message: "🔇 All remote microphones have been muted by Presiding Officer / Super Admin", type: "success" },
         })
       );
     } catch (e) {
@@ -655,13 +700,20 @@ function PermanentControlBar({
       });
       if (room && room.localParticipant) {
         const pkt = new TextEncoder().encode(
-          JSON.stringify({ type: "moderation", action: "disable_video", target: "all" })
+          JSON.stringify({
+            type: "moderation",
+            action: "disable_video",
+            target: "all",
+            targetIdentity: "all",
+            senderIdentity: localParticipant?.identity,
+            senderPhone: currentUser?.phone,
+          })
         );
         await room.localParticipant.publishData(pkt, { reliable: true });
       }
       window.dispatchEvent(
         new CustomEvent("jan-sunwai-toast", {
-          detail: { message: "📹 All remote cameras have been disabled by Presiding Officer", type: "warning" },
+          detail: { message: "📹 All remote cameras have been disabled by Presiding Officer / Super Admin", type: "warning" },
         })
       );
     } catch (e) {
@@ -669,7 +721,7 @@ function PermanentControlBar({
     }
   };
 
-  // Officer Moderation API calls (Individual Participants)
+  // Officer / Super Admin Moderation API calls (Individual Participants)
   const handleOfficerMuteAudio = async (phone: string) => {
     if (!callId || !apiBase) return;
     try {
@@ -678,6 +730,7 @@ function PermanentControlBar({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           participantPhone: phone,
+          participantIdentity: phone,
           muted: true,
           actorName: currentUser?.name,
           actorRole: currentUser?.role,
@@ -685,7 +738,15 @@ function PermanentControlBar({
       });
       if (room && room.localParticipant) {
         const pkt = new TextEncoder().encode(
-          JSON.stringify({ type: "moderation", action: "mute_audio", target: phone })
+          JSON.stringify({
+            type: "moderation",
+            action: "mute_audio",
+            target: phone,
+            targetPhone: phone,
+            targetIdentity: phone,
+            senderIdentity: localParticipant?.identity,
+            senderPhone: currentUser?.phone,
+          })
         );
         await room.localParticipant.publishData(pkt, { reliable: true });
       }
@@ -707,6 +768,7 @@ function PermanentControlBar({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           participantPhone: phone,
+          participantIdentity: phone,
           disabled: true,
           actorName: currentUser?.name,
           actorRole: currentUser?.role,
@@ -714,7 +776,15 @@ function PermanentControlBar({
       });
       if (room && room.localParticipant) {
         const pkt = new TextEncoder().encode(
-          JSON.stringify({ type: "moderation", action: "disable_video", target: phone })
+          JSON.stringify({
+            type: "moderation",
+            action: "disable_video",
+            target: phone,
+            targetPhone: phone,
+            targetIdentity: phone,
+            senderIdentity: localParticipant?.identity,
+            senderPhone: currentUser?.phone,
+          })
         );
         await room.localParticipant.publishData(pkt, { reliable: true });
       }
@@ -1937,8 +2007,8 @@ function PermanentControlBar({
         </div>
       )}
 
-      {/* ─── Officer / Magistrate Moderation Drawer ───────────── */}
-      {showModerationModal && currentUser?.role === "officer" && (() => {
+      {/* ─── Officer / Magistrate / Super Admin Moderation Drawer ─── */}
+      {showModerationModal && (currentUser?.role === "officer" || currentUser?.role === "admin") && (() => {
         const remoteMembers = allParticipants.filter((p) => !p.isLocal);
         return (
           <div
