@@ -10,7 +10,7 @@
 
 import { Platform } from 'react-native';
 
-export const DEFAULT_SERVER_URL = 'https://centuries-deck-orange-brain.trycloudflare.com';
+export const DEFAULT_SERVER_URL = 'https://innovation-laundry-realtor-carefully.trycloudflare.com';
 
 
 export const CONFIG = {

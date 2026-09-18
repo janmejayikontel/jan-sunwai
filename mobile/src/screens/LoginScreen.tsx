@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { DEFAULT_SERVER_URL } from '../config';
 
@@ -45,28 +46,59 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     district?: string;
   } | null>(null);
   const [showConfig, setShowConfig] = useState(false);
+  const [showAdminPinModal, setShowAdminPinModal] = useState(false);
+  const [adminPinInput, setAdminPinInput] = useState('');
+  const [adminPinError, setAdminPinError] = useState('');
+  const [adminVerified, setAdminVerified] = useState(false);
 
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
   React.useEffect(() => {
-    // Dynamically fetch live server endpoint from GitHub raw config
-    fetch('https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt')
+    // Dynamically fetch live server endpoint from GitHub raw config with cache buster
+    fetch(`https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=${Date.now()}`)
       .then((res) => res.text())
-      .then((txt) => {
+      .then(async (txt) => {
         const clean = txt.trim();
         if (clean.startsWith('http')) {
           console.log('[LoginScreen] Fetched remote live server URL:', clean);
-          setServerBase(clean);
+          try {
+            const healthRes = await fetch(`${clean}/api/health`, { method: 'GET' });
+            if (healthRes.ok) {
+              setServerBase(clean);
+            }
+          } catch {
+            console.log('[LoginScreen] Remote URL not responding, retaining fallback');
+          }
         }
       })
       .catch((e) => console.log('[LoginScreen] Using default server URL:', e.message));
   }, []);
+
+  const handleVerifyAdminPin = () => {
+    if (adminPinInput.trim() === '8899') {
+      setAdminVerified(true);
+      setShowAdminPinModal(false);
+      setPhone('9999999999');
+      setAdminPinInput('');
+      setAdminPinError('');
+      Alert.alert('PIN Verified', 'Administrator security credentials verified (PIN: 8899).');
+    } else {
+      setAdminPinError('Invalid Security PIN. Enter 8899 to proceed.');
+    }
+  };
 
   // Step 1: Request OTP
   const handleSendOtp = async () => {
     const cleanPhone = phone.trim().replace(/\D/g, '');
     if (cleanPhone.length < 10) {
       Alert.alert('Invalid Phone', 'Please enter a valid 10-digit mobile number.');
+      return;
+    }
+
+    if (cleanPhone === '9999999999' && !adminVerified) {
+      setAdminPinInput('');
+      setAdminPinError('');
+      setShowAdminPinModal(true);
       return;
     }
 
@@ -237,6 +269,52 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   )}
                 </TouchableOpacity>
 
+                {/* 4 Demo Personas (1-Tap Test) */}
+                <View style={{ marginTop: 16, marginBottom: 4 }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Quick Demo Personas (4 System Roles):
+                  </Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    <TouchableOpacity
+                      style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(59,130,246,0.15)', borderWidth: 1, borderColor: '#3b82f6' }}
+                      onPress={() => setPhone('7735807328')}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#60a5fa' }}>👤 Citizen</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.15)', borderWidth: 1, borderColor: '#f59e0b' }}
+                      onPress={() => setPhone('7749852013')}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#fbbf24' }}>🎧 181 Rep</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(16,185,129,0.15)', borderWidth: 1, borderColor: '#10b981' }}
+                      onPress={() => setPhone('9414000001')}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#34d399' }}>🏛️ Officer</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(239,68,68,0.15)', borderWidth: 1, borderColor: '#ef4444' }}
+                      onPress={() => {
+                        if (adminVerified) {
+                          setPhone('9999999999');
+                        } else {
+                          setAdminPinInput('');
+                          setAdminPinError('');
+                          setShowAdminPinModal(true);
+                        }
+                      }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#f87171' }}>
+                        🛡️ Admin {adminVerified ? '✓' : '(PIN)'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
                 {/* Server Connection Settings Toggle */}
                 <TouchableOpacity
                   style={styles.serverSettingsToggle}
@@ -267,7 +345,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.quickUrlBtn}
-                        onPress={() => setServerBase('https://infrastructure-campus-theft-factor.trycloudflare.com')}
+                        onPress={() => setServerBase('https://innovation-laundry-realtor-carefully.trycloudflare.com')}
                       >
                         <Text style={styles.quickUrlBtnText}>☁️ Cloudflare</Text>
                       </TouchableOpacity>
@@ -290,14 +368,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                       styles.detectedCard,
                       detectedUser.role === 'officer'
                         ? styles.detectedOfficer
-                        : detectedUser.role === 'employee'
+                        : detectedUser.role === 'admin'
+                        ? styles.detectedAdmin
+                        : (detectedUser.role === 'call_center' || detectedUser.role === 'employee')
                         ? styles.detectedEmployee
                         : styles.detectedCitizen,
                     ]}
                   >
                     <View style={styles.detectedHeaderRow}>
                       <Text style={styles.detectedIcon}>
-                        {detectedUser.role === 'officer' ? '🏛️' : detectedUser.role === 'employee' ? '👮' : '👤'}
+                        {detectedUser.role === 'officer'
+                          ? '🏛️'
+                          : detectedUser.role === 'admin'
+                          ? '🛡️'
+                          : (detectedUser.role === 'call_center' || detectedUser.role === 'employee')
+                          ? '🎧'
+                          : '👤'}
                       </Text>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.detectedName}>{detectedUser.name}</Text>
@@ -311,8 +397,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                       <Text style={styles.detectedRoleTagText}>
                         {detectedUser.role === 'officer'
                           ? '🏛️ OFFICIAL / DISTRICT MAGISTRATE'
-                          : detectedUser.role === 'employee'
-                          ? '👮 FIELD OFFICER'
+                          : detectedUser.role === 'admin'
+                          ? '🛡️ SUPER ADMIN / SYSTEM OVERSIGHT'
+                          : (detectedUser.role === 'call_center' || detectedUser.role === 'employee')
+                          ? '🎧 181 CALL CENTRE REPRESENTATIVE'
                           : '👤 REGISTERED CITIZEN'}
                       </Text>
                     </View>
@@ -423,6 +511,71 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Admin PIN Gate Modal */}
+      <Modal
+        visible={showAdminPinModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAdminPinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalHeaderIcon}>🛡️</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Administrator PIN Gate</Text>
+                <Text style={styles.modalSub}>Restricted Administrative Access</Text>
+              </View>
+            </View>
+
+            <Text style={styles.modalPrompt}>
+              Enter the 4-digit security PIN to access the Super Admin control profile:
+            </Text>
+
+            <TextInput
+              style={styles.modalPinInput}
+              value={adminPinInput}
+              onChangeText={(text) => {
+                setAdminPinInput(text);
+                setAdminPinError('');
+              }}
+              placeholder="• • • •"
+              placeholderTextColor="#64748b"
+              keyboardType="number-pad"
+              maxLength={4}
+              secureTextEntry
+              autoFocus
+            />
+
+            {adminPinError ? (
+              <Text style={styles.modalErrorText}>{adminPinError}</Text>
+            ) : (
+              <Text style={styles.modalHelpText}>Security PIN is 8899</Text>
+            )}
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => {
+                  setShowAdminPinModal(false);
+                  setAdminPinInput('');
+                  setAdminPinError('');
+                }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalConfirmBtn}
+                onPress={handleVerifyAdminPin}
+              >
+                <Text style={styles.modalConfirmText}>Verify PIN ➔</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -714,9 +867,13 @@ const styles = StyleSheet.create({
     borderColor: '#8b5cf6',
     backgroundColor: 'rgba(139, 92, 246, 0.08)',
   },
+  detectedAdmin: {
+    borderColor: '#ef4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
   detectedEmployee: {
-    borderColor: '#3b82f6',
-    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    borderColor: '#f59e0b',
+    backgroundColor: 'rgba(245, 158, 11, 0.08)',
   },
   detectedCitizen: {
     borderColor: '#10b981',
@@ -773,6 +930,106 @@ const styles = StyleSheet.create({
   newCitizenText: {
     color: '#94a3b8',
     fontSize: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(2, 6, 23, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalBox: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#0f172a',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#ef4444',
+    padding: 22,
+    shadowColor: '#ef4444',
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  modalHeaderIcon: {
+    fontSize: 32,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  modalSub: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#f87171',
+    textTransform: 'uppercase',
+  },
+  modalPrompt: {
+    fontSize: 13,
+    color: '#cbd5e1',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  modalPinInput: {
+    backgroundColor: '#020617',
+    borderWidth: 1.5,
+    borderColor: '#38bdf8',
+    borderRadius: 12,
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#ffffff',
+    textAlign: 'center',
+    letterSpacing: 10,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  modalErrorText: {
+    fontSize: 12,
+    color: '#f87171',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  modalHelpText: {
+    fontSize: 11,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#94a3b8',
+  },
+  modalConfirmBtn: {
+    flex: 1.5,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+  },
+  modalConfirmText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#ffffff',
   },
 });
 
