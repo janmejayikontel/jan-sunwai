@@ -152,6 +152,12 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
     handleSearch(nameQuery, dept, '');
   };
 
+  const handleDesignationSelect = (desig: string) => {
+    setSelectedDesig(desig);
+    setShowDesigPicker(false);
+    handleSearch(nameQuery, selectedDept, desig);
+  };
+
   // Debounced Name Search handler
   const handleNameInputChange = (text: string) => {
     setNameQuery(text);

@@ -2157,186 +2157,282 @@ export default function JanSunwaiPortalPage() {
           />
         )}
 
-        <div style={{ maxWidth: "860px", margin: "0 auto", paddingTop: "clamp(1rem, 3vw, 2rem)" }}>
-          {/* Header */}
-          <div style={{ textAlign: "center", marginBottom: "clamp(1.5rem, 4vw, 2.5rem)" }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: "10px", background: "rgba(255,255,255,0.08)", padding: "6px 16px", borderRadius: "999px", border: "1px solid rgba(255,255,255,0.15)", marginBottom: "1rem" }}>
-              <span style={{ fontSize: "1.2rem" }}>🏛️</span>
-              <span style={{ fontSize: "0.85rem", fontWeight: 700, letterSpacing: "0.08em", color: "#fbbf24", textTransform: "uppercase" }}>
+        <div style={{ maxWidth: "520px", margin: "0 auto", paddingTop: "clamp(2rem, 5vw, 4rem)", paddingBottom: "3rem" }}>
+          {/* Official Government Brand Header */}
+          <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                background: "rgba(251, 191, 36, 0.1)",
+                border: "1px solid rgba(251, 191, 36, 0.3)",
+                padding: "6px 16px",
+                borderRadius: "999px",
+                marginBottom: "1rem",
+              }}
+            >
+              <span style={{ fontSize: "1.1rem" }}>🏛️</span>
+              <span
+                style={{
+                  fontSize: "0.82rem",
+                  fontWeight: 800,
+                  letterSpacing: "0.08em",
+                  color: "#fbbf24",
+                  textTransform: "uppercase",
+                }}
+              >
                 राजस्थान सरकार | Government of Rajasthan
               </span>
             </div>
-            <h1 style={{ fontSize: "clamp(1.4rem, 4.5vw, 2.2rem)", fontWeight: 800, letterSpacing: "-0.02em", color: "#ffffff", margin: "0 0 0.5rem", lineHeight: 1.25 }}>
-              जन सुनवाई वीडियो कॉन्फ्रेंस प्रणाली
+
+            <h1
+              style={{
+                fontSize: "clamp(1.6rem, 5vw, 2.2rem)",
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+                color: "#ffffff",
+                margin: "0 0 0.4rem",
+                lineHeight: 1.25,
+              }}
+            >
+              जन सुनवाई
             </h1>
-            <p style={{ fontSize: "clamp(0.85rem, 2.5vw, 1.05rem)", color: "#94a3b8", margin: 0, lineHeight: 1.4 }}>
-              Jan Sunwai Unified Video Hearing Portal — Citizen Complainant, Field Officer & District Collector Login
+            <p style={{ fontSize: "0.95rem", color: "#94a3b8", margin: 0, fontWeight: 500 }}>
+              Jan Sunwai Unified Video Hearing Portal
             </p>
-            <div style={{ marginTop: "1rem", display: "flex", justifyContent: "center", gap: "10px", flexWrap: "wrap" }}>
-              <a
-                href="/download"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "linear-gradient(135deg, #059669, #047857)",
-                  border: "1px solid #10b981",
-                  borderRadius: "999px",
-                  padding: "8px 18px",
-                  color: "#ffffff",
-                  fontSize: "0.85rem",
-                  fontWeight: 700,
-                  textDecoration: "none",
-                  boxShadow: "0 4px 12px rgba(5, 150, 105, 0.4)",
-                }}
-              >
-                <span>📲 Download Android APK (105.8 MB)</span>
-                <span>➔</span>
-              </a>
-            </div>
           </div>
 
-          {/* Quick Hardware Diagnostic Suite & 6-Char Room Launcher Banner Card */}
+          {/* Clean Executive Login Card */}
           <div
             style={{
-              background: "linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98))",
-              border: "1.5px solid rgba(56, 189, 248, 0.4)",
-              borderRadius: "16px",
-              padding: "16px 20px",
-              marginBottom: "1.8rem",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "14px",
-              flexWrap: "wrap",
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+              background: "linear-gradient(165deg, rgba(15, 23, 42, 0.92) 0%, rgba(10, 17, 34, 0.98) 100%)",
+              backdropFilter: "blur(24px)",
+              WebkitBackdropFilter: "blur(24px)",
+              borderRadius: "24px",
+              border: "1px solid rgba(56, 189, 248, 0.25)",
+              padding: "clamp(1.6rem, 4vw, 2.4rem)",
+              boxShadow: "0 24px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(56, 189, 248, 0.08)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "1.6rem" }}>
               <div
                 style={{
-                  width: "42px",
-                  height: "42px",
+                  width: "44px",
+                  height: "44px",
                   borderRadius: "12px",
-                  background: "linear-gradient(135deg, #0284c7, #0369a1)",
+                  background: "linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(37, 99, 235, 0.15))",
+                  border: "1px solid rgba(59, 130, 246, 0.4)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#fff",
-                  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.4)",
+                  color: "#38bdf8",
                   flexShrink: 0,
                 }}
               >
-                <Sliders size={22} />
+                <Lock size={20} />
               </div>
               <div>
-                <div style={{ fontWeight: 800, fontSize: "0.98rem", color: "#f8fafc", display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span>Hardware Diagnostic Suite & Room Launcher</span>
-                  <span style={{ fontSize: "0.68rem", padding: "1px 6px", borderRadius: "4px", background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
-                    TEST MIC / CAM
-                  </span>
-                </div>
-                <div style={{ fontSize: "0.78rem", color: "#94a3b8" }}>
-                  Auto Device Discovery • Live Voice VU Meter • Virtual Color Bars • 6-Char Room Codes • PIN Gate
-                </div>
+                <h2 style={{ fontSize: "1.18rem", fontWeight: 700, margin: 0, color: "#ffffff" }}>
+                  {otpSent ? "ओटीपी सत्यापन (OTP Verification)" : "सुरक्षित लॉगिन (Secure Access)"}
+                </h2>
+                <p style={{ fontSize: "0.82rem", color: "#94a3b8", margin: "2px 0 0" }}>
+                  {otpSent
+                    ? `6-अंकीय ओटीपी कोड दर्ज करें (Sent to ${loginPhone})`
+                    : "Enter your registered mobile number to proceed"}
+                </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setPreCheckRole("citizen");
-                setShowPreCheckModal(true);
-              }}
-              style={{
-                padding: "10px 18px",
-                background: "linear-gradient(135deg, #0284c7, #0369a1)",
-                border: "1px solid #38bdf8",
-                borderRadius: "10px",
-                color: "#ffffff",
-                fontSize: "0.85rem",
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                boxShadow: "0 4px 14px rgba(2, 132, 199, 0.4)",
-              }}
-            >
-              <span>Launch Hardware Suite</span>
-              <ArrowRight size={15} />
-            </button>
-          </div>
-
-          {/* Login Card Grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "2rem" }}>
-            {/* Phone Number / OTP Login Card */}
-            <div
-              style={{
-                background: "rgba(15, 23, 42, 0.85)",
-                backdropFilter: "blur(16px)",
-                borderRadius: "20px",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
-                padding: "2rem",
-                boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "1.2rem" }}>
-                <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "rgba(59, 130, 246, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#38bdf8" }}>
-                  <Phone size={20} />
-                </div>
-                <div>
-                  <h2 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0, color: "#ffffff" }}>
-                    मोबाइल नंबर द्वारा लॉगिन करें
-                  </h2>
-                  <p style={{ fontSize: "0.85rem", color: "#94a3b8", margin: 0 }}>
-                    Enter registered mobile number for Citizen, Field Officer, or District Collector
-                  </p>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "1.4rem" }}>
-                {/* 1. Mobile Number */}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                    <label style={{ fontSize: "0.88rem", fontWeight: 600, color: "#cbd5e1" }}>
-                      Mobile Number (मोबाइल नंबर)
-                    </label>
-                    <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-                      Citizen / Field Officer / District Collector
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", gap: "10px" }}>
-                    <div style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "10px", padding: "12px 14px", color: "#94a3b8", fontWeight: 700, display: "flex", alignItems: "center" }}>
-                      🇮🇳 +91
-                    </div>
-                    <input
-                      type="tel"
-                      placeholder="Enter 10-digit mobile number"
-                      value={loginPhone.replace(/^\+91/, "")}
-                      disabled={otpSent}
-                      autoComplete="off"
-                      maxLength={10}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
-                        setLoginPhone(val ? `+91${val}` : "");
-                        if (authError) setAuthError("");
-                      }}
-                      onKeyDown={(e) => e.key === "Enter" && (!otpSent ? handleSendOtp() : handleVerifyOtp())}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {/* Step 1: Mobile Number Input */}
+              {!otpSent ? (
+                <>
+                  <div>
+                    <label
                       style={{
-                        flex: 1,
-                        background: otpSent ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.06)",
-                        border: "1px solid rgba(255,255,255,0.2)",
-                        borderRadius: "10px",
-                        padding: "12px 16px",
-                        color: "#ffffff",
-                        fontSize: "1.1rem",
-                        letterSpacing: "0.05em",
-                        outline: "none",
+                        display: "block",
+                        fontSize: "0.85rem",
+                        fontWeight: 600,
+                        color: "#cbd5e1",
+                        marginBottom: "8px",
                       }}
-                      autoFocus
-                    />
-                    {otpSent && (
+                    >
+                      मोबाइल नंबर (Mobile Number)
+                    </label>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        background: "rgba(255, 255, 255, 0.05)",
+                        border: "1px solid rgba(255, 255, 255, 0.16)",
+                        borderRadius: "12px",
+                        overflow: "hidden",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: "14px 16px",
+                          background: "rgba(255, 255, 255, 0.06)",
+                          borderRight: "1px solid rgba(255, 255, 255, 0.12)",
+                          color: "#cbd5e1",
+                          fontWeight: 700,
+                          fontSize: "0.95rem",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <span>🇮🇳</span>
+                        <span>+91</span>
+                      </div>
+                      <input
+                        type="tel"
+                        placeholder="10-digit mobile number"
+                        value={loginPhone.replace(/^\+91/, "")}
+                        autoComplete="tel"
+                        maxLength={10}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
+                          setLoginPhone(val ? `+91${val}` : "");
+                          if (authError) setAuthError("");
+                        }}
+                        onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
+                        style={{
+                          flex: 1,
+                          background: "transparent",
+                          border: "none",
+                          padding: "14px 16px",
+                          color: "#ffffff",
+                          fontSize: "1.05rem",
+                          letterSpacing: "0.06em",
+                          outline: "none",
+                          fontFamily: "inherit",
+                        }}
+                        autoFocus
+                      />
+                    </div>
+
+                    {authError && (
+                      <div
+                        style={{
+                          marginTop: "8px",
+                          padding: "8px 12px",
+                          borderRadius: "8px",
+                          background: "rgba(239, 68, 68, 0.12)",
+                          border: "1px solid rgba(239, 68, 68, 0.35)",
+                          color: "#fca5a5",
+                          fontSize: "0.82rem",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <AlertCircle size={15} />
+                        <span>{authError}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Send OTP Action */}
+                  <button
+                    type="button"
+                    id="btn-get-otp"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleSendOtp();
+                    }}
+                    disabled={isSubmittingAuth || loginPhone.replace(/\D/g, "").length < 10}
+                    style={{
+                      padding: "15px",
+                      borderRadius: "12px",
+                      fontSize: "1rem",
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                      cursor:
+                        isSubmittingAuth || loginPhone.replace(/\D/g, "").length < 10
+                          ? "not-allowed"
+                          : "pointer",
+                      background:
+                        loginPhone.replace(/\D/g, "").length >= 10
+                          ? "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)"
+                          : "rgba(255, 255, 255, 0.08)",
+                      border: "none",
+                      color: loginPhone.replace(/\D/g, "").length >= 10 ? "#ffffff" : "#64748b",
+                      boxShadow:
+                        loginPhone.replace(/\D/g, "").length >= 10
+                          ? "0 6px 20px rgba(37, 99, 235, 0.4)"
+                          : "none",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    {isSubmittingAuth ? (
+                      "Sending OTP..."
+                    ) : (
+                      <>
+                        <span>Get OTP (ओटीपी प्राप्त करें)</span>
+                        <ArrowRight size={18} />
+                      </>
+                    )}
+                  </button>
+                </>
+              ) : (
+                /* Step 2: OTP Verification */
+                <>
+                  {detectedName && (
+                    <div
+                      style={{
+                        background: "rgba(16, 185, 129, 0.1)",
+                        border: "1px solid rgba(16, 185, 129, 0.3)",
+                        borderRadius: "12px",
+                        padding: "10px 14px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "32px",
+                          height: "32px",
+                          borderRadius: "8px",
+                          background: "rgba(16, 185, 129, 0.2)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#34d399",
+                          fontWeight: 700,
+                        }}
+                      >
+                        ✓
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#f8fafc" }}>
+                          {detectedName}
+                        </div>
+                        <div style={{ fontSize: "0.76rem", color: "#34d399" }}>
+                          Verified in Rajasthan Government Directory ({detectedRole?.toUpperCase() || "OFFICIAL"})
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#cbd5e1" }}>
+                        6-अंकीय ओटीपी दर्ज करें (Enter OTP)
+                      </label>
                       <button
                         type="button"
                         onClick={() => {
@@ -2345,235 +2441,161 @@ export default function JanSunwaiPortalPage() {
                         }}
                         style={{
                           background: "none",
-                          border: "1px solid rgba(255,255,255,0.2)",
-                          borderRadius: "10px",
-                          padding: "0 14px",
-                          color: "#93c5fd",
-                          fontSize: "0.8rem",
+                          border: "none",
+                          color: "#38bdf8",
+                          fontSize: "0.78rem",
                           cursor: "pointer",
-                          whiteSpace: "nowrap",
+                          fontWeight: 600,
                         }}
                       >
-                        Change
+                        Change Number
                       </button>
-                    )}
-                  </div>
-                  {otpSent ? (
-                    <div style={{ marginTop: "8px", fontSize: "0.82rem", color: "#34d399", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <CheckCircle size={15} />
-                      <span>
-                        OTP sent to {loginPhone}! {detectedName ? `• Recognized: ${detectedName} (${detectedRole})` : ""}
-                      </span>
                     </div>
-                  ) : (
-                    <>
-                      <div style={{ marginTop: "8px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Quick fill:</span>
-                        <button
-                          type="button"
-                          onClick={() => { setLoginPhone("+917735807328"); setAuthError(""); setOtpSent(false); }}
-                          style={{ background: "rgba(59, 130, 246, 0.15)", border: "1px solid rgba(59, 130, 246, 0.3)", borderRadius: "6px", padding: "3px 8px", fontSize: "0.75rem", color: "#60a5fa", cursor: "pointer" }}
-                        >
-                          👤 7735807328 (Janmejay - Citizen)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setLoginPhone("+917749852013"); setAuthError(""); setOtpSent(false); }}
-                          style={{ background: "rgba(245, 158, 11, 0.15)", border: "1px solid rgba(245, 158, 11, 0.3)", borderRadius: "6px", padding: "3px 8px", fontSize: "0.75rem", color: "#fbbf24", cursor: "pointer" }}
-                        >
-                          👷 7749852013 (Chandan - JEn)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setLoginPhone("+919414000001"); setAuthError(""); setOtpSent(false); }}
-                          style={{ background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.3)", borderRadius: "6px", padding: "3px 8px", fontSize: "0.75rem", color: "#34d399", cursor: "pointer" }}
-                        >
-                          🏛️ 9414000001 (Collector)
-                        </button>
-                      </div>
 
-                      {authError && (
-                        <div style={{ marginTop: "8px", padding: "8px 12px", borderRadius: "8px", background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#fca5a5", fontSize: "0.82rem", display: "flex", alignItems: "center", gap: "6px" }}>
-                          <AlertCircle size={15} />
-                          <span>{authError}</span>
-                        </div>
-                      )}
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={loginOtp}
+                      onChange={(e) => setLoginOtp(e.target.value.replace(/[^0-9]/g, ""))}
+                      onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
+                      placeholder="• • • • • •"
+                      style={{
+                        width: "100%",
+                        background: "rgba(255, 255, 255, 0.05)",
+                        border: "1.5px solid rgba(56, 189, 248, 0.4)",
+                        borderRadius: "12px",
+                        padding: "14px 16px",
+                        color: "#ffffff",
+                        fontSize: "1.4rem",
+                        letterSpacing: "0.35em",
+                        textAlign: "center",
+                        fontWeight: 700,
+                        outline: "none",
+                        boxSizing: "border-box",
+                      }}
+                      autoFocus
+                    />
 
-                      <div style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "6px" }}>
-                        System checks Rajasthan Sampark directory for Citizen, JEn, Patwari, or Collector.
-                      </div>
-                    </>
-                  )}
-                </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginTop: "8px",
+                      }}
+                    >
+                      <span style={{ fontSize: "0.76rem", color: "#94a3b8" }}>
+                        Demo OTP: <strong style={{ color: "#34d399" }}>987654</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleSendOtp}
+                        disabled={isSubmittingAuth}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#38bdf8",
+                          fontSize: "0.76rem",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Resend Code
+                      </button>
+                    </div>
+                  </div>
 
-                {/* Send OTP Button (Shown FIRST when user has not clicked Send OTP yet) */}
-                {!otpSent && (
+                  {/* Verify & Login Action */}
                   <button
                     type="button"
-                    id="btn-get-otp"
                     onClick={(e) => {
                       e.preventDefault();
-                      handleSendOtp();
+                      handleVerifyOtp();
                     }}
-                    disabled={isSubmittingAuth}
-                    className="btn btn--primary"
+                    disabled={isSubmittingAuth || loginOtp.length < 4}
                     style={{
-                      padding: "14px",
+                      padding: "15px",
                       borderRadius: "12px",
-                      fontSize: "1.05rem",
+                      fontSize: "1rem",
                       fontWeight: 700,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       gap: "8px",
-                      cursor: "pointer",
-                      background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                      cursor: isSubmittingAuth || loginOtp.length < 4 ? "not-allowed" : "pointer",
+                      background:
+                        loginOtp.length >= 4
+                          ? "linear-gradient(135deg, #059669 0%, #047857 100%)"
+                          : "rgba(255, 255, 255, 0.08)",
                       border: "none",
-                      color: "#ffffff",
+                      color: loginOtp.length >= 4 ? "#ffffff" : "#64748b",
+                      boxShadow:
+                        loginOtp.length >= 4
+                          ? "0 6px 20px rgba(5, 150, 105, 0.4)"
+                          : "none",
+                      transition: "all 0.2s ease",
                     }}
                   >
-                    {isSubmittingAuth ? "Sending OTP..." : "Get OTP (ओटीपी प्राप्त करें)"}
-                    <ArrowRight size={18} />
+                    {isSubmittingAuth ? (
+                      "Verifying..."
+                    ) : (
+                      <>
+                        <span>Verify & Enter Hearing (लॉगिन करें)</span>
+                        <ArrowRight size={18} />
+                      </>
+                    )}
                   </button>
-                )}
+                </>
+              )}
+            </div>
 
-                {/* 2. OTP Input Section (ONLY SHOWN AFTER CLICKING GET OTP) */}
-                {otpSent && (
-                  <>
-                    <div style={{ animation: "fadeIn 0.3s ease" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-                        <label style={{ fontSize: "0.88rem", fontWeight: 600, color: "#cbd5e1" }}>
-                          Enter 6-Digit OTP (ओटीपी दर्ज करें)
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setLoginOtp("987654")}
-                          style={{
-                            fontSize: "0.75rem",
-                            color: "#34d399",
-                            fontWeight: 700,
-                            background: "rgba(16, 185, 129, 0.15)",
-                            border: "1px solid rgba(16, 185, 129, 0.4)",
-                            padding: "3px 10px",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          ⚡ Click to Auto-fill: 987654
-                        </button>
-                      </div>
-                      <input
-                        type="text"
-                        maxLength={6}
-                        value={loginOtp}
-                        onChange={(e) => setLoginOtp(e.target.value.replace(/[^0-9]/g, ""))}
-                        onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
-                        placeholder="Enter 987654"
-                        style={{
-                          width: "100%",
-                          background: "rgba(255,255,255,0.06)",
-                          border: "1px solid rgba(59, 130, 246, 0.5)",
-                          borderRadius: "10px",
-                          padding: "14px 16px",
-                          color: "#ffffff",
-                          fontSize: "1.5rem",
-                          letterSpacing: "0.3em",
-                          textAlign: "center",
-                          fontWeight: 700,
-                          outline: "none",
-                        }}
-                        autoFocus
-                      />
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
-                        <span style={{ fontSize: "0.78rem", color: "#94a3b8" }}>
-                          Enter demo OTP: <strong style={{ color: "#34d399" }}>987654</strong>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleSendOtp}
-                          disabled={isSubmittingAuth}
-                          style={{ background: "none", border: "none", color: "#60a5fa", fontSize: "0.78rem", textDecoration: "underline", cursor: "pointer" }}
-                        >
-                          Resend OTP
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Verify & Login Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleVerifyOtp();
-                      }}
-                      disabled={isSubmittingAuth}
-                      className="btn btn--primary"
-                      style={{
-                        padding: "14px",
-                        borderRadius: "12px",
-                        fontSize: "1.05rem",
-                        fontWeight: 700,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "8px",
-                        cursor: "pointer",
-                        background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
-                        border: "none",
-                        color: "#ffffff",
-                      }}
-                    >
-                      {isSubmittingAuth ? "Verifying..." : "Verify & Enter Hearing Portal (लॉगिन करें)"}
-                      <ArrowRight size={18} />
-                    </button>
-                  </>
-                )}
+            {/* Helpline & Security Guarantee */}
+            <div
+              style={{
+                marginTop: "1.8rem",
+                paddingTop: "1.2rem",
+                borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "8px",
+                fontSize: "0.78rem",
+                color: "#94a3b8",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>📞</span>
+                <span>राजस्थान संपर्क हेल्पलाइन: <strong style={{ color: "#38bdf8" }}>181</strong></span>
               </div>
-
-              {/* 1-Click Quick Demo Accounts */}
-              <div style={{ marginTop: "2rem", paddingTop: "1.5rem", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "1rem" }}>
-                  <Sparkles size={16} color="#fbbf24" />
-                  <span style={{ fontSize: "0.85rem", fontWeight: 700, letterSpacing: "0.05em", color: "#e2e8f0", textTransform: "uppercase" }}>
-                    Quick 1-Click Login (Multi-Device Demo Testing)
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px" }}>
-                  {QUICK_DEMO_USERS.map((u) => (
-                    <button
-                      key={u.phone}
-                      type="button"
-                      onClick={() => handleQuickLogin(u)}
-                      disabled={isSubmittingAuth}
-                      style={{
-                        background: "rgba(255, 255, 255, 0.04)",
-                        border: "1px solid rgba(255, 255, 255, 0.12)",
-                        borderRadius: "12px",
-                        padding: "12px",
-                        textAlign: "left",
-                        cursor: "pointer",
-                        transition: "all 0.2s ease",
-                        display: "flex",
-                        gap: "10px",
-                        alignItems: "center",
-                      }}
-                    >
-                      <span style={{ fontSize: "1.6rem" }}>{u.icon}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, color: "#ffffff", fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "6px" }}>
-                          <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>{u.name}</span>
-                        </div>
-                        <div style={{ fontSize: "0.75rem", color: u.color, fontWeight: 600 }}>
-                          {u.badge}
-                        </div>
-                        <div style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-                          {u.phone}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+              <div style={{ display: "flex", alignItems: "center", gap: "4px", color: "#34d399" }}>
+                <Shield size={13} />
+                <span>256-Bit E2EE Security</span>
               </div>
             </div>
+          </div>
+
+          {/* Android App Download Banner */}
+          <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
+            <a
+              href="/download"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "8px 18px",
+                background: "rgba(255, 255, 255, 0.05)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                borderRadius: "999px",
+                color: "#94a3b8",
+                fontSize: "0.82rem",
+                fontWeight: 600,
+                textDecoration: "none",
+                transition: "all 0.2s ease",
+              }}
+            >
+              <span>📲 Download Official Android App (.APK)</span>
+              <span style={{ color: "#38bdf8" }}>➔</span>
+            </a>
           </div>
         </div>
 
@@ -2585,9 +2607,8 @@ export default function JanSunwaiPortalPage() {
           initialRole={preCheckRole}
         />
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   // ═══════════════════════════════════════════════════════════
   // RENDER: AUTHENTICATED PORTAL VIEW

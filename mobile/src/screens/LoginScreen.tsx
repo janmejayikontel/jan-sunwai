@@ -215,14 +215,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         style={styles.container}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          {/* Header Brand */}
-          <View style={styles.header}>
-            <View style={styles.emblemContainer}>
-              <Text style={styles.emblemIcon}>🏛️</Text>
+          {/* Top Bar with Discreet Gear Icon */}
+          <View style={styles.topBarRow}>
+            <View style={{ width: 40 }} />
+            <View style={styles.header}>
+              <View style={styles.emblemContainer}>
+                <Text style={styles.emblemIcon}>🏛️</Text>
+              </View>
+              <Text style={styles.hindiTitle}>संपर्क लाइट</Text>
+              <Text style={styles.englishTitle}>Sampark Lite</Text>
+              <Text style={styles.subtitle}>जन सुनवाई • Government of Rajasthan</Text>
             </View>
-            <Text style={styles.hindiTitle}>संपर्क लाइट</Text>
-            <Text style={styles.englishTitle}>Sampark Lite</Text>
-            <Text style={styles.subtitle}>जन सुनवाई — Department of Administrative Reforms</Text>
+            <TouchableOpacity
+              style={styles.gearBtn}
+              onPress={() => setShowConfig(!showConfig)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.gearIcon}>⚙️</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Login Card */}
@@ -232,14 +242,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             </Text>
             <Text style={styles.cardDesc}>
               {step === 'phone'
-                ? 'Enter your 10-digit mobile number to access hearing portal'
+                ? 'Enter your 10-digit mobile number to access the hearing portal'
                 : `We have sent a verification code to +91 ${phone}`}
             </Text>
 
             {step === 'phone' ? (
               // Step 1: Phone input
               <View style={styles.formGroup}>
-                <Text style={styles.inputLabel}>Mobile Number</Text>
+                <Text style={styles.inputLabel}>Mobile Number (मोबाइल नंबर)</Text>
                 <View style={styles.phoneInputRow}>
                   <View style={styles.countryCodeBox}>
                     <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
@@ -248,7 +258,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     style={styles.phoneInput}
                     value={phone}
                     onChangeText={setPhone}
-                    placeholder="98765 43210"
+                    placeholder="Enter 10-digit number"
                     placeholderTextColor="#64748b"
                     keyboardType="phone-pad"
                     maxLength={10}
@@ -257,107 +267,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 </View>
 
                 <TouchableOpacity
-                  style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
+                  style={[
+                    styles.primaryButton,
+                    (isLoading || phone.replace(/\D/g, '').length < 10) && styles.buttonDisabled,
+                  ]}
                   onPress={handleSendOtp}
-                  disabled={isLoading}
+                  disabled={isLoading || phone.replace(/\D/g, '').length < 10}
                   activeOpacity={0.8}
                 >
                   {isLoading ? (
                     <ActivityIndicator color="#ffffff" />
                   ) : (
-                    <Text style={styles.primaryButtonText}>Get OTP ➔</Text>
+                    <Text style={styles.primaryButtonText}>Get OTP (ओटीपी प्राप्त करें) ➔</Text>
                   )}
                 </TouchableOpacity>
-
-                {/* 4 Demo Personas (1-Tap Test) */}
-                <View style={{ marginTop: 16, marginBottom: 4 }}>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#94a3b8', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    Quick Demo Personas (4 System Roles):
-                  </Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                    <TouchableOpacity
-                      style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(59,130,246,0.15)', borderWidth: 1, borderColor: '#3b82f6' }}
-                      onPress={() => setPhone('7735807328')}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#60a5fa' }}>👤 Citizen</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(245,158,11,0.15)', borderWidth: 1, borderColor: '#f59e0b' }}
-                      onPress={() => setPhone('7749852013')}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#fbbf24' }}>🎧 181 Rep</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(16,185,129,0.15)', borderWidth: 1, borderColor: '#10b981' }}
-                      onPress={() => setPhone('9414000001')}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#34d399' }}>🏛️ Officer</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: 'rgba(239,68,68,0.15)', borderWidth: 1, borderColor: '#ef4444' }}
-                      onPress={() => {
-                        if (adminVerified) {
-                          setPhone('9999999999');
-                        } else {
-                          setAdminPinInput('');
-                          setAdminPinError('');
-                          setShowAdminPinModal(true);
-                        }
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#f87171' }}>
-                        🛡️ Admin {adminVerified ? '✓' : '(PIN)'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Server Connection Settings Toggle */}
-                <TouchableOpacity
-                  style={styles.serverSettingsToggle}
-                  onPress={() => setShowConfig(!showConfig)}
-                >
-                  <Text style={styles.serverSettingsToggleText}>
-                    {showConfig ? '▲ Hide Server Settings' : '⚙️ Server Connection Settings'}
-                  </Text>
-                </TouchableOpacity>
-
-                {showConfig && (
-                  <View style={styles.configBox}>
-                    <Text style={styles.configLabel}>Server Endpoint URL:</Text>
-                    <TextInput
-                      style={styles.configInput}
-                      value={serverBase}
-                      onChangeText={setServerBase}
-                      placeholder="https://... or http://192.168.1.9:8080"
-                      placeholderTextColor="#64748b"
-                      autoCapitalize="none"
-                    />
-                    <View style={styles.quickUrlRow}>
-                      <TouchableOpacity
-                        style={styles.quickUrlBtn}
-                        onPress={() => setServerBase('https://jansunwai-rajasthan.loca.lt')}
-                      >
-                        <Text style={styles.quickUrlBtnText}>🏛️ Public Tunnel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.quickUrlBtn}
-                        onPress={() => setServerBase('https://innovation-laundry-realtor-carefully.trycloudflare.com')}
-                      >
-                        <Text style={styles.quickUrlBtnText}>☁️ Cloudflare</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.quickUrlBtn}
-                        onPress={() => setServerBase('http://192.168.1.9:8080')}
-                      >
-                        <Text style={styles.quickUrlBtnText}>📶 Wi-Fi</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
               </View>
             ) : (
               // Step 2: OTP input
@@ -425,7 +348,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   </TouchableOpacity>
                 </View>
 
-
                 <TextInput
                   style={styles.otpInput}
                   value={otp}
@@ -452,9 +374,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 )}
 
                 <TouchableOpacity
-                  style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
+                  style={[styles.primaryButton, (isLoading || otp.length < 4) && styles.buttonDisabled]}
                   onPress={handleVerifyOtp}
-                  disabled={isLoading}
+                  disabled={isLoading || otp.length < 4}
                   activeOpacity={0.8}
                 >
                   {isLoading ? (
@@ -475,19 +397,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             )}
           </View>
 
-          {/* Server Config Toggle */}
-          <TouchableOpacity
-            style={styles.configToggle}
-            onPress={() => setShowConfig(!showConfig)}
-          >
-            <Text style={styles.configToggleText}>
-              ⚙️ {showConfig ? 'Hide Server URL' : 'Server Endpoint Settings'}
-            </Text>
-          </TouchableOpacity>
-
           {showConfig && (
             <View style={styles.configBox}>
-              <Text style={styles.configLabel}>Server Base URL</Text>
+              <Text style={styles.configLabel}>Server Endpoint URL</Text>
               <TextInput
                 style={styles.configInput}
                 value={serverBase}
@@ -497,9 +409,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <Text style={styles.configHelp}>
-                Cloud Tunnel: https://display-filename-rapids-alberta.trycloudflare.com
-              </Text>
             </View>
           )}
 
@@ -508,6 +417,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             <Text style={styles.footerText}>
               Rajasthan Sampark Toll-Free Helpline: <Text style={styles.helplineText}>181</Text>
             </Text>
+            <Text style={styles.securityText}>🔒 256-Bit E2EE Encrypted Video Stream</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -593,9 +503,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: '100%',
   },
-  header: {
+  topBarRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    width: '100%',
+  },
+  gearBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
-    marginBottom: 28,
+    justifyContent: 'center',
+  },
+  gearIcon: {
+    fontSize: 18,
+  },
+  header: {
+    flex: 1,
+    alignItems: 'center',
   },
   emblemContainer: {
     width: 64,
@@ -855,6 +785,13 @@ const styles = StyleSheet.create({
   helplineText: {
     color: '#f59e0b',
     fontWeight: '700',
+  },
+  securityText: {
+    fontSize: 11,
+    color: '#10b981',
+    marginTop: 6,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   detectedCard: {
     backgroundColor: '#1e293b',
