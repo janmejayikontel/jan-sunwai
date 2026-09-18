@@ -19,9 +19,35 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     companion object {
         const val MODULE_NAME = "JanSunwaiVoIP"
         var pendingIncomingCallJson: String? = null
+        private var instance: JanSunwaiVoIPModule? = null
+
+        fun emitIncomingCall(callJson: String) {
+            try {
+                instance?.reactContext
+                    ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    ?.emit("onIncomingCall", callJson)
+                Log.i(MODULE_NAME, "Successfully emitted onIncomingCall event to React Native: $callJson")
+            } catch (e: Exception) {
+                Log.w(MODULE_NAME, "Failed to emit onIncomingCall event: ${e.message}")
+            }
+        }
+    }
+
+    init {
+        instance = this
     }
 
     override fun getName(): String = MODULE_NAME
+
+    @ReactMethod
+    fun addListener(eventName: String) {
+        // Required for React Native NativeEventEmitter
+    }
+
+    @ReactMethod
+    fun removeListeners(count: Int) {
+        // Required for React Native NativeEventEmitter
+    }
 
     @ReactMethod
     fun startService(phone: String, serverUrl: String, promise: Promise) {

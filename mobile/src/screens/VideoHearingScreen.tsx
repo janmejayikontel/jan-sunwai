@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -59,9 +59,95 @@ const RoomContent: React.FC<{
   const isAdmin = role === 'admin';
   const effectiveCallId = callId || grievanceId;
 
-  // Subscribe to all camera feeds and screen share feeds (including newly publishing tracks)
-  const cameraTracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
+  // Measure exact video area dimensions dynamically
+  const [videoAreaLayout, setVideoAreaLayout] = useState<{ width: number; height: number }>({
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.65,
+  });
+
+  // Subscribe to all camera feeds and screen share feeds (including participants with camera off via withPlaceholder)
+  const rawCameraTracks = useTracks(
+    [{ source: Track.Source.Camera, withPlaceholder: true }],
+    { onlySubscribed: false }
+  );
   const screenShareTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false });
+
+  // Deduplicate camera tracks by participant identity so each member has exactly 1 tile
+  const cameraTracks = useMemo(() => {
+    const seen = new Set<string>();
+    const list: typeof rawCameraTracks = [];
+    for (const t of rawCameraTracks) {
+      const id = t.participant?.identity;
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        list.push(t);
+      }
+    }
+    return list;
+  }, [rawCameraTracks]);
+
+  // WhatsApp-style dynamic grid sizing
+  // Guarantees at least 6 members fit on one screen without scrolling!
+  const getTileStyle = (index: number, total: number) => {
+    const gap = 6;
+    const padding = 6;
+    const availW = Math.max(videoAreaLayout.width - padding * 2, 100);
+    const availH = Math.max(videoAreaLayout.height - padding * 2, 100);
+
+    if (total <= 1) {
+      return { width: availW, height: availH };
+    }
+
+    if (total === 2) {
+      // 2 participants: 2 vertical rows, each 50% of available height
+      const h = (availH - gap) / 2;
+      return { width: availW, height: h };
+    }
+
+    if (total === 3) {
+      // 3 participants: Top 1 full-width, Bottom 2 split 50/50
+      const h = (availH - gap) / 2;
+      if (index === 0) {
+        return { width: availW, height: h };
+      }
+      return { width: (availW - gap) / 2, height: h };
+    }
+
+    if (total === 4) {
+      // 4 participants: 2x2 grid (2 rows x 2 cols)
+      const w = (availW - gap) / 2;
+      const h = (availH - gap) / 2;
+      return { width: w, height: h };
+    }
+
+    if (total === 5) {
+      // 5 participants: 3 rows (2 on row 1, 2 on row 2, 1 centered on row 3)
+      const h = (availH - gap * 2) / 3;
+      if (index === 4) {
+        return { width: availW, height: h };
+      }
+      return { width: (availW - gap) / 2, height: h };
+    }
+
+    if (total === 6) {
+      // 6 participants: 3 rows x 2 columns (all 6 visible on 1 page!)
+      const w = (availW - gap) / 2;
+      const h = (availH - gap * 2) / 3;
+      return { width: w, height: h };
+    }
+
+    if (total <= 8) {
+      // 7 or 8 participants: 4 rows x 2 columns
+      const w = (availW - gap) / 2;
+      const h = (availH - gap * 3) / 4;
+      return { width: w, height: h };
+    }
+
+    // > 8 participants: 2 columns with 3 rows per page (scrollable)
+    const w = (availW - gap) / 2;
+    const h = (availH - gap * 2) / 3;
+    return { width: w, height: h };
+  };
 
   // Live remote participants state
   const [remoteMembers, setRemoteMembers] = useState<Array<{
@@ -421,7 +507,15 @@ const RoomContent: React.FC<{
       </View>
 
       {/* Main Video View Area */}
-      <View style={styles.videoArea}>
+      <View
+        style={styles.videoArea}
+        onLayout={(e) => {
+          const { width, height } = e.nativeEvent.layout;
+          if (width > 0 && height > 0) {
+            setVideoAreaLayout({ width, height });
+          }
+        }}
+      >
         {hasActiveScreenShare ? (
           // Screen share dominant layout
           <View style={styles.screenShareContainer}>
@@ -448,19 +542,19 @@ const RoomContent: React.FC<{
             </ScrollView>
           </View>
         ) : (
-          // Standard Grid layout
-          <ScrollView contentContainerStyle={styles.grid}>
-            {cameraTracks.map((track) => (
+          // WhatsApp-style Dynamic Multi-Participant Grid Layout (at least 6 members visible on 1 page!)
+          <ScrollView
+            scrollEnabled={cameraTracks.length > 6}
+            contentContainerStyle={[
+              styles.grid,
+              cameraTracks.length <= 6 && { flex: 1, height: '100%' },
+            ]}
+          >
+            {cameraTracks.map((track, idx) => (
               <ParticipantView
                 key={track.publication?.trackSid || track.participant.identity}
                 trackRef={track}
-                style={
-                  cameraTracks.length <= 1
-                    ? styles.singleVideo
-                    : cameraTracks.length === 2
-                    ? styles.dualVideo
-                    : styles.quadVideo
-                }
+                style={getTileStyle(idx, cameraTracks.length)}
               />
             ))}
             {cameraTracks.length === 0 && (
@@ -800,25 +894,16 @@ const styles = StyleSheet.create({
   videoArea: {
     flex: 1,
     backgroundColor: '#020617',
+    overflow: 'hidden',
   },
   grid: {
     flexGrow: 1,
-    padding: 8,
-    gap: 8,
+    padding: 6,
+    gap: 6,
     flexDirection: 'row',
     flexWrap: 'wrap',
-  },
-  singleVideo: {
-    width: '100%',
-    height: SCREEN_HEIGHT * 0.65,
-  },
-  dualVideo: {
-    width: '100%',
-    height: (SCREEN_HEIGHT * 0.65) / 2 - 8,
-  },
-  quadVideo: {
-    width: (SCREEN_WIDTH - 24) / 2,
-    height: (SCREEN_HEIGHT * 0.65) / 2 - 8,
+    justifyContent: 'center',
+    alignContent: 'center',
   },
   screenShareContainer: {
     flex: 1,

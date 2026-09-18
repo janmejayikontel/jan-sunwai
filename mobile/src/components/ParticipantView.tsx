@@ -8,6 +8,26 @@ interface ParticipantViewProps {
   style?: object;
 }
 
+const AVATAR_COLORS = ['#2563eb', '#059669', '#7c3aed', '#d97706', '#db2777', '#0891b2', '#4f46e5'];
+
+const getAvatarColor = (str: string) => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+};
+
+const getInitials = (nameStr: string) => {
+  if (!nameStr) return 'P';
+  const clean = nameStr.replace(/\(\w+\)/g, '').trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase() || 'P';
+};
+
 export const ParticipantView: React.FC<ParticipantViewProps> = ({
   trackRef,
   isScreenShare = false,
@@ -15,17 +35,57 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({
 }) => {
   const isLocal = trackRef.participant?.isLocal;
   const name = trackRef.participant?.name || trackRef.participant?.identity || 'Participant';
-  const isSpeaking = trackRef.participant?.isSpeaking;
+  const isSpeaking = !!trackRef.participant?.isSpeaking;
+  const isMicMuted = trackRef.participant?.isMicrophoneEnabled === false;
+  
+  // Track publication video check
+  const hasVideoTrack =
+    !isScreenShare &&
+    !!trackRef.publication?.track &&
+    !trackRef.publication?.isMuted &&
+    trackRef.participant?.isCameraEnabled !== false;
 
   return (
-    <View style={[styles.container, isSpeaking && styles.speakingBorder, isScreenShare && styles.screenShareBox, style]}>
+    <View
+      style={[
+        styles.container,
+        isSpeaking && styles.speakingBorder,
+        isScreenShare && styles.screenShareBox,
+        style,
+      ]}
+    >
       {/* Video stream rendering via hardware-accelerated WebRTC */}
-      <VideoTrack
-        trackRef={trackRef as any}
-        mirror={!isScreenShare && isLocal}
-        objectFit={isScreenShare ? 'contain' : 'cover'}
-        style={styles.video}
-      />
+      {hasVideoTrack ? (
+        <VideoTrack
+          trackRef={trackRef as any}
+          mirror={!isScreenShare && isLocal}
+          objectFit={isScreenShare ? 'contain' : 'cover'}
+          style={styles.video}
+        />
+      ) : isScreenShare ? (
+        <VideoTrack
+          trackRef={trackRef as any}
+          mirror={false}
+          objectFit="contain"
+          style={styles.video}
+        />
+      ) : (
+        /* WhatsApp-style Video Off Avatar Profile */
+        <View style={styles.avatarContainer}>
+          <View
+            style={[
+              styles.avatarCircle,
+              { backgroundColor: getAvatarColor(name) },
+              isSpeaking && styles.avatarSpeakingGlow,
+            ]}
+          >
+            <Text style={styles.avatarText}>{getInitials(name)}</Text>
+          </View>
+          <View style={styles.videoOffPill}>
+            <Text style={styles.videoOffPillText}>📷 Video Off</Text>
+          </View>
+        </View>
+      )}
 
       {isScreenShare && isLocal && (
         <View style={styles.localShareOverlay}>
@@ -50,6 +110,11 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({
               <Text style={styles.speakingText}>🔊 Speaking</Text>
             </View>
           )}
+          {isMicMuted && (
+            <View style={styles.mutedBadge}>
+              <Text style={styles.mutedText}>🔇 Muted</Text>
+            </View>
+          )}
         </View>
 
         {/* Participant Name Tag */}
@@ -66,7 +131,7 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#0f172a',
-    borderRadius: 12,
+    borderRadius: 10,
     overflow: 'hidden',
     position: 'relative',
     borderWidth: 1.5,
@@ -79,6 +144,50 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
+  },
+  avatarContainer: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0b1329',
+  },
+  avatarCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#334155',
+    elevation: 4,
+  },
+  avatarSpeakingGlow: {
+    borderColor: '#10b981',
+    borderWidth: 3,
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+  },
+  avatarText: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  videoOffPill: {
+    marginTop: 8,
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  videoOffPillText: {
+    color: '#94a3b8',
+    fontSize: 10,
+    fontWeight: '600',
   },
   localShareOverlay: {
     position: 'absolute',
@@ -122,47 +231,59 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     justifyContent: 'space-between',
-    padding: 8,
+    padding: 6,
     pointerEvents: 'none',
   },
   badgeRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 4,
     flexWrap: 'wrap',
   },
   screenShareBadge: {
     backgroundColor: 'rgba(16, 185, 129, 0.9)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   screenShareText: {
     color: '#ffffff',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
   speakingBadge: {
-    backgroundColor: 'rgba(59, 130, 246, 0.9)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   speakingText: {
     color: '#ffffff',
-    fontSize: 10,
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  mutedBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  mutedText: {
+    color: '#ffffff',
+    fontSize: 9,
     fontWeight: '700',
   },
   nameTag: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    maxWidth: '90%',
   },
   nameText: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
 });

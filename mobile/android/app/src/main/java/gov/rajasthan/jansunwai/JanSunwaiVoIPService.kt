@@ -538,6 +538,9 @@ class JanSunwaiVoIPService : Service() {
             currentRingingCallId = callId
             Log.i(TAG, "TRIGGERING INCOMING CALL RING: $callerName for case $grievanceId")
 
+            // Emit real-time event to React Native if app is currently in foreground
+            JanSunwaiVoIPModule.emitIncomingCall(callJsonString)
+
             // 1. Wake screen up
             wakeLock?.let {
                 if (!it.isHeld) {

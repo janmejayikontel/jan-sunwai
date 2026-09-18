@@ -1,6 +1,6 @@
 import './polyfill';
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Alert, ActivityIndicator, NativeModules, AppState, Platform, PermissionsAndroid, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, Alert, ActivityIndicator, NativeModules, AppState, Platform, PermissionsAndroid, TouchableOpacity, DeviceEventEmitter } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LoginScreen, UserProfile } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -300,14 +300,9 @@ export default function App() {
   const handleDeclineIncomingCall = async () => {
     if (!incomingCall) return;
     const targetCallId = incomingCall.callId;
-    const grievanceId = incomingCall.grievanceId;
-    if (targetCallId) {
+    if (targetCallId && targetCallId.length >= 20) {
       JanSunwaiVoIP?.dismissCall?.(targetCallId);
       dismissedCallIdsRef.current.add(targetCallId);
-    }
-    if (grievanceId) {
-      JanSunwaiVoIP?.dismissCall?.(grievanceId);
-      dismissedCallIdsRef.current.add(grievanceId);
     }
     JanSunwaiVoIP?.stopRinging?.();
 
@@ -340,23 +335,15 @@ export default function App() {
       JanSunwaiVoIP?.stopRinging?.();
       JanSunwaiVoIP?.setInCall?.(false);
 
-      // Blacklist callId, grievanceId, and roomName natively in Kotlin AND in JS
-      if (callId) {
+      // Only dismiss unique UUID callId (>= 20 chars), NEVER blacklist permanent grievanceId!
+      if (callId && callId.length >= 20) {
         JanSunwaiVoIP?.dismissCall?.(callId);
         dismissedCallIdsRef.current.add(callId);
-      }
-      if (grievanceId) {
-        JanSunwaiVoIP?.dismissCall?.(grievanceId);
-        dismissedCallIdsRef.current.add(grievanceId);
-      }
-      if (roomName) {
-        JanSunwaiVoIP?.dismissCall?.(roomName);
-        dismissedCallIdsRef.current.add(roomName);
       }
 
       const targetLeaveId = callId || grievanceId || roomName;
       if (targetLeaveId && currentUser?.phone) {
-        console.log('[App] Participant left hearing. Blacklisting call from re-ringing:', targetLeaveId);
+        console.log('[App] Participant left hearing. Leaving call session:', targetLeaveId);
         fetch(`${base}/api/calls/${encodeURIComponent(targetLeaveId)}/leave`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -382,13 +369,9 @@ export default function App() {
           const data = typeof pendingJson === 'string' ? JSON.parse(pendingJson) : pendingJson;
           if (data?.callId || data?.grievanceId) {
             const checkId = data.callId || '';
-            const checkGrievance = data.grievanceId || '';
             if (!data.autoAccept) {
-              if (
-                (checkId && dismissedCallIdsRef.current.has(checkId)) ||
-                (checkGrievance && dismissedCallIdsRef.current.has(checkGrievance))
-              ) {
-                console.log('[App] Ignoring call previously left/dismissed:', checkId, checkGrievance);
+              if (checkId && dismissedCallIdsRef.current.has(checkId)) {
+                console.log('[App] Ignoring call previously left/dismissed:', checkId);
                 return;
               }
             }
@@ -406,6 +389,28 @@ export default function App() {
 
     checkPendingNativeCall();
 
+    // Listen for real-time incoming call events dispatched by native JanSunwaiVoIPModule
+    const nativeCallSub = DeviceEventEmitter.addListener('onIncomingCall', (callJson: string) => {
+      try {
+        console.log('[App] Received onIncomingCall event from native VoIP module:', callJson);
+        const data = typeof callJson === 'string' ? JSON.parse(callJson) : callJson;
+        if (data?.callId || data?.grievanceId) {
+          const checkId = data.callId || '';
+          if (checkId && dismissedCallIdsRef.current.has(checkId)) {
+            console.log('[App] Ignoring incoming event for dismissed callId:', checkId);
+            return;
+          }
+          if (data.autoAccept) {
+            handleAcceptIncomingCall(data, currentUser);
+          } else {
+            setIncomingCall(data as IncomingCallData);
+          }
+        }
+      } catch (e) {
+        console.warn('[App] Error handling native onIncomingCall event:', e);
+      }
+    });
+
     const appStateSub = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         checkPendingNativeCall();
@@ -413,6 +418,7 @@ export default function App() {
     });
 
     return () => {
+      nativeCallSub.remove();
       appStateSub.remove();
     };
   }, [currentUser, serverUrl]);
@@ -464,12 +470,8 @@ export default function App() {
 
             if (msg.type === 'incoming_call' && msg.data) {
               const incomingId = msg.data.callId;
-              const grievance = msg.data.grievanceId;
-              if (
-                (incomingId && dismissedCallIdsRef.current.has(incomingId)) ||
-                (grievance && dismissedCallIdsRef.current.has(grievance))
-              ) {
-                console.log('[Mobile/WS] Ignoring incoming call for dismissed/left call:', incomingId, grievance);
+              if (incomingId && dismissedCallIdsRef.current.has(incomingId)) {
+                console.log('[Mobile/WS] Ignoring incoming call for dismissed callId:', incomingId);
                 return;
               }
               setIncomingCall(msg.data as IncomingCallData);
@@ -503,11 +505,11 @@ export default function App() {
 
     connectWebSocket();
 
-    // Secondary polling fallback: ONLY poll if WebSocket is disconnected (woken from background or network lost)
-    // When WebSocket is open, all signaling is real-time; do not spam the network!
+    // High-reliability polling fallback:
+    // Runs every 2.5s while user is logged in and not in an active hearing.
+    // Catches incoming calls instantaneously even if WebSocket connection stalls or sleeps.
     const pollInterval = setInterval(async () => {
       if (!isSubscribed || activeHearing) return;
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
 
       try {
         const checkUrl = `${base}/api/calls/check-incoming/${encodeURIComponent(currentUser.phone)}`;
@@ -518,23 +520,28 @@ export default function App() {
           const data = await res.json();
           if (data.hasIncomingCall && data.incomingCall) {
             const incomingId = data.incomingCall.callId;
-            const grievance = data.incomingCall.grievanceId;
-            if (
-              (incomingId && dismissedCallIdsRef.current.has(incomingId)) ||
-              (grievance && dismissedCallIdsRef.current.has(grievance))
-            ) {
+            if (incomingId && dismissedCallIdsRef.current.has(incomingId)) {
               return;
             }
             setIncomingCall((prev) => {
               if (prev && prev.callId === data.incomingCall.callId) return prev;
               return data.incomingCall;
             });
+          } else if (!data.hasIncomingCall) {
+            // If caller hung up or call was cancelled, automatically clear ringing modal
+            setIncomingCall((prev) => {
+              if (prev) {
+                JanSunwaiVoIP?.stopRinging?.();
+                return null;
+              }
+              return null;
+            });
           }
         }
       } catch (err) {
         // network polling silent
       }
-    }, 12000);
+    }, 2500);
 
     return () => {
       isSubscribed = false;
