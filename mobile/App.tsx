@@ -27,6 +27,8 @@ export default function App() {
   const [serverUrl, setServerUrl] = useState<string>(DEFAULT_SERVER_URL);
   const [activeHearing, setActiveHearing] = useState<ActiveHearingState | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
+  const [isConnectingHearing, setIsConnectingHearing] = useState<boolean>(false);
+  const [connectingCaseInfo, setConnectingCaseInfo] = useState<string>('');
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
   const [hasOverlayPermission, setHasOverlayPermission] = useState<boolean>(true);
 
@@ -190,6 +192,12 @@ export default function App() {
     const target = overrideCall || incomingCall;
     if (!target) return;
 
+    // IMMEDIATELY HIDE THE INCOMING CALL MODAL!
+    // Never allow the incoming call modal or "Join Hearing" button to linger on screen!
+    setIncomingCall(null);
+    setIsConnectingHearing(true);
+    setConnectingCaseInfo(target.grievanceId || target.roomName || 'Hearing');
+
     JanSunwaiVoIP?.stopRinging?.();
     JanSunwaiVoIP?.setInCall?.(true);
 
@@ -229,12 +237,14 @@ export default function App() {
         callId: target.callId,
       });
       setIncomingCall(null);
+      setIsConnectingHearing(false);
       return;
     }
 
     if (!user) {
       console.log('[App] User session not ready yet, queuing pending call...');
       pendingCallRef.current = target;
+      setIsConnectingHearing(false);
       return;
     }
 
@@ -294,6 +304,7 @@ export default function App() {
       Alert.alert('Connection Error', err?.message || 'Failed to join call.');
     } finally {
       setIncomingCall(null);
+      setIsConnectingHearing(false);
     }
   };
 
@@ -423,9 +434,14 @@ export default function App() {
               }
             }
             if (data.autoAccept) {
+              setIncomingCall(null);
+              setIsConnectingHearing(true);
+              setConnectingCaseInfo(data.grievanceId || data.roomName || 'Hearing');
               handleAcceptIncomingCall(data, currentUser);
             } else {
-              setIncomingCall(data as IncomingCallData);
+              if (!activeHearing && !isConnectingHearing) {
+                setIncomingCall(data as IncomingCallData);
+              }
             }
           }
         }
@@ -448,9 +464,14 @@ export default function App() {
             return;
           }
           if (data.autoAccept) {
+            setIncomingCall(null);
+            setIsConnectingHearing(true);
+            setConnectingCaseInfo(data.grievanceId || data.roomName || 'Hearing');
             handleAcceptIncomingCall(data, currentUser);
           } else {
-            setIncomingCall(data as IncomingCallData);
+            if (!activeHearing && !isConnectingHearing) {
+              setIncomingCall(data as IncomingCallData);
+            }
           }
         }
       } catch (e) {
@@ -522,7 +543,9 @@ export default function App() {
                 JanSunwaiVoIP?.stopRinging?.();
                 return;
               }
-              setIncomingCall(msg.data as IncomingCallData);
+              if (!activeHearing && !isConnectingHearing) {
+                setIncomingCall(msg.data as IncomingCallData);
+              }
             } else if (msg.type === 'call_ended' || msg.type === 'call_declined') {
               JanSunwaiVoIP?.stopRinging?.();
               setIncomingCall(null);
@@ -559,7 +582,7 @@ export default function App() {
     // Runs every 2.5s while user is logged in and not in an active hearing.
     // Catches incoming calls instantaneously even if WebSocket connection stalls or sleeps.
     const pollInterval = setInterval(async () => {
-      if (!isSubscribed || activeHearing) return;
+      if (!isSubscribed || activeHearing || isConnectingHearing) return;
 
       try {
         const checkUrl = `${base}/api/calls/check-incoming/${encodeURIComponent(currentUser.phone)}`;
@@ -568,7 +591,7 @@ export default function App() {
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.hasIncomingCall && data.incomingCall) {
+          if (data.hasIncomingCall && data.incomingCall && !isConnectingHearing && !activeHearing) {
             const inc = data.incomingCall;
             if (isDismissedCall(inc.callId, inc.grievanceId, inc.roomName)) {
               return;
@@ -667,6 +690,24 @@ export default function App() {
           callId={activeHearing.callId}
           onLeave={handleLeaveHearing}
         />
+      ) : isConnectingHearing ? (
+        <View style={styles.connectingOverlay}>
+          <View style={styles.connectingCard}>
+            <View style={styles.connectingPulseCircle}>
+              <ActivityIndicator size="large" color="#38bdf8" />
+            </View>
+            <Text style={styles.connectingTitleHindi}>सुनवाई कक्ष में प्रवेश हो रहा है...</Text>
+            <Text style={styles.connectingTitleEnglish}>Connecting to Video Hearing Room</Text>
+            {connectingCaseInfo ? (
+              <View style={styles.connectingBadge}>
+                <Text style={styles.connectingBadgeText}>Case #{connectingCaseInfo}</Text>
+              </View>
+            ) : null}
+            <Text style={styles.connectingHint}>
+              Establishing encrypted live video & audio streams...
+            </Text>
+          </View>
+        </View>
       ) : currentUser ? (
         <>
           {!hasOverlayPermission && (
@@ -698,7 +739,7 @@ export default function App() {
           />
 
           <IncomingCallModal
-            incomingCall={incomingCall}
+            incomingCall={!isConnectingHearing ? incomingCall : null}
             onAccept={handleAcceptIncomingCall}
             onDecline={handleDeclineIncomingCall}
           />
@@ -791,5 +832,73 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 13,
     marginTop: 12,
+  },
+  connectingOverlay: {
+    flex: 1,
+    backgroundColor: '#020617',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  connectingCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#0f172a',
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    shadowColor: '#38bdf8',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  connectingPulseCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  connectingTitleHindi: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#f8fafc',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  connectingTitleEnglish: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#38bdf8',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  connectingBadge: {
+    backgroundColor: '#1e293b',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#334155',
+    marginBottom: 16,
+  },
+  connectingBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#e2e8f0',
+    letterSpacing: 0.5,
+  },
+  connectingHint: {
+    fontSize: 12,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });
