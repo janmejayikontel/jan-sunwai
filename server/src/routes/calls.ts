@@ -438,11 +438,13 @@ router.get('/:id/participants', async (req: Request, res: Response) => {
  */
 router.post('/:id/mute-audio', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { participantPhone, muted = true, actorName, actorRole, actorPhone, muteAll } = req.body;
+  const { participantPhone, muted = true, actorName, actorRole, actorPhone, muteAll, roomName: bodyRoomName } = req.body;
 
   try {
-    const call = callManager.getCall(id);
-    const roomName = call ? call.livekitRoomName : `JS-${id}`;
+    const call = callManager.getCall(id) || (bodyRoomName ? callManager.getCall(bodyRoomName) : undefined);
+    const roomName =
+      bodyRoomName ||
+      (call ? call.livekitRoomName : id.startsWith('JS-') || id.startsWith('hearing_') || id.startsWith('ROOM-') ? id : `JS-${id}`);
 
     // 1. Mute All Remote Participants in hearing room
     if (!participantPhone || participantPhone === 'all' || muteAll) {
@@ -469,6 +471,7 @@ router.post('/:id/mute-audio', async (req: Request, res: Response) => {
             callManager.sendToClient(p.phone, {
               type: 'moderation',
               callId: id,
+              roomName,
               data: { action: 'mute_all', target: 'all' },
             });
           }
@@ -484,6 +487,7 @@ router.post('/:id/mute-audio', async (req: Request, res: Response) => {
     callManager.sendToClient(participantPhone, {
       type: 'moderation',
       callId: id,
+      roomName,
       data: { action: muted ? 'mute_mic' : 'unmute_mic', target: participantPhone, targetPhone: participantPhone },
     });
 
@@ -510,18 +514,31 @@ router.post('/:id/mute-audio', async (req: Request, res: Response) => {
  * POST /api/calls/:id/disable-video
  *
  * Officer/Magistrate disables a participant's video or all participants' cameras in the hearing.
- * Body: { participantPhone?: "+91..." | "all", disabled?: boolean, disableAll?: boolean }
+ * Body: { participantPhone?: "+91..." | "all", disabled?: boolean, disableAll?: boolean, roomName?: string }
  */
 router.post('/:id/disable-video', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { participantPhone, disabled = true, actorName, actorRole, actorPhone, disableAll } = req.body;
+  const {
+    participantPhone,
+    disabled = true,
+    actorName,
+    actorRole,
+    actorPhone,
+    disableAll,
+    roomName: bodyRoomName,
+    targetIdentity,
+  } = req.body;
+
+  const effectiveTarget = targetIdentity || participantPhone;
 
   try {
-    const call = callManager.getCall(id);
-    const roomName = call ? call.livekitRoomName : `JS-${id}`;
+    const call = callManager.getCall(id) || (bodyRoomName ? callManager.getCall(bodyRoomName) : undefined);
+    const roomName =
+      bodyRoomName ||
+      (call ? call.livekitRoomName : id.startsWith('JS-') || id.startsWith('hearing_') || id.startsWith('ROOM-') ? id : `JS-${id}`);
 
     // 1. Disable All Remote Cameras in hearing room
-    if (!participantPhone || participantPhone === 'all' || disableAll) {
+    if (!effectiveTarget || effectiveTarget === 'all' || disableAll) {
       const count = await livekitService.disableAllParticipantsVideo(roomName, actorPhone || call?.hostPhone);
       insertAuditLog({
         eventType: 'ALL_PARTICIPANTS_VIDEO_DISABLED',
@@ -539,6 +556,7 @@ router.post('/:id/disable-video', async (req: Request, res: Response) => {
             callManager.sendToClient(p.phone, {
               type: 'moderation',
               callId: id,
+              roomName,
               data: { action: 'disable_all_video', target: 'all' },
             });
           }
@@ -555,16 +573,18 @@ router.post('/:id/disable-video', async (req: Request, res: Response) => {
     }
 
     // 2. Disable / Enable Specific Participant's Camera
-    const success = await livekitService.muteParticipantVideo(roomName, participantPhone, Boolean(disabled));
+    const success = await livekitService.muteParticipantVideo(roomName, effectiveTarget, Boolean(disabled));
 
     // Notify target client via WebSocket
-    callManager.sendToClient(participantPhone, {
+    callManager.sendToClient(effectiveTarget, {
       type: 'moderation',
       callId: id,
+      roomName,
       data: {
         action: disabled ? 'disable_video' : 'enable_video',
-        target: participantPhone,
-        targetPhone: participantPhone,
+        target: effectiveTarget,
+        targetPhone: effectiveTarget,
+        targetIdentity: effectiveTarget,
       },
     });
 
@@ -572,14 +592,14 @@ router.post('/:id/disable-video', async (req: Request, res: Response) => {
       eventType: disabled ? 'PARTICIPANT_VIDEO_DISABLED' : 'PARTICIPANT_VIDEO_ENABLED',
       actorName: actorName || 'Presiding Officer',
       actorRole: actorRole || 'officer',
-      targetId: participantPhone,
-      targetName: participantPhone,
-      details: `${disabled ? 'Disabled' : 'Enabled'} video for ${participantPhone} in call ${id} (room ${roomName})`,
+      targetId: effectiveTarget,
+      targetName: effectiveTarget,
+      details: `${disabled ? 'Disabled' : 'Enabled'} video for ${effectiveTarget} in call ${id} (room ${roomName})`,
     });
 
     res.json({
       success: true,
-      message: `${disabled ? 'Disabled' : 'Enabled'} video for ${participantPhone}`,
+      message: `${disabled ? 'Disabled' : 'Enabled'} video for ${effectiveTarget}`,
     });
   } catch (error: any) {
     console.error('[Calls] Error disabling participant video:', error);

@@ -44,12 +44,13 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const RoomContent: React.FC<{
   serverUrl: string;
   apiBaseUrl?: string;
+  roomName?: string;
   grievanceId: string;
   callId?: string;
   role?: string;
   userName?: string;
   onLeave: () => void;
-}> = ({ serverUrl, apiBaseUrl, grievanceId, callId, role, userName, onLeave }) => {
+}> = ({ serverUrl, apiBaseUrl, roomName, grievanceId, callId, role, userName, onLeave }) => {
   const room = useRoomContext();
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
@@ -255,29 +256,37 @@ const RoomContent: React.FC<{
       const target = data.target || data.targetPhone || data.targetIdentity || '';
       const targetPhone = cleanDigits(target);
 
+      const isSender =
+        (data.senderIdentity && data.senderIdentity === myIdentity) ||
+        (data.senderPhone && myPhone && cleanDigits(data.senderPhone) === myPhone);
+
+      // Never apply moderation actions to the officer/admin who triggered them
+      if (isSender) return;
+
       const isTarget =
         target === 'all' ||
+        data.targetIdentity === 'all' ||
         data.action === 'disable_all_video' ||
         data.action === 'mute_all' ||
         target === myIdentity ||
         data.targetIdentity === myIdentity ||
         data.targetPhone === myIdentity ||
-        (targetPhone && myPhone && targetPhone === myPhone);
+        (targetPhone && myPhone && targetPhone === myPhone) ||
+        (target && myIdentity && (myIdentity.includes(target) || target.includes(myIdentity)));
 
-      if ((data.action === 'mute_all' || data.action === 'mute_mic') && !isOfficer && isTarget) {
+      if ((data.action === 'mute_all' || data.action === 'mute_mic' || data.action === 'mute_audio') && isTarget) {
         room.localParticipant?.setMicrophoneEnabled(false);
         setIsMuted(true);
-        Alert.alert('🔇 Microphone Muted', 'The Presiding Officer has muted your microphone.');
+        Alert.alert('🔇 Microphone Muted', 'The Presiding Officer / Super Admin has muted your microphone.');
       } else if (data.action === 'unmute_mic' && isTarget) {
         Alert.alert('🎙️ Speak Request', 'The Presiding Officer has requested you to unmute your microphone.');
       } else if (
         (data.action === 'disable_all_video' || data.action === 'disable_video') &&
-        !isOfficer &&
         isTarget
       ) {
         room.localParticipant?.setCameraEnabled(false);
         setIsCameraOff(true);
-        Alert.alert('📷 Video Disabled', 'The Presiding Officer has disabled your video camera.');
+        Alert.alert('📷 Video Disabled', 'The Presiding Officer / Super Admin has disabled your video camera.');
       } else if (data.action === 'enable_video' && isTarget) {
         Alert.alert('📹 Video Request', 'The Presiding Officer has requested you to turn on your camera.');
       } else if (data.action === 'eject' && isTarget) {
@@ -300,11 +309,33 @@ const RoomContent: React.FC<{
       }
     };
 
-    // SFU track mute listener (fires on hardware stream when server mutes track)
+    // SFU track mute listener (fires on hardware stream when server or SFU mutes track)
     const handleTrackMuted = (publication: any, participant: any) => {
-      if (participant === room.localParticipant && publication?.source === Track.Source.Camera) {
-        room.localParticipant?.setCameraEnabled(false);
-        setIsCameraOff(true);
+      const isLocal =
+        participant === room.localParticipant ||
+        participant?.isLocal ||
+        (participant?.identity && participant.identity === room.localParticipant?.identity);
+
+      if (isLocal) {
+        const isVideo =
+          publication?.source === Track.Source.Camera ||
+          publication?.source === 'camera' ||
+          publication?.kind === Track.Kind.Video ||
+          publication?.kind === 'video';
+
+        const isAudio =
+          publication?.source === Track.Source.Microphone ||
+          publication?.source === 'microphone' ||
+          publication?.kind === Track.Kind.Audio ||
+          publication?.kind === 'audio';
+
+        if (isVideo) {
+          room.localParticipant?.setCameraEnabled(false);
+          setIsCameraOff(true);
+        } else if (isAudio) {
+          room.localParticipant?.setMicrophoneEnabled(false);
+          setIsMuted(true);
+        }
       }
     };
 
@@ -321,7 +352,7 @@ const RoomContent: React.FC<{
       room.off(RoomEvent.DataReceived, handleData);
       room.off(RoomEvent.TrackMuted, handleTrackMuted);
     };
-  }, [room, isOfficer, onLeave]);
+  }, [room, onLeave]);
 
   // Dispatch moderation message to all room participants
   const sendModerationPacket = async (payload: object) => {
@@ -392,11 +423,24 @@ const RoomContent: React.FC<{
   // 1. Mute all remote microphones
   const handleMuteAll = async () => {
     try {
-      await sendModerationPacket({ type: 'moderation', action: 'mute_all', target: 'all' });
+      const myId = room?.localParticipant?.identity || '';
+      await sendModerationPacket({
+        type: 'moderation',
+        action: 'mute_all',
+        target: 'all',
+        senderIdentity: myId,
+        senderPhone: myId,
+      });
       await fetch(`${effectiveApiUrl}/api/calls/${effectiveCallId}/mute-audio`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ muteAll: true, actorName: userName || 'Presiding Officer' }),
+        body: JSON.stringify({
+          roomName: roomName || room?.name,
+          muteAll: true,
+          actorName: userName || 'Presiding Officer',
+          actorPhone: myId,
+          actorRole: role,
+        }),
       });
       Alert.alert('🔇 Muted All', 'All participant microphones have been muted by bench order.');
     } catch (e) {
@@ -407,11 +451,24 @@ const RoomContent: React.FC<{
   // 2. Disable all remote cameras
   const handleDisableAllVideo = async () => {
     try {
-      await sendModerationPacket({ type: 'moderation', action: 'disable_all_video', target: 'all' });
+      const myId = room?.localParticipant?.identity || '';
+      await sendModerationPacket({
+        type: 'moderation',
+        action: 'disable_all_video',
+        target: 'all',
+        senderIdentity: myId,
+        senderPhone: myId,
+      });
       await fetch(`${effectiveApiUrl}/api/calls/${effectiveCallId}/disable-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ disableAll: true, actorName: userName || 'Presiding Officer' }),
+        body: JSON.stringify({
+          roomName: roomName || room?.name,
+          disableAll: true,
+          actorName: userName || 'Presiding Officer',
+          actorPhone: myId,
+          actorRole: role,
+        }),
       });
       Alert.alert('📷 Cameras Disabled', 'All remote participant cameras have been disabled.');
     } catch (e) {
@@ -423,21 +480,27 @@ const RoomContent: React.FC<{
   const handleToggleMemberMic = async (member: { identity: string; name: string; isMicMuted: boolean }) => {
     const willMute = !member.isMicMuted;
     try {
+      const myId = room?.localParticipant?.identity || '';
       await sendModerationPacket({
         type: 'moderation',
         action: willMute ? 'mute_mic' : 'unmute_mic',
         target: member.identity,
         targetPhone: member.identity,
         targetIdentity: member.identity,
+        senderIdentity: myId,
+        senderPhone: myId,
       });
       await fetch(`${effectiveApiUrl}/api/calls/${effectiveCallId}/mute-audio`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          roomName: roomName || room?.name,
           participantPhone: member.identity,
           targetIdentity: member.identity,
           muted: willMute,
           actorName: userName || 'Presiding Officer',
+          actorPhone: myId,
+          actorRole: role,
         }),
       });
       Alert.alert(
@@ -453,21 +516,27 @@ const RoomContent: React.FC<{
   const handleToggleMemberVideo = async (member: { identity: string; name: string; isVideoOff: boolean }) => {
     const willDisable = !member.isVideoOff;
     try {
+      const myId = room?.localParticipant?.identity || '';
       await sendModerationPacket({
         type: 'moderation',
         action: willDisable ? 'disable_video' : 'enable_video',
         target: member.identity,
         targetPhone: member.identity,
         targetIdentity: member.identity,
+        senderIdentity: myId,
+        senderPhone: myId,
       });
       await fetch(`${effectiveApiUrl}/api/calls/${effectiveCallId}/disable-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          roomName: roomName || room?.name,
           participantPhone: member.identity,
           targetIdentity: member.identity,
           disabled: willDisable,
           actorName: userName || 'Presiding Officer',
+          actorPhone: myId,
+          actorRole: role,
         }),
       });
       Alert.alert(
@@ -876,6 +945,7 @@ export const VideoHearingScreen: React.FC<VideoHearingScreenProps> = ({
           <RoomContent
             serverUrl={serverUrl}
             apiBaseUrl={apiBaseUrl}
+            roomName={roomName}
             grievanceId={grievanceId}
             callId={callId}
             role={role}

@@ -188,11 +188,39 @@ export async function muteParticipantAudio(roomName: string, identity: string, m
 }
 
 /**
+ * Resolve the actual LiveKit room name on SFU (matches exact or normalized prefixed names)
+ */
+async function resolveLiveKitRoomName(roomName: string): Promise<string> {
+  if (!roomName) return roomName;
+  try {
+    const rooms = await roomService.listRooms();
+    if (rooms.some((r) => r.name === roomName)) return roomName;
+    const clean = roomName.replace(/^(JS-|hearing_|ROOM-)/i, '').trim().toUpperCase();
+    const matched = rooms.find(
+      (r) =>
+        r.name.toUpperCase() === clean ||
+        r.name.toUpperCase() === `JS-${clean}` ||
+        r.name.toUpperCase() === `HEARING_${clean}` ||
+        r.name.toUpperCase().includes(clean) ||
+        clean.includes(r.name.toUpperCase())
+    );
+    if (matched) {
+      console.log(`[LiveKit] Resolved room alias '${roomName}' -> actual room '${matched.name}'`);
+      return matched.name;
+    }
+  } catch (err) {
+    console.warn('[LiveKit] Error listing rooms for resolution:', err);
+  }
+  return roomName;
+}
+
+/**
  * Disable a participant's video (Officer/Magistrate Moderation)
  */
 export async function muteParticipantVideo(roomName: string, identity: string, muted: boolean = true) {
   try {
-    const participants = await roomService.listParticipants(roomName);
+    const targetRoom = await resolveLiveKitRoomName(roomName);
+    const participants = await roomService.listParticipants(targetRoom);
     const cleanDigits = (s: string) => (s || '').replace(/\D/g, '').slice(-10);
     const targetClean = cleanDigits(identity);
 
@@ -202,25 +230,34 @@ export async function muteParticipantVideo(roomName: string, identity: string, m
       const isMatch =
         p.identity === identity ||
         p.identity.includes(identity) ||
+        identity.includes(p.identity) ||
         (targetClean && pClean && targetClean === pClean);
 
       if (isMatch) {
         for (const track of p.tracks) {
-          if (track.type === 1 || track.source === TrackSource.CAMERA || track.source === TrackSource.SCREEN_SHARE) {
+          const isVideo =
+            track.type === 1 ||
+            (track.type as any) === 'VIDEO' ||
+            track.source === TrackSource.CAMERA ||
+            (track.source as any) === 1 ||
+            track.source === TrackSource.SCREEN_SHARE ||
+            (track.source as any) === 3;
+
+          if (isVideo) {
             try {
-              await roomService.mutePublishedTrack(roomName, p.identity, track.sid, muted);
+              await roomService.mutePublishedTrack(targetRoom, p.identity, track.sid, muted);
               count++;
             } catch (e) {
-              console.warn(`[LiveKit] Failed to mute video track for ${p.identity}:`, e);
+              console.warn(`[LiveKit] Failed to mute video track ${track.sid} for ${p.identity}:`, e);
             }
           }
         }
       }
     }
-    console.log(`[LiveKit] ${muted ? 'Disabled' : 'Enabled'} video for ${identity} in ${roomName} (${count} tracks)`);
+    console.log(`[LiveKit] ${muted ? 'Disabled' : 'Enabled'} video for ${identity} in ${targetRoom} (${count} tracks)`);
     return count > 0;
   } catch (err) {
-    console.warn(`[LiveKit] Failed to mute video for ${identity}:`, err);
+    console.warn(`[LiveKit] Failed to mute video for ${identity} in ${roomName}:`, err);
     return false;
   }
 }
@@ -230,16 +267,23 @@ export async function muteParticipantVideo(roomName: string, identity: string, m
  */
 export async function muteAllParticipantsAudio(roomName: string, excludeIdentity?: string): Promise<number> {
   try {
-    const participants = await roomService.listParticipants(roomName);
+    const targetRoom = await resolveLiveKitRoomName(roomName);
+    const participants = await roomService.listParticipants(targetRoom);
     let count = 0;
     for (const p of participants) {
       if (excludeIdentity && (p.identity === excludeIdentity || p.identity.includes(excludeIdentity))) {
         continue;
       }
       for (const track of p.tracks) {
-        if (track.type === 0 || track.source === TrackSource.MICROPHONE) {
+        const isAudio =
+          track.type === 0 ||
+          (track.type as any) === 'AUDIO' ||
+          track.source === TrackSource.MICROPHONE ||
+          (track.source as any) === 2;
+
+        if (isAudio) {
           try {
-            await roomService.mutePublishedTrack(roomName, p.identity, track.sid, true);
+            await roomService.mutePublishedTrack(targetRoom, p.identity, track.sid, true);
             count++;
           } catch (e) {
             console.warn(`[LiveKit] Failed to mute track for ${p.identity}:`, e);
@@ -247,7 +291,7 @@ export async function muteAllParticipantsAudio(roomName: string, excludeIdentity
         }
       }
     }
-    console.log(`[LiveKit] Muted all participants audio in ${roomName} (${count} tracks)`);
+    console.log(`[LiveKit] Muted all participants audio in ${targetRoom} (${count} tracks)`);
     return count;
   } catch (err) {
     console.warn(`[LiveKit] Failed to mute all participants in ${roomName}:`, err);
@@ -260,16 +304,25 @@ export async function muteAllParticipantsAudio(roomName: string, excludeIdentity
  */
 export async function disableAllParticipantsVideo(roomName: string, excludeIdentity?: string): Promise<number> {
   try {
-    const participants = await roomService.listParticipants(roomName);
+    const targetRoom = await resolveLiveKitRoomName(roomName);
+    const participants = await roomService.listParticipants(targetRoom);
     let count = 0;
     for (const p of participants) {
       if (excludeIdentity && (p.identity === excludeIdentity || p.identity.includes(excludeIdentity))) {
         continue;
       }
       for (const track of p.tracks) {
-        if (track.type === 1 || track.source === TrackSource.CAMERA || track.source === TrackSource.SCREEN_SHARE) {
+        const isVideo =
+          track.type === 1 ||
+          (track.type as any) === 'VIDEO' ||
+          track.source === TrackSource.CAMERA ||
+          (track.source as any) === 1 ||
+          track.source === TrackSource.SCREEN_SHARE ||
+          (track.source as any) === 3;
+
+        if (isVideo) {
           try {
-            await roomService.mutePublishedTrack(roomName, p.identity, track.sid, true);
+            await roomService.mutePublishedTrack(targetRoom, p.identity, track.sid, true);
             count++;
           } catch (e) {
             console.warn(`[LiveKit] Failed to disable track for ${p.identity}:`, e);
@@ -277,7 +330,7 @@ export async function disableAllParticipantsVideo(roomName: string, excludeIdent
         }
       }
     }
-    console.log(`[LiveKit] Disabled all participants video in ${roomName} (${count} tracks)`);
+    console.log(`[LiveKit] Disabled all participants video in ${targetRoom} (${count} tracks)`);
     return count;
   } catch (err) {
     console.warn(`[LiveKit] Failed to disable all video in ${roomName}:`, err);

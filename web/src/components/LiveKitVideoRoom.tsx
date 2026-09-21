@@ -48,7 +48,6 @@ import {
   Users,
   UserX,
   VolumeX,
-  Hand,
   Check,
   CheckCircle,
   AlertCircle,
@@ -443,12 +442,14 @@ function PermanentControlBar({
   onLeave,
   currentUser,
   callId,
+  roomName,
   apiBase,
   onEndCall,
 }: {
   onLeave?: () => void;
   currentUser?: any;
   callId?: string;
+  roomName?: string;
   apiBase?: string;
   onEndCall?: () => void;
 }) {
@@ -472,7 +473,6 @@ function PermanentControlBar({
   const [showChat, setShowChat] = React.useState(false);
   const [showSafetyModal, setShowSafetyModal] = React.useState(false);
   const [showModerationModal, setShowModerationModal] = React.useState(false);
-  const [isHandRaised, setIsHandRaised] = React.useState(false);
   const [unreadChatCount, setUnreadChatCount] = React.useState(0);
   const [safetyVerified, setSafetyVerified] = React.useState(false);
   const [inputChatText, setInputChatText] = React.useState("");
@@ -498,7 +498,7 @@ function PermanentControlBar({
   const customTrackPubRef = React.useRef<any>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Listen for LiveKit Data Packets (E2EE Chat, Hand Raises, and Officer Moderation)
+  // Listen for LiveKit Data Packets (E2EE Chat and Officer Moderation)
   React.useEffect(() => {
     if (!room) return;
     const handleData = (payload: Uint8Array, participant?: any) => {
@@ -510,37 +510,33 @@ function PermanentControlBar({
           if (!showChat) {
             setUnreadChatCount((prev) => prev + 1);
           }
-        } else if (data.type === "raise_hand") {
-          window.dispatchEvent(
-            new CustomEvent("jan-sunwai-toast", {
-              detail: {
-                message: `✋ ${data.senderName} (${data.senderRole || "Attendee"}) raised hand to speak`,
-                type: "info",
-              },
-            })
-          );
         } else if (data.type === "moderation") {
           // Officer / Super Admin Presiding Moderation Directive
-          const myId = localParticipant?.identity;
+          const myId = localParticipant?.identity || "";
           const myPhone = currentUser?.phone || myId;
           const getDigits = (s?: string) => (s ? s.replace(/\D/g, "").slice(-10) : "");
           const myDigits = getDigits(myId) || getDigits(myPhone);
           const targetDigits = getDigits(data.target) || getDigits(data.targetPhone) || getDigits(data.targetIdentity);
 
+          const isSenderMe =
+            (data.senderIdentity && data.senderIdentity === myId) ||
+            (data.senderPhone && myDigits && getDigits(data.senderPhone) === myDigits);
+
+          if (isSenderMe) return;
+
           const isTargetMe =
             data.target === "all" ||
             data.targetIdentity === "all" ||
+            data.action === "disable_all_video" ||
+            data.action === "mute_all" ||
             data.target === myId ||
             data.targetIdentity === myId ||
             data.targetPhone === myPhone ||
-            (targetDigits && myDigits && targetDigits === myDigits);
+            (targetDigits && myDigits && targetDigits === myDigits) ||
+            (data.target && myId && (myId.includes(data.target) || data.target.includes(myId)));
 
-          const isSenderMe =
-            data.senderIdentity === myId ||
-            (data.senderPhone && getDigits(data.senderPhone) === myDigits);
-
-          if (isTargetMe && !isSenderMe) {
-            if (data.action === "mute_audio" || data.action === "mute_all") {
+          if (isTargetMe) {
+            if (data.action === "mute_audio" || data.action === "mute_mic" || data.action === "mute_all") {
               localParticipant.setMicrophoneEnabled(false);
               window.dispatchEvent(
                 new CustomEvent("jan-sunwai-toast", {
@@ -560,6 +556,15 @@ function PermanentControlBar({
                   },
                 })
               );
+            } else if (data.action === "enable_video") {
+              window.dispatchEvent(
+                new CustomEvent("jan-sunwai-toast", {
+                  detail: {
+                    message: "📹 Presiding Officer / Super Admin requested you to turn on your camera",
+                    type: "info",
+                  },
+                })
+              );
             }
           }
         }
@@ -569,8 +574,25 @@ function PermanentControlBar({
     };
 
     const handleTrackMuted = (pub: any, participant: any) => {
-      if (participant?.isLocal) {
-        if (pub?.source === Track.Source.Camera) {
+      const isLocal =
+        participant?.isLocal ||
+        participant === localParticipant ||
+        (participant?.identity && participant.identity === localParticipant?.identity);
+
+      if (isLocal) {
+        const isVideo =
+          pub?.source === Track.Source.Camera ||
+          pub?.source === "camera" ||
+          pub?.kind === Track.Kind.Video ||
+          pub?.kind === "video";
+
+        const isAudio =
+          pub?.source === Track.Source.Microphone ||
+          pub?.source === "microphone" ||
+          pub?.kind === Track.Kind.Audio ||
+          pub?.kind === "audio";
+
+        if (isVideo) {
           localParticipant.setCameraEnabled(false);
           window.dispatchEvent(
             new CustomEvent("jan-sunwai-toast", {
@@ -580,7 +602,7 @@ function PermanentControlBar({
               },
             })
           );
-        } else if (pub?.source === Track.Source.Microphone) {
+        } else if (isAudio) {
           localParticipant.setMicrophoneEnabled(false);
           window.dispatchEvent(
             new CustomEvent("jan-sunwai-toast", {
@@ -626,51 +648,33 @@ function PermanentControlBar({
     }
   };
 
-  // Toggle Hand Raise
-  const toggleRaiseHand = async () => {
-    const next = !isHandRaised;
-    setIsHandRaised(next);
-    try {
-      if (room && room.localParticipant) {
-        const encoded = new TextEncoder().encode(
-          JSON.stringify({
-            type: "raise_hand",
-            senderName: currentUser?.name || "Participant",
-            senderRole: currentUser?.role || "citizen",
-            raised: next,
-          })
-        );
-        await room.localParticipant.publishData(encoded, { reliable: true });
-      }
-    } catch (e) {}
-    window.dispatchEvent(
-      new CustomEvent("jan-sunwai-toast", {
-        detail: { message: next ? "✋ Hand raised to speak" : "Hand lowered", type: "info" },
-      })
-    );
-  };
-
   // Officer / Super Admin Bench Global Actions
   const handleOfficerMuteAll = async () => {
-    if (!callId || !apiBase) return;
+    const effectiveRoom = roomName || room?.name;
+    const effectiveId = callId || effectiveRoom;
     try {
-      await fetch(`${apiBase}/api/calls/${callId}/mute-audio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          muteAll: true,
-          actorName: currentUser?.name,
-          actorRole: currentUser?.role,
-        }),
-      });
+      const myId = localParticipant?.identity || currentUser?.phone || "";
+      if (apiBase && effectiveId) {
+        await fetch(`${apiBase}/api/calls/${encodeURIComponent(effectiveId)}/mute-audio`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomName: effectiveRoom,
+            muteAll: true,
+            actorName: currentUser?.name || "Presiding Officer",
+            actorRole: currentUser?.role || "officer",
+            actorPhone: myId,
+          }),
+        });
+      }
       if (room && room.localParticipant) {
         const pkt = new TextEncoder().encode(
           JSON.stringify({
             type: "moderation",
-            action: "mute_audio",
+            action: "mute_all",
             target: "all",
             targetIdentity: "all",
-            senderIdentity: localParticipant?.identity,
+            senderIdentity: myId,
             senderPhone: currentUser?.phone,
           })
         );
@@ -687,25 +691,31 @@ function PermanentControlBar({
   };
 
   const handleOfficerDisableAllVideo = async () => {
-    if (!callId || !apiBase) return;
+    const effectiveRoom = roomName || room?.name;
+    const effectiveId = callId || effectiveRoom;
     try {
-      await fetch(`${apiBase}/api/calls/${callId}/disable-video`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          disableAll: true,
-          actorName: currentUser?.name,
-          actorRole: currentUser?.role,
-        }),
-      });
+      const myId = localParticipant?.identity || currentUser?.phone || "";
+      if (apiBase && effectiveId) {
+        await fetch(`${apiBase}/api/calls/${encodeURIComponent(effectiveId)}/disable-video`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomName: effectiveRoom,
+            disableAll: true,
+            actorName: currentUser?.name || "Presiding Officer",
+            actorRole: currentUser?.role || "officer",
+            actorPhone: myId,
+          }),
+        });
+      }
       if (room && room.localParticipant) {
         const pkt = new TextEncoder().encode(
           JSON.stringify({
             type: "moderation",
-            action: "disable_video",
+            action: "disable_all_video",
             target: "all",
             targetIdentity: "all",
-            senderIdentity: localParticipant?.identity,
+            senderIdentity: myId,
             senderPhone: currentUser?.phone,
           })
         );
@@ -722,29 +732,36 @@ function PermanentControlBar({
   };
 
   // Officer / Super Admin Moderation API calls (Individual Participants)
-  const handleOfficerMuteAudio = async (phone: string) => {
-    if (!callId || !apiBase) return;
+  const handleOfficerMuteAudio = async (phone: string, muted: boolean = true) => {
+    const effectiveRoom = roomName || room?.name;
+    const effectiveId = callId || effectiveRoom;
     try {
-      await fetch(`${apiBase}/api/calls/${callId}/mute-audio`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantPhone: phone,
-          participantIdentity: phone,
-          muted: true,
-          actorName: currentUser?.name,
-          actorRole: currentUser?.role,
-        }),
-      });
+      const myId = localParticipant?.identity || currentUser?.phone || "";
+      if (apiBase && effectiveId) {
+        await fetch(`${apiBase}/api/calls/${encodeURIComponent(effectiveId)}/mute-audio`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomName: effectiveRoom,
+            participantPhone: phone,
+            participantIdentity: phone,
+            targetIdentity: phone,
+            muted,
+            actorName: currentUser?.name || "Presiding Officer",
+            actorRole: currentUser?.role || "officer",
+            actorPhone: myId,
+          }),
+        });
+      }
       if (room && room.localParticipant) {
         const pkt = new TextEncoder().encode(
           JSON.stringify({
             type: "moderation",
-            action: "mute_audio",
+            action: muted ? "mute_audio" : "unmute_audio",
             target: phone,
             targetPhone: phone,
             targetIdentity: phone,
-            senderIdentity: localParticipant?.identity,
+            senderIdentity: myId,
             senderPhone: currentUser?.phone,
           })
         );
@@ -752,7 +769,7 @@ function PermanentControlBar({
       }
       window.dispatchEvent(
         new CustomEvent("jan-sunwai-toast", {
-          detail: { message: `🔇 Muted microphone for ${phone}`, type: "success" },
+          detail: { message: muted ? `🔇 Muted microphone for ${phone}` : `🎙️ Unmuted microphone for ${phone}`, type: "success" },
         })
       );
     } catch (e) {
@@ -760,29 +777,36 @@ function PermanentControlBar({
     }
   };
 
-  const handleOfficerDisableVideo = async (phone: string) => {
-    if (!callId || !apiBase) return;
+  const handleOfficerDisableVideo = async (phone: string, disabled: boolean = true) => {
+    const effectiveRoom = roomName || room?.name;
+    const effectiveId = callId || effectiveRoom;
     try {
-      await fetch(`${apiBase}/api/calls/${callId}/disable-video`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantPhone: phone,
-          participantIdentity: phone,
-          disabled: true,
-          actorName: currentUser?.name,
-          actorRole: currentUser?.role,
-        }),
-      });
+      const myId = localParticipant?.identity || currentUser?.phone || "";
+      if (apiBase && effectiveId) {
+        await fetch(`${apiBase}/api/calls/${encodeURIComponent(effectiveId)}/disable-video`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomName: effectiveRoom,
+            participantPhone: phone,
+            participantIdentity: phone,
+            targetIdentity: phone,
+            disabled,
+            actorName: currentUser?.name || "Presiding Officer",
+            actorRole: currentUser?.role || "officer",
+            actorPhone: myId,
+          }),
+        });
+      }
       if (room && room.localParticipant) {
         const pkt = new TextEncoder().encode(
           JSON.stringify({
             type: "moderation",
-            action: "disable_video",
+            action: disabled ? "disable_video" : "enable_video",
             target: phone,
             targetPhone: phone,
             targetIdentity: phone,
-            senderIdentity: localParticipant?.identity,
+            senderIdentity: myId,
             senderPhone: currentUser?.phone,
           })
         );
@@ -790,7 +814,7 @@ function PermanentControlBar({
       }
       window.dispatchEvent(
         new CustomEvent("jan-sunwai-toast", {
-          detail: { message: `📹 Disabled camera for ${phone}`, type: "warning" },
+          detail: { message: disabled ? `📹 Disabled camera for ${phone}` : `📹 Sent camera request to ${phone}`, type: disabled ? "warning" : "info" },
         })
       );
     } catch (e) {
@@ -1640,41 +1664,6 @@ function PermanentControlBar({
           <span>{safetyVerified ? "Verified" : "Safety"}</span>
         </button>
 
-        {/* 6. Raise Hand Button */}
-        <button
-          type="button"
-          id="btn-control-raise-hand"
-          onClick={toggleRaiseHand}
-          style={{
-            display: "inline-flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "2px",
-            minWidth: "66px",
-            maxWidth: "88px",
-            flex: 1,
-            height: "48px",
-            padding: "4px 8px",
-            borderRadius: "10px",
-            background: isHandRaised
-              ? "rgba(245, 158, 11, 0.3)"
-              : "rgba(255, 255, 255, 0.08)",
-            border: isHandRaised
-              ? "1px solid #f59e0b"
-              : "1px solid rgba(255, 255, 255, 0.18)",
-            color: isHandRaised ? "#fbbf24" : "#cbd5e1",
-            fontWeight: 600,
-            fontSize: "0.72rem",
-            cursor: "pointer",
-            boxShadow: isHandRaised ? "0 0 10px rgba(245, 158, 11, 0.4)" : undefined,
-            transition: "all 0.15s ease",
-          }}
-          title={isHandRaised ? "Lower Hand" : "Raise Hand to Speak"}
-        >
-          <Hand size={18} />
-          <span>{isHandRaised ? "Hand Up" : "Hand"}</span>
-        </button>
 
         {/* 7. Officer / Magistrate / Super Admin Moderation Button */}
         {(currentUser?.role === "officer" || currentUser?.role === "admin") && (
@@ -2186,44 +2175,44 @@ function PermanentControlBar({
                       <div style={{ display: "flex", gap: "4px" }}>
                         <button
                           type="button"
-                          onClick={() => handleOfficerMuteAudio(p.identity)}
+                          onClick={() => handleOfficerMuteAudio(p.identity, micActive)}
                           style={{
-                            background: "rgba(239, 68, 68, 0.2)",
-                            border: "1px solid rgba(239, 68, 68, 0.4)",
+                            background: micActive ? "rgba(239, 68, 68, 0.2)" : "rgba(34, 197, 94, 0.2)",
+                            border: micActive ? "1px solid rgba(239, 68, 68, 0.4)" : "1px solid rgba(34, 197, 94, 0.4)",
                             borderRadius: "6px",
                             padding: "4px 8px",
-                            color: "#f87171",
+                            color: micActive ? "#f87171" : "#4ade80",
                             cursor: "pointer",
                             fontSize: "0.7rem",
                             display: "flex",
                             alignItems: "center",
                             gap: "3px",
                           }}
-                          title="Mute Participant Audio"
+                          title={micActive ? "Mute Participant Audio" : "Unmute / Request Audio"}
                         >
                           <VolumeX size={12} />
-                          Mute
+                          {micActive ? "Mute" : "Unmute"}
                         </button>
 
                         <button
                           type="button"
-                          onClick={() => handleOfficerDisableVideo(p.identity)}
+                          onClick={() => handleOfficerDisableVideo(p.identity, camActive)}
                           style={{
-                            background: "rgba(245, 158, 11, 0.2)",
-                            border: "1px solid rgba(245, 158, 11, 0.4)",
+                            background: camActive ? "rgba(245, 158, 11, 0.2)" : "rgba(34, 197, 94, 0.2)",
+                            border: camActive ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid rgba(34, 197, 94, 0.4)",
                             borderRadius: "6px",
                             padding: "4px 8px",
-                            color: "#fbbf24",
+                            color: camActive ? "#fbbf24" : "#4ade80",
                             cursor: "pointer",
                             fontSize: "0.7rem",
                             display: "flex",
                             alignItems: "center",
                             gap: "3px",
                           }}
-                          title="Disable Participant Video"
+                          title={camActive ? "Disable Participant Video" : "Enable / Request Video"}
                         >
                           <VideoOff size={12} />
-                          Cam
+                          {camActive ? "Cam Off" : "Cam On"}
                         </button>
 
                         <button
@@ -2441,6 +2430,7 @@ export default function LiveKitVideoRoom({
           onEndCall={onEndCall}
           currentUser={currentUser}
           callId={callId}
+          roomName={roomName}
           apiBase={apiBase}
         />
 
