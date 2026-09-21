@@ -579,6 +579,20 @@ const RoomContent: React.FC<{
 
   const hasActiveScreenShare = screenShareTracks.length > 0;
 
+  const handleExitCall = () => {
+    try {
+      NativeModules.JanSunwaiVoIP?.stopRinging?.();
+      NativeModules.JanSunwaiVoIP?.setInCall?.(false);
+      if (effectiveCallId) {
+        NativeModules.JanSunwaiVoIP?.dismissCall?.(effectiveCallId);
+      }
+      if (roomName) {
+        NativeModules.JanSunwaiVoIP?.dismissCall?.(roomName);
+      }
+    } catch (e) {}
+    onLeave();
+  };
+
   return (
     <View style={styles.roomContainer}>
       {/* Hearing Header */}
@@ -690,7 +704,7 @@ const RoomContent: React.FC<{
         onToggleCamera={handleToggleCamera}
         onFlipCamera={handleFlipCamera}
         onToggleScreenShare={handleToggleScreenShare}
-        onLeaveCall={onLeave}
+        onLeaveCall={handleExitCall}
         onAddParticipant={isOfficer ? () => setShowAddParticipant(true) : undefined}
       />
 

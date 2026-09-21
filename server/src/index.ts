@@ -109,9 +109,11 @@ app.post('/api/livekit/token', async (req, res) => {
         return;
       }
       callSessionId = check.callId;
-      if (check.callId && userPhone) {
-        callManager.markParticipantJoined(check.callId, userPhone);
+      if (userPhone) {
+        callManager.markParticipantJoined(check.callId || roomName, userPhone);
       }
+    } else if (userPhone) {
+      callManager.markParticipantJoined(roomName, userPhone);
     }
 
     const token = await livekitService.generateToken({

@@ -821,42 +821,73 @@ export async function participantLeaveCall(
       }
     }
   }
+
+  // Fallback: If not found by IDs, search activeCalls for any call containing this participant
+  if (!call && participantPhone) {
+    for (const c of activeCalls.values()) {
+      if (c.status !== 'completed' && c.participants.some((p) => matchPhone(p.phone, participantPhone))) {
+        call = c;
+        break;
+      }
+    }
+  }
+
   if (!call && activeCalls.size === 1) {
     call = Array.from(activeCalls.values())[0];
   }
-  if (!call) {
-    console.warn(`[CallManager] participantLeaveCall: Call ${callId} not found in activeCalls`);
-    return false;
+
+  // Mark participant as left in the found call
+  if (call) {
+    const participant = call.participants.find((p) => matchPhone(p.phone, participantPhone));
+    if (participant) {
+      participant.leftAt = new Date();
+      participant.ringStatus = 'left';
+      console.log(`[CallManager] Participant ${participant.name} (${participantPhone}) marked as 'left' in call ${call.id}`);
+    }
+
+    // Clear ring timeout for this call
+    const timeout = ringTimeouts.get(call.id);
+    if (timeout) {
+      clearTimeout(timeout);
+      ringTimeouts.delete(call.id);
+    }
+
+    // Also remove from LiveKit SFU so connection is cleaned up immediately
+    try {
+      await livekitService.removeParticipant(call.livekitRoomName, participantPhone);
+    } catch (err) {
+      // Participant may have already disconnected
+    }
+
+    // Notify all remaining active participants
+    call.participants.forEach((p) => {
+      if (p.phone && !matchPhone(p.phone, participantPhone) && !p.leftAt) {
+        sendToClient(p.phone, {
+          type: 'participant_left',
+          callId: call!.id,
+          data: {
+            participantName: participant?.name || participantPhone,
+            phone: participantPhone,
+            wasRemovedByHost: false,
+          },
+        });
+      }
+    });
   }
 
-  const participant = call.participants.find((p) => matchPhone(p.phone, participantPhone));
-  if (participant) {
-    participant.leftAt = new Date();
-    participant.ringStatus = 'left';
-    console.log(`[CallManager] Participant ${participant.name} (${participantPhone}) marked as 'left' in call ${call.id}`);
-  }
-
-  // Also remove from LiveKit SFU so connection is cleaned up immediately
-  try {
-    await livekitService.removeParticipant(call.livekitRoomName, participantPhone);
-  } catch (err) {
-    // Participant may have already disconnected
-  }
-
-  // Notify all remaining active participants
-  call.participants.forEach((p) => {
-    if (p.phone && !matchPhone(p.phone, participantPhone) && !p.leftAt) {
-      sendToClient(p.phone, {
-        type: 'participant_left',
-        callId: call!.id,
-        data: {
-          participantName: participant?.name || participantPhone,
-          phone: participantPhone,
-          wasRemovedByHost: false,
-        },
+  // CRITICAL PURGE: Ensure this phone is marked 'left' across ANY active call in activeCalls
+  // so no lingering session can ever trigger incoming call ringing for this user again!
+  if (participantPhone) {
+    for (const c of activeCalls.values()) {
+      c.participants.forEach((p) => {
+        if (matchPhone(p.phone, participantPhone)) {
+          p.leftAt = p.leftAt || new Date();
+          p.ringStatus = 'left';
+          console.log(`[CallManager] Marked ${p.name} (${participantPhone}) as 'left' in session ${c.id}`);
+        }
       });
     }
-  });
+  }
 
   return true;
 }
@@ -866,19 +897,10 @@ export async function participantLeaveCall(
  * Prevents any subsequent incoming call ringing or re-check.
  */
 export function markParticipantJoined(callIdOrRoom: string, phone: string): boolean {
-  let call = activeCalls.get(callIdOrRoom);
-  if (!call) {
-    const raw = (callIdOrRoom || '').trim();
-    const clean = raw.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+  let call = getCall(callIdOrRoom);
+  if (!call && phone) {
     for (const c of activeCalls.values()) {
-      if (
-        c.id === raw ||
-        c.grievanceId.toUpperCase() === clean ||
-        c.grievanceId.toUpperCase() === raw.toUpperCase() ||
-        c.livekitRoomName === raw ||
-        c.livekitRoomName === `JS-${clean}` ||
-        c.livekitRoomName === `hearing_${clean}`
-      ) {
+      if (c.status !== 'completed' && c.participants.some((p) => matchPhone(p.phone, phone))) {
         call = c;
         break;
       }
@@ -1005,13 +1027,14 @@ export function checkCanEnterRoom(
 
   // Direct 6-character room codes and custom pre-check rooms can be entered freely
   const rawRoom = (caseOrRoomId || '').trim();
+  const matchedCall = getCall(rawRoom);
   if (
     rawRoom.startsWith('JS-') ||
     rawRoom.startsWith('ROOM-') ||
     rawRoom.startsWith('test_') ||
     (!rawRoom.toUpperCase().includes('RAJ-') && rawRoom.length <= 12)
   ) {
-    return { allowed: true, roomName: rawRoom };
+    return { allowed: true, roomName: rawRoom, callId: matchedCall?.id };
   }
 
   const cleanCaseId = caseOrRoomId.replace(/^hearing_/, '').trim().toUpperCase();

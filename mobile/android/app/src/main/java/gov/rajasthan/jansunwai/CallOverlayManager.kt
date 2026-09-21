@@ -292,6 +292,9 @@ object CallOverlayManager {
                         dismiss(context)
                         IncomingCallActivity.activeInstance?.finish()
                         JanSunwaiVoIPService.dismissCall(callId)
+                        if (effectiveCallId.isNotEmpty() && effectiveCallId != callId) {
+                            JanSunwaiVoIPService.dismissCall(effectiveCallId)
+                        }
                         JanSunwaiVoIPService.stopActiveRinging()
 
                         if (effectiveCallId.isNotEmpty() && serverUrl.isNotEmpty() && userPhone.isNotEmpty()) {
@@ -347,6 +350,31 @@ object CallOverlayManager {
 
                         JanSunwaiVoIPService.stopActiveRinging()
                         JanSunwaiVoIPService.setInCallState(true)
+
+                        // Post accept response to server in background thread so backend marks ringStatus = 'accepted'
+                        if (effectiveCallId.isNotEmpty() && serverUrl.isNotEmpty() && userPhone.isNotEmpty()) {
+                            Thread {
+                                try {
+                                    val cleanBase = serverUrl.trim().trimEnd('/')
+                                    val url = "${cleanBase}/api/calls/${effectiveCallId}/respond"
+                                    val body = JSONObject().apply {
+                                        put("phone", userPhone)
+                                        put("action", "accept")
+                                        put("callId", effectiveCallId)
+                                    }.toString()
+
+                                    val client = OkHttpClient()
+                                    val req = Request.Builder()
+                                        .url(url)
+                                        .addHeader("Bypass-Tunnel-Reminder", "true")
+                                        .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
+                                        .build()
+                                    client.newCall(req).execute().close()
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Error posting accept to server", e)
+                                }
+                            }.start()
+                        }
 
                         // Launch MainActivity with accepted call data
                         val updatedCallData = try {

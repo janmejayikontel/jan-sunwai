@@ -76,21 +76,24 @@ class JanSunwaiVoIPService : Service() {
         fun dismissCall(callId: String?) {
             if (!callId.isNullOrBlank()) {
                 val c = callId.trim().uppercase()
-                // Only blacklist UUID-like call identifiers (>= 20 chars), NEVER grievance IDs!
-                if (c.length >= 20) {
-                    dismissedCallIds.add(c)
-                    val clean = c.replace(Regex("^(HEARING_|JS-)"), "")
-                    if (clean.isNotEmpty()) {
-                        dismissedCallIds.add(clean)
-                        dismissedCallIds.add("JS-$clean")
-                        dismissedCallIds.add("HEARING_$clean")
-                    }
-                    Log.i(TAG, "Dismissed callId added to blacklist: $c (total dismissed: ${dismissedCallIds.size})")
-                } else {
-                    Log.i(TAG, "Ignoring non-UUID callId in dismissCall: $c")
+                dismissedCallIds.add(c)
+                val clean = c.replace(Regex("^(HEARING_|JS-)"), "")
+                if (clean.isNotEmpty()) {
+                    dismissedCallIds.add(clean)
+                    dismissedCallIds.add("JS-$clean")
+                    dismissedCallIds.add("HEARING_$clean")
                 }
+                Log.i(TAG, "Dismissed callId added to blacklist: $c (total dismissed: ${dismissedCallIds.size})")
             }
             lastReceivedCallData = null
+            try {
+                instance?.let { s ->
+                    val prefs = s.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                    prefs.edit().remove("last_call_json").remove("pending_accepted_call").commit()
+                }
+            } catch (e: Exception) {
+                // ignore
+            }
             stopActiveRinging()
         }
 
@@ -101,8 +104,12 @@ class JanSunwaiVoIPService : Service() {
                 val clean = c.replace(Regex("^(HEARING_|JS-)"), "")
                 if (dismissedCallIds.contains(clean) || dismissedCallIds.contains("JS-$clean") || dismissedCallIds.contains("HEARING_$clean")) return true
             }
-            // CRITICAL FIX: NEVER blacklist grievanceId! Each video hearing session generates a fresh unique callId.
-            // Blacklisting the grievance ID permanently blocks all future calls for that grievance case!
+            if (!grievanceId.isNullOrBlank()) {
+                val g = grievanceId.trim().uppercase()
+                if (dismissedCallIds.contains(g)) return true
+                val cleanG = g.replace(Regex("^(HEARING_|JS-)"), "")
+                if (dismissedCallIds.contains(cleanG) || dismissedCallIds.contains("JS-$cleanG") || dismissedCallIds.contains("HEARING_$cleanG")) return true
+            }
             return false
         }
     }
@@ -679,34 +686,52 @@ class JanSunwaiVoIPService : Service() {
     }
 
     fun stopRinging() {
-        if (!isCallRinging && mediaPlayer == null) return
         isCallRinging = false
         currentRingingCallId = null
+
+        // Synchronously stop and release MediaPlayer immediately on whatever thread invoked stopRinging
+        try {
+            mediaPlayer?.let { mp ->
+                if (mp.isPlaying) {
+                    mp.stop()
+                }
+                mp.reset()
+                mp.release()
+            }
+            mediaPlayer = null
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to stop mediaPlayer synchronously", e)
+        }
+
+        // Synchronously cancel vibrator immediately
+        try {
+            vibrator?.cancel()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to cancel vibrator synchronously", e)
+        }
+
+        try {
+            wakeLock?.let {
+                if (it.isHeld) it.release()
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
 
         handler.post {
             try {
                 mediaPlayer?.let { mp ->
-                    if (mp.isPlaying) {
-                        mp.stop()
-                    }
+                    if (mp.isPlaying) mp.stop()
                     mp.reset()
                     mp.release()
                 }
                 mediaPlayer = null
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to stop mediaPlayer", e)
+                // ignore
             }
 
             try {
                 vibrator?.cancel()
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to cancel vibrator", e)
-            }
-
-            try {
-                wakeLock?.let {
-                    if (it.isHeld) it.release()
-                }
             } catch (e: Exception) {
                 // ignore
             }

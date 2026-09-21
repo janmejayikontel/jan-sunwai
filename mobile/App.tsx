@@ -59,10 +59,10 @@ export default function App() {
     requestAndroidPermissions();
   }, []);
 
-  // ─── 0b. Silence Ringtone Immediately when Entering a Hearing ─
+  // ─── 0b. Silence Ringtone Immediately when Entering or Leaving a Hearing ─
   useEffect(() => {
+    JanSunwaiVoIP?.stopRinging?.();
     if (activeHearing) {
-      JanSunwaiVoIP?.stopRinging?.();
       JanSunwaiVoIP?.setInCall?.(true);
     } else {
       JanSunwaiVoIP?.setInCall?.(false);
@@ -297,24 +297,57 @@ export default function App() {
     }
   };
 
+  const isDismissedCall = (callId?: string, grievanceId?: string, roomName?: string): boolean => {
+    if (!callId && !grievanceId && !roomName) return false;
+    const ids = [callId, grievanceId, roomName].filter(Boolean) as string[];
+    for (const id of ids) {
+      if (dismissedCallIdsRef.current.has(id)) return true;
+      const clean = id.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+      if (clean && (
+        dismissedCallIdsRef.current.has(clean) ||
+        dismissedCallIdsRef.current.has(`JS-${clean}`) ||
+        dismissedCallIdsRef.current.has(`hearing_${clean}`)
+      )) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const handleDeclineIncomingCall = async () => {
     if (!incomingCall) return;
     const targetCallId = incomingCall.callId;
-    if (targetCallId && targetCallId.length >= 20) {
-      JanSunwaiVoIP?.dismissCall?.(targetCallId);
-      dismissedCallIdsRef.current.add(targetCallId);
-    }
+    const grievanceId = incomingCall.grievanceId;
+    const roomName = incomingCall.roomName;
+
+    // Immediately blacklist all identifiers so no ringing sound or prompt persists
+    [targetCallId, grievanceId, roomName].forEach((id) => {
+      if (id) {
+        dismissedCallIdsRef.current.add(id);
+        const clean = id.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+        if (clean) {
+          dismissedCallIdsRef.current.add(clean);
+          dismissedCallIdsRef.current.add(`JS-${clean}`);
+          dismissedCallIdsRef.current.add(`hearing_${clean}`);
+        }
+        JanSunwaiVoIP?.dismissCall?.(id);
+      }
+    });
     JanSunwaiVoIP?.stopRinging?.();
 
-    if (currentUser && targetCallId) {
+    if (currentUser && (targetCallId || grievanceId || roomName)) {
       try {
         const base = cleanServerUrl(serverUrl);
-        await fetch(`${base}/api/calls/${targetCallId}/respond`, {
+        const endpointId = targetCallId || grievanceId || roomName;
+        await fetch(`${base}/api/calls/${encodeURIComponent(endpointId)}/respond`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
           body: JSON.stringify({
             phone: currentUser.phone,
             action: 'decline',
+            callId: targetCallId,
+            grievanceId,
+            roomName,
           }),
         });
       } catch (err) {
@@ -325,36 +358,50 @@ export default function App() {
   };
 
   const handleLeaveHearing = async () => {
+    // 1. Immediately silence any ringing sound or vibration
+    JanSunwaiVoIP?.stopRinging?.();
+    JanSunwaiVoIP?.setInCall?.(false);
+    setIncomingCall(null);
+
     if (activeHearing) {
       const callId = activeHearing.callId;
       const grievanceId = activeHearing.grievanceId;
       const roomName = activeHearing.roomName;
       const base = cleanServerUrl(serverUrl);
 
-      // Stop any ringing sounds immediately and release inCall state
-      JanSunwaiVoIP?.stopRinging?.();
-      JanSunwaiVoIP?.setInCall?.(false);
-
-      // Only dismiss unique UUID callId (>= 20 chars), NEVER blacklist permanent grievanceId!
-      if (callId && callId.length >= 20) {
-        JanSunwaiVoIP?.dismissCall?.(callId);
-        dismissedCallIdsRef.current.add(callId);
-      }
+      // 2. Blacklist all identifiers in both React Native ref and Native Android VoIP service
+      [callId, roomName, grievanceId].forEach((id) => {
+        if (id) {
+          dismissedCallIdsRef.current.add(id);
+          const clean = id.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+          if (clean) {
+            dismissedCallIdsRef.current.add(clean);
+            dismissedCallIdsRef.current.add(`JS-${clean}`);
+            dismissedCallIdsRef.current.add(`hearing_${clean}`);
+          }
+          JanSunwaiVoIP?.dismissCall?.(id);
+        }
+      });
 
       const targetLeaveId = callId || grievanceId || roomName;
       if (targetLeaveId && currentUser?.phone) {
         console.log('[App] Participant left hearing. Leaving call session:', targetLeaveId);
-        fetch(`${base}/api/calls/${encodeURIComponent(targetLeaveId)}/leave`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone: currentUser.phone,
-            grievanceId,
-            roomName,
-          }),
-        }).catch((e) => console.warn('[App] Error sending leave notice to server:', e));
+        try {
+          await fetch(`${base}/api/calls/${encodeURIComponent(targetLeaveId)}/leave`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
+            body: JSON.stringify({
+              phone: currentUser.phone,
+              grievanceId,
+              roomName,
+            }),
+          });
+        } catch (e) {
+          console.warn('[App] Error sending leave notice to server:', e);
+        }
       }
     }
+    JanSunwaiVoIP?.stopRinging?.();
     setIncomingCall(null);
     setActiveHearing(null);
   };
@@ -367,11 +414,11 @@ export default function App() {
         if (pendingJson) {
           console.log('[App] Received pending VoIP call from native background service:', pendingJson);
           const data = typeof pendingJson === 'string' ? JSON.parse(pendingJson) : pendingJson;
-          if (data?.callId || data?.grievanceId) {
-            const checkId = data.callId || '';
+          if (data?.callId || data?.grievanceId || data?.roomName) {
             if (!data.autoAccept) {
-              if (checkId && dismissedCallIdsRef.current.has(checkId)) {
-                console.log('[App] Ignoring call previously left/dismissed:', checkId);
+              if (isDismissedCall(data.callId, data.grievanceId, data.roomName)) {
+                console.log('[App] Ignoring call previously left/dismissed:', data.callId || data.grievanceId);
+                JanSunwaiVoIP?.stopRinging?.();
                 return;
               }
             }
@@ -394,10 +441,10 @@ export default function App() {
       try {
         console.log('[App] Received onIncomingCall event from native VoIP module:', callJson);
         const data = typeof callJson === 'string' ? JSON.parse(callJson) : callJson;
-        if (data?.callId || data?.grievanceId) {
-          const checkId = data.callId || '';
-          if (checkId && dismissedCallIdsRef.current.has(checkId)) {
-            console.log('[App] Ignoring incoming event for dismissed callId:', checkId);
+        if (data?.callId || data?.grievanceId || data?.roomName) {
+          if (isDismissedCall(data.callId, data.grievanceId, data.roomName)) {
+            console.log('[App] Ignoring incoming event for dismissed callId:', data.callId || data.grievanceId);
+            JanSunwaiVoIP?.stopRinging?.();
             return;
           }
           if (data.autoAccept) {
@@ -469,9 +516,10 @@ export default function App() {
             console.log('[Mobile/WS] Received:', msg.type);
 
             if (msg.type === 'incoming_call' && msg.data) {
-              const incomingId = msg.data.callId;
-              if (incomingId && dismissedCallIdsRef.current.has(incomingId)) {
-                console.log('[Mobile/WS] Ignoring incoming call for dismissed callId:', incomingId);
+              const incoming = msg.data;
+              if (isDismissedCall(incoming.callId, incoming.grievanceId, incoming.roomName)) {
+                console.log('[Mobile/WS] Ignoring incoming call for dismissed callId:', incoming.callId || incoming.grievanceId);
+                JanSunwaiVoIP?.stopRinging?.();
                 return;
               }
               setIncomingCall(msg.data as IncomingCallData);
@@ -521,13 +569,13 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           if (data.hasIncomingCall && data.incomingCall) {
-            const incomingId = data.incomingCall.callId;
-            if (incomingId && dismissedCallIdsRef.current.has(incomingId)) {
+            const inc = data.incomingCall;
+            if (isDismissedCall(inc.callId, inc.grievanceId, inc.roomName)) {
               return;
             }
             setIncomingCall((prev) => {
-              if (prev && prev.callId === data.incomingCall.callId) return prev;
-              return data.incomingCall;
+              if (prev && prev.callId === inc.callId) return prev;
+              return inc;
             });
           } else if (!data.hasIncomingCall) {
             // If caller hung up or call was cancelled, automatically clear ringing modal
