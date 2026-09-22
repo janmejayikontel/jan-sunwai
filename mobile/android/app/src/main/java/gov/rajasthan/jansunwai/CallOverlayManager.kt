@@ -398,12 +398,12 @@ object CallOverlayManager {
 
                         JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
 
-                        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                            putExtra("action", "accept_call")
-                            putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
-                        } ?: Intent(context, MainActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        val launchIntent = Intent(context, MainActivity::class.java).apply {
+                            addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            )
                             putExtra("action", "accept_call")
                             putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
                         }
@@ -469,9 +469,9 @@ object CallOverlayManager {
                 overlayView = null
             }
             try {
-                IncomingCallActivity.activeInstance?.finishAndRemoveTask()
-            } catch (e: Exception) {
                 IncomingCallActivity.activeInstance?.finish()
+            } catch (e: Exception) {
+                // ignore
             }
         }
     }

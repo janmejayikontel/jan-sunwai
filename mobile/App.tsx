@@ -1,6 +1,6 @@
 import './polyfill';
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, Alert, ActivityIndicator, NativeModules, AppState, Platform, PermissionsAndroid, TouchableOpacity, DeviceEventEmitter } from 'react-native';
+import { StyleSheet, View, Text, Alert, ActivityIndicator, NativeModules, AppState, Platform, PermissionsAndroid, TouchableOpacity, DeviceEventEmitter, Vibration } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LoginScreen, UserProfile } from './src/screens/LoginScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
@@ -198,6 +198,7 @@ export default function App() {
     setIsConnectingHearing(true);
     setConnectingCaseInfo(target.grievanceId || target.roomName || 'Hearing');
 
+    Vibration.cancel();
     JanSunwaiVoIP?.stopRinging?.();
     JanSunwaiVoIP?.setInCall?.(true);
 
@@ -344,6 +345,7 @@ export default function App() {
         JanSunwaiVoIP?.dismissCall?.(id);
       }
     });
+    Vibration.cancel();
     JanSunwaiVoIP?.stopRinging?.();
 
     if (currentUser && (targetCallId || grievanceId || roomName)) {
@@ -370,6 +372,7 @@ export default function App() {
 
   const handleLeaveHearing = async () => {
     // 1. Immediately silence any ringing sound or vibration
+    Vibration.cancel();
     JanSunwaiVoIP?.stopRinging?.();
     JanSunwaiVoIP?.setInCall?.(false);
     setIncomingCall(null);

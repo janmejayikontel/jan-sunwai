@@ -456,23 +456,19 @@ class IncomingCallActivity : AppCompatActivity() {
 
         JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
 
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-            putExtra("action", "accept_call")
-            putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
-        } ?: Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
             putExtra("action", "accept_call")
             putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
         }
 
         CallOverlayManager.dismiss(applicationContext)
         startActivity(launchIntent)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            finishAndRemoveTask()
-        } else {
-            finish()
-        }
+        finish()
     }
 
     override fun onDestroy() {

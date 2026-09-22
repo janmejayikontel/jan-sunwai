@@ -16,27 +16,9 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     setTheme(R.style.AppTheme)
     super.onCreate(null)
-
-    // Wake screen and show over lock screen for incoming hearing calls (WhatsApp style)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-      setShowWhenLocked(true)
-      setTurnScreenOn(true)
-    } else {
-      @Suppress("DEPRECATION")
-      window.addFlags(
-        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-      )
-    }
-
+    applyWindowFlags()
     CallOverlayManager.dismiss(this)
-    try {
-      IncomingCallActivity.activeInstance?.finishAndRemoveTask()
-    } catch (e: Exception) {
-      IncomingCallActivity.activeInstance?.finish()
-    }
+    IncomingCallActivity.activeInstance?.finish()
 
     intent?.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
       JanSunwaiVoIPModule.pendingIncomingCallJson = it
@@ -52,12 +34,10 @@ class MainActivity : ReactActivity() {
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
+    applyWindowFlags()
     CallOverlayManager.dismiss(this)
-    try {
-      IncomingCallActivity.activeInstance?.finishAndRemoveTask()
-    } catch (e: Exception) {
-      IncomingCallActivity.activeInstance?.finish()
-    }
+    IncomingCallActivity.activeInstance?.finish()
+
     intent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
       JanSunwaiVoIPModule.pendingIncomingCallJson = it
       try {
@@ -67,6 +47,29 @@ class MainActivity : ReactActivity() {
         // ignore
       }
     }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    applyWindowFlags()
+    CallOverlayManager.dismiss(this)
+    IncomingCallActivity.activeInstance?.finish()
+  }
+
+  private fun applyWindowFlags() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+      setShowWhenLocked(true)
+      setTurnScreenOn(true)
+      val keyguardManager = getSystemService(android.content.Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+      keyguardManager?.requestDismissKeyguard(this, null)
+    }
+    @Suppress("DEPRECATION")
+    window.addFlags(
+      WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+      WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+      WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+      WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+    )
   }
 
   /**

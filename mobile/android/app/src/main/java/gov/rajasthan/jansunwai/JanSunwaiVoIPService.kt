@@ -272,13 +272,13 @@ class JanSunwaiVoIPService : Service() {
                 val callId = intent?.getStringExtra(EXTRA_CALL_ID)
                 val intentCallData = intent?.getStringExtra(EXTRA_CALL_DATA)
                 Log.i(TAG, "ACTION_ACCEPT received for callId: $callId")
-                stopRinging()
                 setInCallState(true)
+                stopRinging()
                 CallOverlayManager.dismiss(applicationContext)
                 try {
-                    IncomingCallActivity.activeInstance?.finishAndRemoveTask()
-                } catch (e: Exception) {
                     IncomingCallActivity.activeInstance?.finish()
+                } catch (e: Exception) {
+                    // ignore
                 }
 
                 val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
@@ -301,13 +301,13 @@ class JanSunwaiVoIPService : Service() {
                 prefs.edit().putString("pending_accepted_call", updatedCallData).commit()
                 JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
 
-                // Launch MainActivity with accepted call data
-                val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-                    putExtra("action", "accept_call")
-                    putExtra(EXTRA_CALL_DATA, updatedCallData)
-                } ?: Intent(this, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                // Launch MainActivity directly with REORDER_TO_FRONT so meeting room comes to the front immediately
+                val launchIntent = Intent(this, MainActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
                     putExtra("action", "accept_call")
                     putExtra(EXTRA_CALL_DATA, updatedCallData)
                 }
@@ -394,6 +394,29 @@ class JanSunwaiVoIPService : Service() {
         return NotificationCompat.Builder(this, STANDBY_CHANNEL_ID)
             .setContentTitle("🏛️ संपर्क लाइट (Sampark Lite)")
             .setContentText("Active & ready to receive hearing calls (${userPhone})")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+    }
+
+    private fun createInCallNotification(): Notification {
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, STANDBY_CHANNEL_ID)
+            .setContentTitle("📞 Official Video Hearing Active")
+            .setContentText("Connected to Jan Sunwai hearing • Tap to return")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -787,84 +810,98 @@ class JanSunwaiVoIPService : Service() {
         isCallRinging = false
         currentRingingCallId = null
 
-        // Synchronously stop and release MediaPlayer immediately on whatever thread invoked stopRinging
+        // 1. Synchronously stop and release MediaPlayer immediately
         try {
             mediaPlayer?.let { mp ->
-                if (mp.isPlaying) {
-                    mp.stop()
-                }
-                mp.reset()
-                mp.release()
+                try { mp.stop() } catch (e: Throwable) {}
+                try { mp.reset() } catch (e: Throwable) {}
+                try { mp.release() } catch (e: Throwable) {}
             }
             mediaPlayer = null
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Failed to stop mediaPlayer synchronously", e)
         }
 
-        // Synchronously cancel vibrator immediately
+        // 2. Synchronously cancel vibrator immediately
         try {
             vibrator?.cancel()
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to cancel vibrator synchronously", e)
+        } catch (e: Throwable) {
+            // ignore
         }
 
+        // 3. Release wake lock
         try {
             wakeLock?.let {
                 if (it.isHeld) it.release()
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             // ignore
         }
 
         handler.post {
+            // Double check MediaPlayer release on main thread
             try {
                 mediaPlayer?.let { mp ->
-                    if (mp.isPlaying) mp.stop()
-                    mp.reset()
-                    mp.release()
+                    try { mp.stop() } catch (e: Throwable) {}
+                    try { mp.reset() } catch (e: Throwable) {}
+                    try { mp.release() } catch (e: Throwable) {}
                 }
                 mediaPlayer = null
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // ignore
             }
 
             try {
                 vibrator?.cancel()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // ignore
+            }
+
+            // CRITICAL: Explicitly demote from phoneCall foreground notification
+            // Calling stopForeground removes NOTIFICATION_ID_CALL completely
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    @Suppress("DEPRECATION")
+                    stopForeground(true)
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "stopForeground error: ${e.message}")
             }
 
             try {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID_CALL)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // ignore
+            }
+
+            // Immediately switch to the non-alerting ongoing foreground notification
+            if (isServiceRunning) {
+                try {
+                    val ongoingNotif = if (isInCall) createInCallNotification() else createStandbyNotification()
+                    startForeground(NOTIFICATION_ID_STANDBY, ongoingNotif)
+                } catch (e: Throwable) {
+                    Log.w(TAG, "startForeground ongoingNotif error: ${e.message}")
+                }
             }
 
             // Dismiss CallOverlay if active
             try {
                 CallOverlayManager.dismiss(applicationContext)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // ignore
             }
 
             // Also dismiss native IncomingCallActivity if open
             try {
                 IncomingCallActivity.activeInstance?.finish()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // ignore
             }
 
-            // Restore standby foreground notification when call ringing ends
-            if (isServiceRunning && !isInCall) {
-                try {
-                    startForeground(NOTIFICATION_ID_STANDBY, createStandbyNotification())
-                } catch (e: Exception) {
-                    // ignore
-                }
-            }
-
-            Log.i(TAG, "Stopped ringing, silenced audio and restored standby notification")
+            Log.i(TAG, "Stopped ringing, silenced audio and restored standby/in-call notification (isInCall: $isInCall)")
         }
     }
 
