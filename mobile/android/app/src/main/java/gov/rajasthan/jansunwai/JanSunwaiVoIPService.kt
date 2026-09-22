@@ -186,21 +186,25 @@ class JanSunwaiVoIPService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.i(TAG, "App task removed (swiped away) - resetting in-call state, reaffirming foreground service and triggering backup revival")
+        Log.i(TAG, "App task removed (swiped away) - keeping foreground VoIP service active")
 
-        // CRITICAL FIX: The app task was killed / swiped away. The user is DEFINITELY not in a call anymore!
         isInCall = false
         isCallRinging = false
         currentRingingCallId = null
-        stopRinging()
 
+        // Stop any active ringtone/vibration safely without dropping foreground status
+        try { mediaPlayer?.stop(); mediaPlayer?.reset(); mediaPlayer?.release(); mediaPlayer = null } catch (e: Throwable) {}
+        try { vibrator?.cancel() } catch (e: Throwable) {}
+
+        // RE-AFFIRM FOREGROUND SERVICE IMMEDIATELY so OS never kills the background service
         try {
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(NOTIFICATION_ID_CALL)
             startForeground(NOTIFICATION_ID_STANDBY, createStandbyNotification())
-        } catch (e: Exception) {
-            // ignore
+        } catch (e: Throwable) {
+            Log.w(TAG, "Failed to reaffirm startForeground in onTaskRemoved", e)
         }
 
-        // CRITICAL FIX: Ensure persistent background polling and WebSocket remain active when app is swiped away
         isServiceRunning = true
         startPersistentPolling()
         if (!isWebSocketConnected) {
@@ -764,6 +768,7 @@ class JanSunwaiVoIPService : Service() {
                 .build()
 
             // CRITICAL: Promote foreground service to phoneCall type so Android OS grants Background Activity Launch (BAL) exception
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     startForeground(NOTIFICATION_ID_CALL, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
@@ -772,8 +777,13 @@ class JanSunwaiVoIPService : Service() {
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to startForeground as phoneCall: ${e.message}")
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            }
+
+            // Always also call notify so Heads-Up popup banner appears immediately on screen
+            try {
                 notificationManager.notify(NOTIFICATION_ID_CALL, notification)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to post notify for call: ${e.message}")
             }
 
             // 1. Show true full-screen overlay directly on screen via WindowManager if permitted
@@ -786,9 +796,13 @@ class JanSunwaiVoIPService : Service() {
             // 2. Launch native full-screen incoming call UI immediately on main thread as primary layer
             handler.post {
                 try {
-                    startActivity(incomingCallIntent)
+                    fullScreenPendingIntent.send()
                 } catch (e: Exception) {
-                    Log.i(TAG, "Direct launch will show via fullScreenIntent / overlay: ${e.message}")
+                    try {
+                        startActivity(incomingCallIntent)
+                    } catch (e2: Exception) {
+                        Log.i(TAG, "Direct launch will show via fullScreenIntent / overlay: ${e2.message}")
+                    }
                 }
             }
 
@@ -857,19 +871,7 @@ class JanSunwaiVoIPService : Service() {
                 // ignore
             }
 
-            // CRITICAL: Explicitly demote from phoneCall foreground notification
-            // Calling stopForeground removes NOTIFICATION_ID_CALL completely
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                } else {
-                    @Suppress("DEPRECATION")
-                    stopForeground(true)
-                }
-            } catch (e: Throwable) {
-                Log.w(TAG, "stopForeground error: ${e.message}")
-            }
-
+            // Cancel the call alert notification without dropping foreground status
             try {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID_CALL)

@@ -529,6 +529,9 @@ function PermanentControlBar({
       senderRole: string;
       text: string;
       timestamp: string;
+      senderPhone?: string;
+      senderIdentity?: string;
+      isMe?: boolean;
     }>
   >([
     {
@@ -552,9 +555,16 @@ function PermanentControlBar({
         const decodedStr = new TextDecoder().decode(payload);
         const data = JSON.parse(decodedStr);
         if (data.type === "chat") {
-          setChatMessages((prev) => [...prev, data]);
-          if (!showChat) {
-            setUnreadChatCount((prev) => prev + 1);
+          const myId = localParticipant?.identity;
+          const myPhone = currentUser?.phone;
+          const isSenderMe =
+            (myId && (data.senderIdentity === myId || data.senderPhone === myId)) ||
+            (myPhone && (data.senderPhone === myPhone || data.senderIdentity === myPhone));
+          if (!isSenderMe) {
+            setChatMessages((prev) => [...prev, { ...data, isMe: false }]);
+            if (!showChat) {
+              setUnreadChatCount((prev) => prev + 1);
+            }
           }
         } else if (data.type === "moderation") {
           // Officer / Super Admin Presiding Moderation Directive
@@ -678,8 +688,11 @@ function PermanentControlBar({
       id: `msg-${Date.now()}`,
       senderName: currentUser?.name || "Participant",
       senderRole: currentUser?.role || "citizen",
+      senderPhone: currentUser?.phone,
+      senderIdentity: localParticipant?.identity || currentUser?.phone || currentUser?.name,
       text: inputChatText.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      isMe: true,
     };
     setChatMessages((prev) => [...prev, msg]);
     setInputChatText("");
@@ -1837,37 +1850,81 @@ function PermanentControlBar({
               padding: "12px",
               display: "flex",
               flexDirection: "column",
-              gap: "8px",
+              gap: "10px",
             }}
           >
-            {chatMessages.map((m) => (
-              <div
-                key={m.id}
-                style={{
-                  background:
-                    m.senderRole === "admin"
-                      ? "rgba(245, 158, 11, 0.12)"
-                      : m.senderRole === "officer"
-                      ? "rgba(16, 185, 129, 0.15)"
-                      : m.senderRole === "call_center"
-                      ? "rgba(139, 92, 246, 0.15)"
-                      : "rgba(59, 130, 246, 0.15)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  borderRadius: "10px",
-                  padding: "8px 10px",
-                  fontSize: "0.82rem",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px", fontSize: "0.72rem" }}>
-                  <span style={{ fontWeight: 700, color: "#f8fafc" }}>
-                    {m.senderRole === "officer" ? "🏛️ " : m.senderRole === "call_center" ? "🎧 " : m.senderRole === "admin" ? "🛡️ " : "👤 "}
-                    {m.senderName}
-                  </span>
-                  <span style={{ color: "#94a3b8" }}>{m.timestamp}</span>
+            {chatMessages.map((m) => {
+              const isOwn =
+                m.isMe ||
+                (m.senderPhone && currentUser?.phone && m.senderPhone === currentUser.phone) ||
+                (m.senderIdentity && localParticipant?.identity && m.senderIdentity === localParticipant.identity) ||
+                (m.senderName && currentUser?.name && m.senderName === currentUser.name);
+
+              return (
+                <div
+                  key={m.id}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignSelf: isOwn ? "flex-end" : "flex-start",
+                    alignItems: isOwn ? "flex-end" : "flex-start",
+                    maxWidth: "85%",
+                    marginLeft: isOwn ? "auto" : "0",
+                    marginRight: isOwn ? "0" : "auto",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: isOwn
+                        ? "linear-gradient(135deg, rgba(37, 99, 235, 0.45), rgba(30, 64, 175, 0.55))"
+                        : m.senderRole === "admin"
+                        ? "rgba(245, 158, 11, 0.15)"
+                        : m.senderRole === "officer"
+                        ? "rgba(16, 185, 129, 0.18)"
+                        : m.senderRole === "call_center"
+                        ? "rgba(139, 92, 246, 0.18)"
+                        : "rgba(30, 41, 59, 0.85)",
+                      border: isOwn
+                        ? "1px solid rgba(96, 165, 250, 0.55)"
+                        : "1px solid rgba(255, 255, 255, 0.1)",
+                      borderRadius: isOwn ? "14px 14px 2px 14px" : "14px 14px 14px 2px",
+                      padding: "8px 12px",
+                      fontSize: "0.82rem",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                      width: "fit-content",
+                      minWidth: "120px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "10px",
+                        marginBottom: "4px",
+                        fontSize: "0.72rem",
+                      }}
+                    >
+                      <span style={{ fontWeight: 700, color: isOwn ? "#93c5fd" : "#f8fafc" }}>
+                        {isOwn
+                          ? "You (आप)"
+                          : (m.senderRole === "officer"
+                              ? "🏛️ "
+                              : m.senderRole === "call_center"
+                              ? "🎧 "
+                              : m.senderRole === "admin"
+                              ? "🛡️ "
+                              : "👤 ") + m.senderName}
+                      </span>
+                      <span style={{ color: "#94a3b8", fontSize: "0.68rem" }}>{m.timestamp}</span>
+                    </div>
+                    <div style={{ color: "#f1f5f9", lineHeight: "1.35", wordBreak: "break-word" }}>
+                      {m.text}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ color: "#e2e8f0", lineHeight: "1.35", wordBreak: "break-word" }}>{m.text}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Chat Input Bar */}

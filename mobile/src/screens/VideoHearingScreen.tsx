@@ -315,16 +315,17 @@ const RoomContent: React.FC<{
           const sender = data.sender || data.senderName || participant?.identity || 'Participant';
           const myIdentity = room.localParticipant?.identity || '';
           const isMe = participant?.isLocal || (myIdentity && sender === myIdentity) || (userName && sender === userName);
+          if (isMe) return;
           const newMsg: ChatMessage = {
             id: data.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
             sender: sender,
             senderRole: data.senderRole,
             text: data.text || '',
             timestamp: data.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            isMe: isMe,
+            isMe: false,
           };
           setChatMessages((prev) => [...prev, newMsg]);
-          if (!showChatRef.current && !isMe) {
+          if (!showChatRef.current) {
             setUnreadChatCount((prev) => prev + 1);
           }
         }
