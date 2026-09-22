@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -36,7 +37,7 @@ class JanSunwaiVoIPService : Service() {
     companion object {
         const val TAG = "JanSunwaiVoIP"
         const val STANDBY_CHANNEL_ID = "jansunwai_standby_channel"
-        const val CALL_CHANNEL_ID = "jansunwai_incoming_call_channel_v4"
+        const val CALL_CHANNEL_ID = "jansunwai_incoming_call_channel_v5"
         const val NOTIFICATION_ID_STANDBY = 1001
         const val NOTIFICATION_ID_CALL = 9999
 
@@ -357,17 +358,25 @@ class JanSunwaiVoIPService : Service() {
             }
             notificationManager.createNotificationChannel(standbyChannel)
 
-            // 2. Incoming call channel (high importance, sound=null so MediaPlayer has exclusive control)
+            // 2. Incoming call channel (high importance with ringtone and vibration for instant Heads-Up popup)
+            val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val audioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .build()
+
             val callChannel = NotificationChannel(
                 CALL_CHANNEL_ID,
                 "Incoming Video Hearings",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Alerts for incoming official video hearings from the District Collector"
-                setSound(null, null)
+                setSound(ringtoneUri, audioAttributes)
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 1000, 1000, 1000)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setBypassDnd(true)
             }
             notificationManager.createNotificationChannel(callChannel)
         }
@@ -507,8 +516,8 @@ class JanSunwaiVoIPService : Service() {
 
                 try {
                     // When WebSocket is connected, incoming calls arrive instantly (0ms) via WS push!
-                    // Light 30s fallback poll is plenty. If WS is disconnected, poll every 8s.
-                    val sleepMs = if (isWebSocketConnected) 30000L else 8000L
+                    // If WS is disconnected, poll every 4s for rapid incoming call detection.
+                    val sleepMs = if (isWebSocketConnected) 20000L else 4000L
                     Thread.sleep(sleepMs)
                 } catch (ie: InterruptedException) {
                     break
@@ -671,7 +680,12 @@ class JanSunwaiVoIPService : Service() {
             // 4. Intent for Native Full-Screen Incoming Call Activity (IncomingCallActivity)
             val reqCode = (System.currentTimeMillis() % 100000).toInt()
             val incomingCallIntent = Intent(this, IncomingCallActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                )
                 putExtra(EXTRA_CALL_ID, callId)
                 putExtra(EXTRA_CALL_DATA, callJsonString)
                 putExtra(EXTRA_SERVER_URL, serverUrl)
@@ -703,6 +717,9 @@ class JanSunwaiVoIPService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
+            val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
             val notification = NotificationCompat.Builder(this, CALL_CHANNEL_ID)
                 .setContentTitle("🏛️ $callerName ($callerDesig)")
                 .setContentText("📞 Incoming Video Hearing: #$grievanceId\n$title")
@@ -710,7 +727,7 @@ class JanSunwaiVoIPService : Service() {
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setSound(null)
+                .setSound(ringtoneUri)
                 .setFullScreenIntent(fullScreenPendingIntent, true)
                 .setContentIntent(fullScreenPendingIntent)
                 .setOngoing(true)
@@ -723,22 +740,27 @@ class JanSunwaiVoIPService : Service() {
                 )
                 .build()
 
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            // CRITICAL: Promote foreground service to phoneCall type so Android OS grants Background Activity Launch (BAL) exception
             try {
-                notificationManager.cancel(NOTIFICATION_ID_CALL)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(NOTIFICATION_ID_CALL, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL)
+                } else {
+                    startForeground(NOTIFICATION_ID_CALL, notification)
+                }
             } catch (e: Exception) {
-                // ignore
+                Log.w(TAG, "Failed to startForeground as phoneCall: ${e.message}")
+                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.notify(NOTIFICATION_ID_CALL, notification)
             }
-            notificationManager.notify(NOTIFICATION_ID_CALL, notification)
 
-            // 1. Show true full-screen overlay directly on screen via WindowManager
+            // 1. Show true full-screen overlay directly on screen via WindowManager if permitted
             try {
                 CallOverlayManager.show(applicationContext, callId, callJsonString, serverUrl, userPhone)
             } catch (e: Exception) {
                 Log.w(TAG, "CallOverlayManager.show error: ${e.message}")
             }
 
-            // 2. Launch native full-screen incoming call UI immediately on main thread as additional layer
+            // 2. Launch native full-screen incoming call UI immediately on main thread as primary layer
             handler.post {
                 try {
                     startActivity(incomingCallIntent)
@@ -833,7 +855,16 @@ class JanSunwaiVoIPService : Service() {
                 // ignore
             }
 
-            Log.i(TAG, "Stopped ringing, silenced audio and cleared call notification")
+            // Restore standby foreground notification when call ringing ends
+            if (isServiceRunning && !isInCall) {
+                try {
+                    startForeground(NOTIFICATION_ID_STANDBY, createStandbyNotification())
+                } catch (e: Exception) {
+                    // ignore
+                }
+            }
+
+            Log.i(TAG, "Stopped ringing, silenced audio and restored standby notification")
         }
     }
 
