@@ -168,7 +168,7 @@ const QUICK_DEMO_USERS = [
   {
     name: "Priya Sharma",
     role: "call_center" as const,
-    phone: "+917749852013",
+    phone: "+917749852014",
     badge: "2. Call Centre Representative",
     desc: "181 Sampark Helpdesk Desk A-12 — KYC & Queue Dispatch",
     features: "Initiate Calls • Verify Citizen Identity • Queue Dispatch • Consult Records",

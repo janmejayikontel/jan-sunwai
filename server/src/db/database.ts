@@ -149,6 +149,7 @@ export async function initializeDatabase(): Promise<void> {
       village TEXT,
       district TEXT,
       tehsil TEXT,
+      role TEXT DEFAULT 'citizen',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -160,6 +161,7 @@ export async function initializeDatabase(): Promise<void> {
       department TEXT NOT NULL,
       employee_code TEXT UNIQUE,
       posting_location TEXT,
+      role TEXT DEFAULT 'employee',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -189,6 +191,7 @@ export async function initializeDatabase(): Promise<void> {
       district TEXT NOT NULL,
       cadre TEXT DEFAULT 'IAS',
       posting_location TEXT,
+      role TEXT DEFAULT 'officer',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -200,6 +203,7 @@ export async function initializeDatabase(): Promise<void> {
       department TEXT NOT NULL,
       desk_number TEXT,
       shift TEXT DEFAULT 'General',
+      role TEXT DEFAULT 'call_center',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -210,6 +214,7 @@ export async function initializeDatabase(): Promise<void> {
       designation TEXT NOT NULL,
       department TEXT NOT NULL,
       role_level TEXT DEFAULT 'super_admin',
+      role TEXT DEFAULT 'admin',
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -269,6 +274,13 @@ export async function initializeDatabase(): Promise<void> {
     );
   `);
 
+  // Migrations for existing databases to ensure role column exists
+  try { db.exec("ALTER TABLE citizens ADD COLUMN role TEXT DEFAULT 'citizen';"); } catch (_) {}
+  try { db.exec("ALTER TABLE employees ADD COLUMN role TEXT DEFAULT 'employee';"); } catch (_) {}
+  try { db.exec("ALTER TABLE officers ADD COLUMN role TEXT DEFAULT 'officer';"); } catch (_) {}
+  try { db.exec("ALTER TABLE call_center_reps ADD COLUMN role TEXT DEFAULT 'call_center';"); } catch (_) {}
+  try { db.exec("ALTER TABLE admins ADD COLUMN role TEXT DEFAULT 'admin';"); } catch (_) {}
+
   // Seed initial records if database is empty
   seedInitialData();
 }
@@ -276,28 +288,28 @@ export async function initializeDatabase(): Promise<void> {
 
 function seedInitialData(): void {
   const insertOfficer = db.prepare(`
-    INSERT OR REPLACE INTO officers (id, name, phone, designation, department, district, cadre, posting_location)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO officers (id, name, phone, designation, department, district, cadre, posting_location, role)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertCallCenterRep = db.prepare(`
-    INSERT OR REPLACE INTO call_center_reps (id, name, phone, designation, department, desk_number, shift)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO call_center_reps (id, name, phone, designation, department, desk_number, shift, role)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertAdmin = db.prepare(`
-    INSERT OR REPLACE INTO admins (id, name, phone, designation, department, role_level)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO admins (id, name, phone, designation, department, role_level, role)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertCitizen = db.prepare(`
-    INSERT OR REPLACE INTO citizens (id, name, phone, village, district, tehsil)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO citizens (id, name, phone, village, district, tehsil, role)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertEmployee = db.prepare(`
-    INSERT OR REPLACE INTO employees (id, name, phone, designation, department, employee_code, posting_location)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO employees (id, name, phone, designation, department, employee_code, posting_location, role)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertGrievance = db.prepare(`
@@ -332,7 +344,7 @@ function seedInitialData(): void {
       { id: 'adm-002', name: 'State IT Operations Admin', phone: '+919888888888', designation: 'IT Operations Lead', department: 'DOIT&C State Data Center, Jaipur', role_level: 'super_admin' },
     ];
     for (const adm of adminsSeed) {
-      insertAdmin.run(adm.id, adm.name, adm.phone, adm.designation, adm.department, adm.role_level);
+      insertAdmin.run(adm.id, adm.name, adm.phone, adm.designation, adm.department, adm.role_level, 'admin');
     }
 
     // ─── 2. Call Centre Representatives (181 Sampark Helpdesk) ───
@@ -342,7 +354,7 @@ function seedInitialData(): void {
       { id: 'rep-003', name: 'Rohit Verma', phone: '+919337453713', designation: 'Hearing Coordination Executive', department: '181 Rajasthan Sampark Call Centre', desk_number: 'DESK-C09', shift: 'Afternoon' },
     ];
     for (const rep of repsSeed) {
-      insertCallCenterRep.run(rep.id, rep.name, rep.phone, rep.designation, rep.department, rep.desk_number, rep.shift);
+      insertCallCenterRep.run(rep.id, rep.name, rep.phone, rep.designation, rep.department, rep.desk_number, rep.shift, 'call_center');
     }
 
     // ─── 3. Higher Administrative Officers (Collectors, SDM, SP) ───
@@ -365,7 +377,7 @@ function seedInitialData(): void {
     ];
 
     for (const off of officersSeed) {
-      insertOfficer.run(off.id, off.name, off.phone, off.designation, off.department, off.district, off.cadre, off.posting_location);
+      insertOfficer.run(off.id, off.name, off.phone, off.designation, off.department, off.district, off.cadre, off.posting_location, 'officer');
     }
 
     // Clean up any accidental citizen records for admin/officer/rep numbers
@@ -381,18 +393,18 @@ function seedInitialData(): void {
     }
 
     // ─── 4. Citizens ──────────────────────────────────────────────
-    insertCitizen.run('cit-001', 'Janmejay Sethi', '+917735807328', 'Sanganer', 'Jaipur', 'Sanganer');
-    insertCitizen.run('cit-002', 'Mandal Sahoo', '+918249884033', 'Gudamalani', 'Barmer', 'Barmer');
+    insertCitizen.run('cit-001', 'Janmejay Sethi', '+917735807328', 'Sanganer', 'Jaipur', 'Sanganer', 'citizen');
+    insertCitizen.run('cit-002', 'Mandal Sahoo', '+918249884033', 'Gudamalani', 'Barmer', 'Barmer', 'citizen');
 
     // Employees across distinct departments
-    insertEmployee.run('emp-001', 'Chandan Kumar', '+917749852013', 'Junior Engineer (JEn)', 'Public Health Engineering (PHED) — Water Supply', 'PHED-JP-2019-0342', 'Sub-Division Sanganer, Jaipur');
-    insertEmployee.run('emp-002', 'Mrityunjay Singh', '+919337453714', 'Patwari', 'Revenue & Sub-Divisional Administration', 'REV-BM-2015-0187', 'Patwar Circle Gudamalani, Barmer');
-    insertEmployee.run('emp-003', 'Rakesh Sharma', '+919414000021', 'Assistant Engineer (AEn)', 'Energy & Discom (JVVNL)', 'JVVNL-JP-2018-0911', 'Sanganer Discom Sub-Division, Jaipur');
-    insertEmployee.run('emp-004', 'Suresh Meena', '+919414000022', 'Station House Officer (SHO)', 'Rajasthan Police (राजस्थान पुलिस)', 'POL-JP-2014-0412', 'Sanganer Police Station, Jaipur');
-    insertEmployee.run('emp-005', 'Dr. Amit Pareek', '+919414000023', 'Medical Officer Incharge', 'Medical, Health & Family Welfare', 'MH-JP-2016-0158', 'Community Health Centre (CHC) Sanganer');
-    insertEmployee.run('emp-006', 'Hemant Saini', '+919414000024', 'Junior Engineer (JEn)', 'Public Works Department (PWD)', 'PWD-JP-2020-0714', 'PWD Sub-Division Jaipur South');
-    insertEmployee.run('emp-007', 'Smt. Pooja Yadav', '+919414000025', 'Enforcement Inspector', 'Food, Civil Supplies & Consumer Affairs', 'FCS-JP-2017-0239', 'DSO Office Sanganer Circle, Jaipur');
-    insertEmployee.run('emp-008', 'Gopal Lal Jat', '+919414000026', 'Gram Vikas Adhikari (VDO)', 'Panchayati Raj & Rural Development', 'PR-JP-2019-0825', 'Gram Panchayat Sanganer Rural, Jaipur');
+    insertEmployee.run('emp-001', 'Chandan Kumar', '+917749852013', 'Junior Engineer (JEn)', 'Public Health Engineering (PHED) — Water Supply', 'PHED-JP-2019-0342', 'Sub-Division Sanganer, Jaipur', 'employee');
+    insertEmployee.run('emp-002', 'Mrityunjay Singh', '+919337453714', 'Patwari', 'Revenue & Sub-Divisional Administration', 'REV-BM-2015-0187', 'Patwar Circle Gudamalani, Barmer', 'employee');
+    insertEmployee.run('emp-003', 'Rakesh Sharma', '+919414000021', 'Assistant Engineer (AEn)', 'Energy & Discom (JVVNL)', 'JVVNL-JP-2018-0911', 'Sanganer Discom Sub-Division, Jaipur', 'employee');
+    insertEmployee.run('emp-004', 'Suresh Meena', '+919414000022', 'Station House Officer (SHO)', 'Rajasthan Police (राजस्थान पुलिस)', 'POL-JP-2014-0412', 'Sanganer Police Station, Jaipur', 'employee');
+    insertEmployee.run('emp-005', 'Dr. Amit Pareek', '+919414000023', 'Medical Officer Incharge', 'Medical, Health & Family Welfare', 'MH-JP-2016-0158', 'Community Health Centre (CHC) Sanganer', 'employee');
+    insertEmployee.run('emp-006', 'Hemant Saini', '+919414000024', 'Junior Engineer (JEn)', 'Public Works Department (PWD)', 'PWD-JP-2020-0714', 'PWD Sub-Division Jaipur South', 'employee');
+    insertEmployee.run('emp-007', 'Smt. Pooja Yadav', '+919414000025', 'Enforcement Inspector', 'Food, Civil Supplies & Consumer Affairs', 'FCS-JP-2017-0239', 'DSO Office Sanganer Circle, Jaipur', 'employee');
+    insertEmployee.run('emp-008', 'Gopal Lal Jat', '+919414000026', 'Gram Vikas Adhikari (VDO)', 'Panchayati Raj & Rural Development', 'PR-JP-2019-0825', 'Gram Panchayat Sanganer Rural, Jaipur', 'employee');
 
     // Grievances
     insertGrievance.run(
@@ -468,15 +480,18 @@ export interface DatabaseUserRecord {
 }
 
 /**
- * Dynamically look up any user from SQLite database across all 4 roles:
+ * Dynamically look up any user from SQLite database across all roles:
  * 1. Admin (Super Administrator)
  * 2. Officer (District Collector, DM, SDM, SP, Magistrate)
  * 3. Call Centre Representative (181 Sampark Helpdesk)
- * 4. Citizen (Registered complainants)
+ * 4. Employee (Junior Engineer, Patwari, VDO, etc.)
+ * 5. Citizen (Registered complainants)
+ *
+ * All roles and details are fetched dynamically from the database without hardcoding.
  */
 export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null {
   const cleanDigits = inputPhone.replace(/\D/g, '');
-  const bare10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
+  const bare10 = cleanDigits.slice(-10);
   const withPlus91 = `+91${bare10}`;
   const with91 = `91${bare10}`;
   const withZero = `0${bare10}`;
@@ -485,7 +500,7 @@ export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null
   try {
     const adminRow = db
       .prepare(`
-        SELECT id, name, phone, designation, department, role_level
+        SELECT id, name, phone, designation, department, role_level, COALESCE(role, 'admin') as role
         FROM admins
         WHERE phone = ? OR phone = ? OR phone = ? OR phone = ? OR phone LIKE ?
       `)
@@ -496,7 +511,7 @@ export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null
         id: adminRow.id,
         name: adminRow.name,
         phone: adminRow.phone,
-        role: 'admin',
+        role: adminRow.role,
         designation: adminRow.designation,
         department: adminRow.department,
         district: 'State IT Headquarters, Jaipur',
@@ -510,7 +525,7 @@ export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null
   try {
     const officerRow = db
       .prepare(`
-        SELECT id, name, phone, designation, department, district, cadre, posting_location
+        SELECT id, name, phone, designation, department, district, cadre, posting_location, COALESCE(role, 'officer') as role
         FROM officers
         WHERE phone = ? OR phone = ? OR phone = ? OR phone = ? OR phone LIKE ?
       `)
@@ -521,7 +536,7 @@ export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null
         id: officerRow.id,
         name: officerRow.name,
         phone: officerRow.phone,
-        role: 'officer',
+        role: officerRow.role,
         designation: officerRow.designation,
         department: officerRow.department,
         district: officerRow.district,
@@ -537,7 +552,7 @@ export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null
   try {
     const repRow = db
       .prepare(`
-        SELECT id, name, phone, designation, department, desk_number, shift
+        SELECT id, name, phone, designation, department, desk_number, shift, COALESCE(role, 'call_center') as role
         FROM call_center_reps
         WHERE phone = ? OR phone = ? OR phone = ? OR phone = ? OR phone LIKE ?
       `)
@@ -548,7 +563,7 @@ export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null
         id: repRow.id,
         name: repRow.name,
         phone: repRow.phone,
-        role: 'call_center',
+        role: repRow.role,
         designation: repRow.designation,
         department: repRow.department,
         deskNumber: repRow.desk_number,
@@ -560,11 +575,11 @@ export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null
     console.error('[SQLite] Error querying call_center_reps table:', err);
   }
 
-  // 4. Check SQLite employees table (Backwards compatibility)
+  // 4. Check SQLite employees table (Junior Engineer, Patwari, etc.)
   try {
     const empRow = db
       .prepare(`
-        SELECT id, name, phone, designation, department, employee_code, posting_location
+        SELECT id, name, phone, designation, department, employee_code, posting_location, COALESCE(role, 'employee') as role
         FROM employees
         WHERE phone = ? OR phone = ? OR phone = ? OR phone = ? OR phone LIKE ?
       `)
@@ -575,7 +590,7 @@ export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null
         id: empRow.id,
         name: empRow.name,
         phone: empRow.phone,
-        role: 'call_center',
+        role: empRow.role,
         designation: empRow.designation,
         department: empRow.department,
         district: empRow.posting_location || 'Rajasthan',
@@ -591,7 +606,7 @@ export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null
   try {
     const citRow = db
       .prepare(`
-        SELECT id, name, phone, village, district, tehsil
+        SELECT id, name, phone, village, district, tehsil, COALESCE(role, 'citizen') as role
         FROM citizens
         WHERE phone = ? OR phone = ? OR phone = ? OR phone = ? OR phone LIKE ?
       `)
@@ -602,7 +617,7 @@ export function lookupUserByPhone(inputPhone: string): DatabaseUserRecord | null
         id: citRow.id,
         name: citRow.name,
         phone: citRow.phone,
-        role: 'citizen',
+        role: citRow.role,
         designation: 'Citizen Complainant',
         district: citRow.district || 'Rajasthan',
         village: citRow.village,

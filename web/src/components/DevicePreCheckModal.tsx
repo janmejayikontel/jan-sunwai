@@ -72,7 +72,7 @@ export const OFFICIAL_PERSONAS: Record<RoleType, PersonaProfile> = {
   call_center: {
     role: "call_center",
     name: "Priya Sharma",
-    phone: "+917749852013",
+    phone: "+917749852014",
     badge: "2. Call Centre Representative",
     designation: "181 Sampark Helpdesk — Queue Dispatch",
     icon: "🎧",
