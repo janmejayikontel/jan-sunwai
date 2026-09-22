@@ -933,17 +933,28 @@ export default function JanSunwaiPortalPage() {
     setGrievance(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/sampark/grievance/${encodeURIComponent(idToSearch)}`);
-      const data = await res.json();
+      let res = await fetch(`${API_BASE}/api/sampark/grievance/${encodeURIComponent(idToSearch)}`).catch(() => null);
+      if (!res || !res.ok) {
+        // Fallback to relative path in case direct port was unreachable or blocked
+        const fallbackRes = await fetch(`/api/sampark/grievance/${encodeURIComponent(idToSearch)}`).catch(() => null);
+        if (fallbackRes && fallbackRes.ok) res = fallbackRes;
+      }
 
-      if (!res.ok || !data.grievance) {
-        setSearchError(data.message || `No grievance found with ID "${idToSearch}"`);
+      if (!res) {
+        setSearchError("Failed to connect to Sampark server. Please verify backend is running on port 3001.");
+        return;
+      }
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.grievance) {
+        setSearchError(data?.message || data?.error || `No grievance found with ID "${idToSearch}"`);
         return;
       }
 
       setGrievance(data.grievance);
-    } catch (err) {
-      setSearchError("Failed to connect to Sampark server");
+    } catch (err: any) {
+      setSearchError(err?.message ? `Failed to connect to Sampark server: ${err.message}` : "Failed to connect to Sampark server");
       console.error("Search error:", err);
     } finally {
       setIsSearching(false);
@@ -3472,9 +3483,7 @@ export default function JanSunwaiPortalPage() {
                       style={{ cursor: "pointer", border: "none", padding: "4px 10px" }}
                       onClick={() => {
                         setGrievanceId(g.grievanceId);
-                        fetch(`${API_BASE}/api/sampark/grievance/${g.grievanceId}`)
-                          .then((r) => r.json())
-                          .then((d) => d.grievance && setGrievance(d.grievance));
+                        handleSearchGrievance(undefined, g.grievanceId);
                       }}
                     >
                       {g.grievanceId} — {g.title.slice(0, 32)}...

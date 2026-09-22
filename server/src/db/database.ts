@@ -337,7 +337,7 @@ function seedInitialData(): void {
 
     // ─── 2. Call Centre Representatives (181 Sampark Helpdesk) ───
     const repsSeed = [
-      { id: 'rep-001', name: 'Priya Sharma', phone: '+917749852013', designation: 'Senior Call Centre Representative', department: '181 Rajasthan Sampark Call Centre', desk_number: 'DESK-A12', shift: 'Morning' },
+      { id: 'rep-001', name: 'Priya Sharma', phone: '+917749852014', designation: 'Senior Call Centre Representative', department: '181 Rajasthan Sampark Call Centre', desk_number: 'DESK-A12', shift: 'Morning' },
       { id: 'rep-002', name: 'Anjali Meena', phone: '+911800181001', designation: 'Queue Dispatcher & KYC Verifier', department: '181 Rajasthan Sampark Call Centre', desk_number: 'DESK-B04', shift: 'General' },
       { id: 'rep-003', name: 'Rohit Verma', phone: '+919337453713', designation: 'Hearing Coordination Executive', department: '181 Rajasthan Sampark Call Centre', desk_number: 'DESK-C09', shift: 'Afternoon' },
     ];
@@ -385,7 +385,7 @@ function seedInitialData(): void {
     insertCitizen.run('cit-002', 'Mandal Sahoo', '+918249884033', 'Gudamalani', 'Barmer', 'Barmer');
 
     // Employees across distinct departments
-    insertEmployee.run('emp-001', 'Chandan Kumar', '+917749852014', 'Junior Engineer (JEn)', 'Public Health Engineering (PHED) — Water Supply', 'PHED-JP-2019-0342', 'Sub-Division Sanganer, Jaipur');
+    insertEmployee.run('emp-001', 'Chandan Kumar', '+917749852013', 'Junior Engineer (JEn)', 'Public Health Engineering (PHED) — Water Supply', 'PHED-JP-2019-0342', 'Sub-Division Sanganer, Jaipur');
     insertEmployee.run('emp-002', 'Mrityunjay Singh', '+919337453714', 'Patwari', 'Revenue & Sub-Divisional Administration', 'REV-BM-2015-0187', 'Patwar Circle Gudamalani, Barmer');
     insertEmployee.run('emp-003', 'Rakesh Sharma', '+919414000021', 'Assistant Engineer (AEn)', 'Energy & Discom (JVVNL)', 'JVVNL-JP-2018-0911', 'Sanganer Discom Sub-Division, Jaipur');
     insertEmployee.run('emp-004', 'Suresh Meena', '+919414000022', 'Station House Officer (SHO)', 'Rajasthan Police (राजस्थान पुलिस)', 'POL-JP-2014-0412', 'Sanganer Police Station, Jaipur');
