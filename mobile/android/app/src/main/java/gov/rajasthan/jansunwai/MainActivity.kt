@@ -20,11 +20,25 @@ class MainActivity : ReactActivity() {
     CallOverlayManager.dismiss(this)
     IncomingCallActivity.activeInstance?.finish()
 
-    intent?.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
-      JanSunwaiVoIPModule.pendingIncomingCallJson = it
+    // Read call data from intent (e.g. from notification Accept button)
+    val intentCallData = intent?.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)
+    if (!intentCallData.isNullOrBlank()) {
+      JanSunwaiVoIPModule.pendingIncomingCallJson = intentCallData
       try {
         val prefs = getSharedPreferences("jansunwai_voip_prefs", android.content.Context.MODE_PRIVATE)
-        prefs.edit().putString("pending_accepted_call", it).commit()
+        prefs.edit().putString("pending_accepted_call", intentCallData).commit()
+      } catch (e: Exception) {
+        // ignore
+      }
+    } else {
+      // Fallback: check SharedPrefs for call data saved by background service (cold start from Accept notification)
+      try {
+        val prefs = getSharedPreferences("jansunwai_voip_prefs", android.content.Context.MODE_PRIVATE)
+        val savedCall = prefs.getString("pending_accepted_call", null)
+        if (!savedCall.isNullOrBlank()) {
+          JanSunwaiVoIPModule.pendingIncomingCallJson = savedCall
+          android.util.Log.i("MainActivity", "Cold-start: restored pending_accepted_call from SharedPrefs: $savedCall")
+        }
       } catch (e: Exception) {
         // ignore
       }

@@ -198,6 +198,39 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun checkFullScreenIntentPermission(promise: Promise) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Android 14+
+            try {
+                val nm = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                promise.resolve(nm?.canUseFullScreenIntent() ?: true)
+            } catch (e: Exception) {
+                promise.resolve(true)
+            }
+        } else {
+            promise.resolve(true)
+        }
+    }
+
+    @ReactMethod
+    fun requestFullScreenIntentPermission(promise: Promise) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Android 14+
+            try {
+                val nm = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                if (nm?.canUseFullScreenIntent() == false) {
+                    val intent = Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+                        data = Uri.parse("package:" + reactContext.packageName)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    reactContext.startActivity(intent)
+                }
+            } catch (e: Exception) {
+                Log.w("JanSunwaiVoIPModule", "Error requesting full screen intent permission", e)
+            }
+        }
+        promise.resolve(true)
+    }
+
+    @ReactMethod
     fun dismissCall(callId: String?, promise: Promise) {
         try {
             CallOverlayManager.dismiss(reactContext)

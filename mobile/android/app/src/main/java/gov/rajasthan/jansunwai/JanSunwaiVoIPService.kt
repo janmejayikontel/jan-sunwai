@@ -305,7 +305,8 @@ class JanSunwaiVoIPService : Service() {
                 prefs.edit().putString("pending_accepted_call", updatedCallData).commit()
                 JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
 
-                // Launch MainActivity directly with REORDER_TO_FRONT so meeting room comes to the front immediately
+                // Use PendingIntent to launch MainActivity - this bypasses Android 10+ BAL restrictions
+                // when triggered from a notification action (user interaction grants BAL token)
                 val launchIntent = Intent(this, MainActivity::class.java).apply {
                     addFlags(
                         Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -315,7 +316,20 @@ class JanSunwaiVoIPService : Service() {
                     putExtra("action", "accept_call")
                     putExtra(EXTRA_CALL_DATA, updatedCallData)
                 }
-                startActivity(launchIntent)
+                try {
+                    val pendingLaunch = PendingIntent.getActivity(
+                        this,
+                        (System.currentTimeMillis() % 10000).toInt() + 5000,
+                        launchIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    pendingLaunch.send()
+                } catch (e: Exception) {
+                    Log.w(TAG, "PendingIntent.send failed for accept, trying startActivity: ${e.message}")
+                    try { startActivity(launchIntent) } catch (e2: Exception) {
+                        Log.e(TAG, "startActivity also failed for accept: ${e2.message}")
+                    }
+                }
                 return START_STICKY
             }
             ACTION_START -> {
@@ -723,14 +737,34 @@ class JanSunwaiVoIPService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            // Accept intent from notification action button
-            val acceptIntent = Intent(this, JanSunwaiVoIPService::class.java).apply {
-                action = ACTION_ACCEPT
-                putExtra(EXTRA_CALL_ID, callId)
-                putExtra(EXTRA_CALL_DATA, callJsonString)
+            // Accept: directly launch MainActivity via PendingIntent so Android grants BAL (Background Activity Launch)
+            // even when app process is completely killed. Saves call data to SharedPrefs first.
+            val acceptCallData = try {
+                val j = JSONObject(callJsonString)
+                j.put("autoAccept", true)
+                j.put("callId", callId)
+                if (serverUrl.isNotEmpty()) j.put("serverUrl", serverUrl)
+                if (userPhone.isNotEmpty()) j.put("userPhone", userPhone)
+                j.toString()
+            } catch (e: Exception) { callJsonString }
+
+            val acceptMainIntent = Intent(this, MainActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+                putExtra("action", "accept_call")
+                putExtra(EXTRA_CALL_DATA, acceptCallData)
             }
-            val acceptPendingIntent = PendingIntent.getService(
-                this, reqCode + 1, acceptIntent,
+            // Also pre-save to SharedPrefs so MainActivity reads the call on cold start
+            try {
+                val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putString("pending_accepted_call", acceptCallData).apply()
+            } catch (e: Exception) {}
+
+            val acceptPendingIntent = PendingIntent.getActivity(
+                this, reqCode + 1, acceptMainIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 

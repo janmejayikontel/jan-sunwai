@@ -165,6 +165,30 @@ export default function App() {
               );
             }, 1200);
           }
+
+          // Android 14+ requires explicit permission for USE_FULL_SCREEN_INTENT (for call popup when app is closed)
+          if (Platform.Version >= 34) {
+            try {
+              const hasFullScreen = await JanSunwaiVoIP?.checkFullScreenIntentPermission?.();
+              if (hasFullScreen === false) {
+                setTimeout(() => {
+                  Alert.alert(
+                    'इनकमिंग कॉल पॉपअप (Incoming Call Popup)',
+                    'ऐप बंद होने पर भी इनकमिंग वीडियो सुनवाई का पॉपअप दिखाने के लिए कृपया "Allow full screen intent" अनुमति चालू करें।\n\nTo show full-screen call popups when app is closed, please allow "Display full screen apps" permission.',
+                    [
+                      { text: 'बाद में (Later)', style: 'cancel' },
+                      {
+                        text: 'अनुमति दें (Allow)',
+                        onPress: () => JanSunwaiVoIP?.requestFullScreenIntentPermission?.(),
+                      },
+                    ]
+                  );
+                }, 2000);
+              }
+            } catch (e) {
+              // ignore if not Android 14+
+            }
+          }
         }
       } catch (e) {
         // ignore
