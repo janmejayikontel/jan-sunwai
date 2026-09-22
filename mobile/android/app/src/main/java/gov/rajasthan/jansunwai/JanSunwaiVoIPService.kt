@@ -128,6 +128,9 @@ class JanSunwaiVoIPService : Service() {
     private var pollRunnable: Runnable? = null
     private var isCallRinging = false
     private var isWebSocketConnected = false
+    @Volatile private var isPollingActive = false
+    private var pollingThread: Thread? = null
+    private var lastUrlFetchTime = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -193,6 +196,13 @@ class JanSunwaiVoIPService : Service() {
             startForeground(NOTIFICATION_ID_STANDBY, createStandbyNotification())
         } catch (e: Exception) {
             // ignore
+        }
+
+        // CRITICAL FIX: Ensure persistent background polling and WebSocket remain active when app is swiped away
+        isServiceRunning = true
+        startPersistentPolling()
+        if (!isWebSocketConnected) {
+            connectWebSocket()
         }
 
         try {
@@ -320,7 +330,7 @@ class JanSunwaiVoIPService : Service() {
                     isServiceRunning = true
 
                     connectWebSocket()
-                    startPollingFallback()
+                    startPersistentPolling()
                 } else {
                     Log.w(TAG, "No phone number provided, stopping VoIP service")
                     stopSelf()
@@ -463,58 +473,115 @@ class JanSunwaiVoIPService : Service() {
         }, 5000)
     }
 
-    private fun startPollingFallback() {
-        pollRunnable?.let { handler.removeCallbacks(it) }
-        pollRunnable = object : Runnable {
-            override fun run() {
-                if (!isServiceRunning) return
-                checkIncomingCallHttp()
-                handler.postDelayed(this, 15000)
+    private fun startPersistentPolling() {
+        if (isPollingActive && pollingThread?.isAlive == true) return
+        isPollingActive = true
+        pollingThread = Thread({
+            Log.i(TAG, "Persistent background VoIP polling thread started")
+            while (isPollingActive && isServiceRunning) {
+                try {
+                    // Check remote server URL every 60 seconds (or immediately if blank)
+                    val now = System.currentTimeMillis()
+                    if (now - lastUrlFetchTime > 60000L || serverUrl.isEmpty()) {
+                        lastUrlFetchTime = now
+                        fetchLatestServerUrl()
+                    }
+
+                    // Check incoming calls via HTTP dual-channel
+                    checkIncomingCallHttp()
+
+                    // If WebSocket is disconnected and service is active, attempt reconnection
+                    if (!isWebSocketConnected && userPhone.isNotEmpty() && serverUrl.isNotEmpty()) {
+                        handler.post {
+                            if (!isWebSocketConnected && isServiceRunning) {
+                                connectWebSocket()
+                            }
+                        }
+                    }
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Error in persistent background polling loop", e)
+                }
+
+                try {
+                    Thread.sleep(3000L) // 3 seconds fast response
+                } catch (ie: InterruptedException) {
+                    break
+                }
             }
+            Log.i(TAG, "Persistent background VoIP polling thread stopped")
+        }, "VoIP-BackgroundPoller").apply {
+            isDaemon = true
+            start()
         }
-        handler.postDelayed(pollRunnable!!, 15000)
+    }
+
+    private fun fetchLatestServerUrl() {
+        try {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(4, TimeUnit.SECONDS)
+                .readTimeout(4, TimeUnit.SECONDS)
+                .build()
+            val req = Request.Builder()
+                .url("https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt")
+                .header("Cache-Control", "no-cache")
+                .build()
+            val res = client.newCall(req).execute()
+            if (res.isSuccessful) {
+                val newUrl = res.body?.string()?.trim() ?: ""
+                if (newUrl.startsWith("http") && newUrl != serverUrl) {
+                    Log.i(TAG, "Discovered updated server URL from GitHub: $newUrl (old: $serverUrl)")
+                    serverUrl = newUrl
+                    val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                    prefs.edit().putString("server_url", newUrl).commit()
+                    handler.post {
+                        connectWebSocket()
+                    }
+                }
+            }
+            res.close()
+        } catch (e: Throwable) {
+            // Silently ignore if offline
+        }
     }
 
     private fun checkIncomingCallHttp() {
-        if (isInCall || isWebSocketConnected || serverUrl.isEmpty() || userPhone.isEmpty() || isCallRinging) return
+        if (isInCall || serverUrl.isEmpty() || userPhone.isEmpty() || isCallRinging) return
 
-        Thread {
-            try {
-                val cleanBase = serverUrl.trim().trimEnd('/')
-                val encodedPhone = java.net.URLEncoder.encode(userPhone, "UTF-8")
-                val checkUrl = "${cleanBase}/api/calls/check-incoming/${encodedPhone}"
-                val client = OkHttpClient.Builder()
-                    .connectTimeout(3, TimeUnit.SECONDS)
-                    .readTimeout(3, TimeUnit.SECONDS)
-                    .build()
-                val req = Request.Builder()
-                    .url(checkUrl)
-                    .addHeader("Bypass-Tunnel-Reminder", "true")
-                    .build()
-                val res = client.newCall(req).execute()
-                if (res.isSuccessful) {
-                    val body = res.body?.string() ?: ""
-                    val json = JSONObject(body)
-                    if (json.optBoolean("hasIncomingCall", false) && !isInCall) {
-                        val callObj = json.optJSONObject("incomingCall")
-                        if (callObj != null && !isCallRinging && !isInCall) {
-                            val callId = callObj.optString("callId", "")
-                            val grievanceId = callObj.optString("grievanceId", "")
-                            if (isCallDismissed(callId, grievanceId)) {
-                                Log.i(TAG, "Ignoring incoming call in background poll — call $callId / case $grievanceId was already left/dismissed")
-                            } else {
-                                handler.post {
-                                    handleIncomingCall(callObj.toString())
-                                }
+        try {
+            val cleanBase = serverUrl.trim().trimEnd('/')
+            val encodedPhone = java.net.URLEncoder.encode(userPhone, "UTF-8")
+            val checkUrl = "${cleanBase}/api/calls/check-incoming/${encodedPhone}"
+            val client = OkHttpClient.Builder()
+                .connectTimeout(2500, TimeUnit.MILLISECONDS)
+                .readTimeout(2500, TimeUnit.MILLISECONDS)
+                .build()
+            val req = Request.Builder()
+                .url(checkUrl)
+                .addHeader("Bypass-Tunnel-Reminder", "true")
+                .build()
+            val res = client.newCall(req).execute()
+            if (res.isSuccessful) {
+                val body = res.body?.string() ?: ""
+                val json = JSONObject(body)
+                if (json.optBoolean("hasIncomingCall", false) && !isInCall && !isCallRinging) {
+                    val callObj = json.optJSONObject("incomingCall")
+                    if (callObj != null && !isCallRinging && !isInCall) {
+                        val callId = callObj.optString("callId", "")
+                        val grievanceId = callObj.optString("grievanceId", "")
+                        if (isCallDismissed(callId, grievanceId)) {
+                            Log.i(TAG, "Ignoring incoming call in background poll — call $callId / case $grievanceId was already left/dismissed")
+                        } else {
+                            handler.post {
+                                handleIncomingCall(callObj.toString())
                             }
                         }
                     }
                 }
-                res.close()
-            } catch (e: Exception) {
-                // silent background polling
             }
-        }.start()
+            res.close()
+        } catch (e: Exception) {
+            // silent background polling
+        }
     }
 
     fun handleIncomingCall(callJsonString: String) {
@@ -799,6 +866,15 @@ class JanSunwaiVoIPService : Service() {
         } catch (e: Exception) {
             // ignore
         }
+
+        isServiceRunning = false
+        isPollingActive = false
+        try {
+            pollingThread?.interrupt()
+        } catch (e: Exception) {
+            // ignore
+        }
+        pollingThread = null
 
         pollRunnable?.let { handler.removeCallbacks(it) }
         handler.removeCallbacksAndMessages(null)

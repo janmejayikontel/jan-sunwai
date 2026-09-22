@@ -11,6 +11,9 @@ interface ControlBarProps {
   onToggleScreenShare: () => void;
   onLeaveCall: () => void;
   onAddParticipant?: () => void;
+  onToggleChat?: () => void;
+  unreadChatCount?: number;
+  isChatOpen?: boolean;
   isCollector?: boolean;
 }
 
@@ -24,6 +27,9 @@ export const ControlBar: React.FC<ControlBarProps> = ({
   onToggleScreenShare,
   onLeaveCall,
   onAddParticipant,
+  onToggleChat,
+  unreadChatCount = 0,
+  isChatOpen = false,
 }) => {
   return (
     <View style={styles.container}>
@@ -50,6 +56,29 @@ export const ControlBar: React.FC<ControlBarProps> = ({
         </TouchableOpacity>
         <Text style={styles.btnLabel}>{isCameraOff ? 'Cam Off' : 'Cam On'}</Text>
       </View>
+
+      {/* In-Call Chat Button */}
+      {onToggleChat && (
+        <View style={styles.btnWrapper}>
+          <TouchableOpacity
+            style={[styles.circleBtn, isChatOpen ? styles.btnActiveChat : styles.btnDefault]}
+            onPress={onToggleChat}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.btnIcon}>💬</Text>
+            {unreadChatCount > 0 && (
+              <View style={styles.chatBadge}>
+                <Text style={styles.chatBadgeText}>
+                  {unreadChatCount > 9 ? '9+' : unreadChatCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <Text style={[styles.btnLabel, (isChatOpen || unreadChatCount > 0) && { color: '#38bdf8', fontWeight: '700' }]}>
+            Chat
+          </Text>
+        </View>
+      )}
 
       {/* Add Person Button (Available for Officer / Collector) */}
       {onAddParticipant && (
@@ -157,6 +186,30 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
+  },
+  btnActiveChat: {
+    backgroundColor: '#0284c7',
+    borderWidth: 1.5,
+    borderColor: '#38bdf8',
+  },
+  chatBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#ef4444',
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#0f172a',
+  },
+  chatBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '800',
   },
   btnIcon: {
     fontSize: 18,

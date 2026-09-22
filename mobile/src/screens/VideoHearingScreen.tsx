@@ -23,6 +23,7 @@ import { Track, RoomEvent } from 'livekit-client';
 import { ParticipantView } from '../components/ParticipantView';
 import { ControlBar } from '../components/ControlBar';
 import { AddParticipantModal } from '../components/AddParticipantModal';
+import { InCallChatModal, ChatMessage } from '../components/InCallChatModal';
 
 interface VideoHearingScreenProps {
   serverUrl: string;
@@ -59,6 +60,13 @@ const RoomContent: React.FC<{
   const [showSafetyNumbers, setShowSafetyNumbers] = useState(false);
   const [showModeration, setShowModeration] = useState(false);
   const [sasVerified, setSasVerified] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const showChatRef = React.useRef(showChat);
+  useEffect(() => {
+    showChatRef.current = showChat;
+  }, [showChat]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
 
   const isOfficer = role === 'officer' || role === 'collector' || role === 'admin' || !role;
   const isAdmin = role === 'admin';
@@ -297,15 +305,31 @@ const RoomContent: React.FC<{
       }
     };
 
-    const handleData = (payload: Uint8Array) => {
+    const handleData = (payload: Uint8Array, participant?: any) => {
       try {
         const text = new TextDecoder().decode(payload);
         const data = JSON.parse(text);
         if (data.type === 'moderation') {
           processModerationAction(data);
+        } else if (data.type === 'chat') {
+          const sender = data.sender || data.senderName || participant?.identity || 'Participant';
+          const myIdentity = room.localParticipant?.identity || '';
+          const isMe = participant?.isLocal || (myIdentity && sender === myIdentity) || (userName && sender === userName);
+          const newMsg: ChatMessage = {
+            id: data.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            sender: sender,
+            senderRole: data.senderRole,
+            text: data.text || '',
+            timestamp: data.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            isMe: isMe,
+          };
+          setChatMessages((prev) => [...prev, newMsg]);
+          if (!showChatRef.current && !isMe) {
+            setUnreadChatCount((prev) => prev + 1);
+          }
         }
       } catch (err) {
-        console.warn('Failed to parse moderation packet:', err);
+        console.warn('Failed to parse incoming packet:', err);
       }
     };
 
@@ -362,6 +386,37 @@ const RoomContent: React.FC<{
       await room.localParticipant.publishData(bytes, { reliable: true });
     } catch (e) {
       console.warn('Moderation packet broadcast error:', e);
+    }
+  };
+
+  // Send Encrypted In-Call Chat Message via LiveKit Data Channel
+  const handleSendChat = (text: string) => {
+    if (!text.trim() || !room?.localParticipant) return;
+    const msgObj = {
+      type: 'chat',
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      sender: userName || 'Participant',
+      senderName: userName || 'Participant',
+      senderRole: role || 'citizen',
+      text: text.trim(),
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    try {
+      const bytes = new TextEncoder().encode(JSON.stringify(msgObj));
+      room.localParticipant.publishData(bytes, { reliable: true });
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: msgObj.id,
+          sender: msgObj.sender,
+          senderRole: msgObj.senderRole,
+          text: msgObj.text,
+          timestamp: msgObj.timestamp,
+          isMe: true,
+        },
+      ]);
+    } catch (err) {
+      console.warn('Error sending in-call chat:', err);
     }
   };
 
@@ -706,6 +761,26 @@ const RoomContent: React.FC<{
         onToggleScreenShare={handleToggleScreenShare}
         onLeaveCall={handleExitCall}
         onAddParticipant={isOfficer ? () => setShowAddParticipant(true) : undefined}
+        onToggleChat={() => {
+          setShowChat((prev) => {
+            if (!prev) {
+              setUnreadChatCount(0);
+            }
+            return !prev;
+          });
+        }}
+        unreadChatCount={unreadChatCount}
+        isChatOpen={showChat}
+      />
+
+      {/* In-Call Encrypted Chat Modal */}
+      <InCallChatModal
+        visible={showChat}
+        messages={chatMessages}
+        currentUserName={userName}
+        currentUserRole={role}
+        onSendMessage={handleSendChat}
+        onClose={() => setShowChat(false)}
       />
 
       {/* Add Participant Modal for Officers */}
