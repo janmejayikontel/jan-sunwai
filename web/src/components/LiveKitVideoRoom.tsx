@@ -26,7 +26,7 @@ import {
   TrackLoop,
   ParticipantTile,
 } from "@livekit/components-react";
-import { Track, LocalParticipant, RoomEvent } from "livekit-client";
+import { Track, LocalParticipant, RoomEvent, LocalAudioTrack, getEmptyAudioStreamTrack } from "livekit-client";
 import {
   Monitor,
   MonitorOff,
@@ -95,12 +95,58 @@ if (typeof window !== "undefined" && !(LocalParticipant.prototype as any).__janS
               },
             })
           );
+          window.dispatchEvent(
+            new CustomEvent("jan-sunwai-mic-blocked", {
+              detail: { isBlocked: false },
+            })
+          );
           return pub;
         } catch (hwErr: any) {
-          console.warn("[Jan Sunwai] Hardware mic access blocked by system/browser:", hwErr);
+          console.warn("[Jan Sunwai] Hardware mic access error:", hwErr);
+          const isNotFound =
+            hwErr.name === "NotFoundError" ||
+            hwErr.name === "DevicesNotFoundError" ||
+            hwErr.name === "OverconstrainedError" ||
+            hwErr.message?.toLowerCase().includes("not found") ||
+            hwErr.message?.toLowerCase().includes("device not found");
+
           const isWindowsBlocked =
             hwErr.message?.toLowerCase().includes("permission denied by system") ||
             hwErr.name === "NotAllowedError";
+
+          if (isNotFound) {
+            // Hardware has no microphone connected. Gracefully attach silent audio track so hearing works in Listen-Only mode!
+            try {
+              if (typeof window !== "undefined") {
+                const emptyTrack = getEmptyAudioStreamTrack();
+                const silentTrack = new LocalAudioTrack(emptyTrack);
+                const pub = await this.publishTrack(silentTrack, {
+                  source: Track.Source.Microphone,
+                });
+                window.dispatchEvent(
+                  new CustomEvent("jan-sunwai-toast", {
+                    detail: {
+                      message: "🎧 No microphone found. Connected in Listen-Only mode (Sound & Video active).",
+                      type: "info",
+                    },
+                  })
+                );
+                window.dispatchEvent(
+                  new CustomEvent("jan-sunwai-mic-blocked", {
+                    detail: {
+                      isBlocked: true,
+                      isNotFound: true,
+                      message: "No microphone detected on this computer. You are connected in Listen-Only mode (you can hear and see all participants). To speak, please plug in a microphone or headset.",
+                    },
+                  })
+                );
+                return pub;
+              }
+            } catch (fallbackErr) {
+              console.warn("[Jan Sunwai] Silent audio track fallback error:", fallbackErr);
+            }
+            return undefined;
+          }
 
           const msg = isWindowsBlocked
             ? "⚠️ Windows ने माइक्रोफ़ोन बंद कर रखा है! Windows Settings > Privacy & security > Microphone खोलकर 'Microphone access' को ON करें।"
@@ -113,7 +159,7 @@ if (typeof window !== "undefined" && !(LocalParticipant.prototype as any).__janS
           );
           window.dispatchEvent(
             new CustomEvent("jan-sunwai-mic-blocked", {
-              detail: { isBlocked: true, message: msg },
+              detail: { isBlocked: true, isNotFound: false, message: msg },
             })
           );
           return undefined;

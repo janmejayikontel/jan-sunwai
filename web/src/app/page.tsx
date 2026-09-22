@@ -276,7 +276,7 @@ export default function JanSunwaiPortalPage() {
   const [showParticipantsModal, setShowParticipantsModal] = useState(false);
   const [hearingParticipants, setHearingParticipants] = useState<any[]>([]);
   const [isRemovingParticipant, setIsRemovingParticipant] = useState<string | null>(null);
-  const [micBlockedWarning, setMicBlockedWarning] = useState<string | null>(null);
+  const [micBlockedWarning, setMicBlockedWarning] = useState<{ message: string; isNotFound?: boolean } | null>(null);
 
   // ─── Call Centre Representative State (181 Sampark Helpdesk) ──
   const [hearingQueue, setHearingQueue] = useState<any[]>([]);
@@ -334,7 +334,14 @@ export default function JanSunwaiPortalPage() {
       }
     };
     const handleMicBlocked = (e: any) => {
-      setMicBlockedWarning(e.detail?.message || "Microphone access is blocked by Windows privacy settings.");
+      if (e.detail?.isBlocked) {
+        setMicBlockedWarning({
+          message: e.detail?.message || "Microphone access is blocked by Windows privacy settings.",
+          isNotFound: !!e.detail?.isNotFound,
+        });
+      } else {
+        setMicBlockedWarning(null);
+      }
     };
     window.addEventListener("jan-sunwai-toast", handleToastEvent);
     window.addEventListener("jan-sunwai-mic-blocked", handleMicBlocked);
@@ -920,9 +927,9 @@ export default function JanSunwaiPortalPage() {
 
   // ─── Officer Portal Search & Call Functions ─────────────────
 
-  const handleSearchGrievance = async (e?: React.FormEvent) => {
+  const handleSearchGrievance = async (e?: React.FormEvent, customId?: string) => {
     if (e) e.preventDefault();
-    const idToSearch = grievanceId.trim();
+    const idToSearch = (customId || grievanceId).trim();
     if (!idToSearch) {
       setSearchError("Please enter a Grievance ID");
       return;
@@ -1453,12 +1460,20 @@ export default function JanSunwaiPortalPage() {
             />
           )}
 
-          {/* Microphone Blocked Warning Banner */}
+          {/* Windows Microphone Privacy / Hardware Warning Banner */}
           {micBlockedWarning && (
             <div
               style={{
-                background: "linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.3))",
-                border: "1px solid rgba(248, 113, 113, 0.4)",
+                position: "absolute",
+                top: "60px",
+                left: "16px",
+                right: "16px",
+                background: micBlockedWarning.isNotFound
+                  ? "linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.25))"
+                  : "linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.3))",
+                border: micBlockedWarning.isNotFound
+                  ? "1px solid rgba(251, 191, 36, 0.4)"
+                  : "1px solid rgba(248, 113, 113, 0.4)",
                 borderRadius: "10px",
                 padding: "10px 14px",
                 margin: "10px",
@@ -1466,21 +1481,36 @@ export default function JanSunwaiPortalPage() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: "12px",
-                color: "#fee2e2",
+                color: micBlockedWarning.isNotFound ? "#fef3c7" : "#fee2e2",
                 fontSize: "0.84rem",
                 zIndex: 40,
+                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <AlertCircle size={18} style={{ color: "#f87171", flexShrink: 0 }} />
+                <AlertCircle
+                  size={18}
+                  style={{ color: micBlockedWarning.isNotFound ? "#fbbf24" : "#f87171", flexShrink: 0 }}
+                />
                 <span>
-                  <strong>Microphone Access Blocked:</strong> {micBlockedWarning}
+                  <strong>
+                    {micBlockedWarning.isNotFound ? "🎧 Listen-Only Mode:" : "Microphone Access Blocked:"}
+                  </strong>{" "}
+                  {micBlockedWarning.message}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setMicBlockedWarning(null)}
-                style={{ background: "none", border: "none", color: "#fca5a5", cursor: "pointer" }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: micBlockedWarning.isNotFound ? "#fde68a" : "#fca5a5",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+                title="Dismiss"
               >
                 <X size={16} />
               </button>

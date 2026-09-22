@@ -411,34 +411,91 @@ export default function DevicePreCheckModal({
     }
 
     try {
-      const constraints: MediaStreamConstraints = {
-        audio: selectedAudioId ? { deviceId: { exact: selectedAudioId } } : true,
-        video: selectedVideoId
-          ? { deviceId: { exact: selectedVideoId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-          : { width: { ideal: 1280 }, height: { ideal: 720 } },
-      };
+      let audioStream: MediaStream | null = null;
+      let videoStream: MediaStream | null = null;
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      mediaStreamRef.current = stream;
-      setDevicePermissionGranted(true);
+      // 1. Try combined audio + video if microphone devices exist
+      const hasAudioDevices = audioInputDevices.length > 0;
+      try {
+        const constraints: MediaStreamConstraints = {
+          audio: hasAudioDevices
+            ? (selectedAudioId ? { deviceId: selectedAudioId } : true)
+            : false,
+          video: selectedVideoId
+            ? { deviceId: selectedVideoId, width: { ideal: 1280 }, height: { ideal: 720 } }
+            : { width: { ideal: 1280 }, height: { ideal: 720 } },
+        };
 
-      // Attach stream to video preview
-      if (videoPreviewRef.current) {
-        videoPreviewRef.current.srcObject = stream;
-        videoPreviewRef.current.play().catch(() => {});
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        mediaStreamRef.current = stream;
+        setDevicePermissionGranted(true);
+
+        if (videoPreviewRef.current) {
+          videoPreviewRef.current.srcObject = stream;
+          videoPreviewRef.current.play().catch(() => {});
+        }
+
+        if (hasAudioDevices) {
+          startAudioAnalysis(stream);
+        }
+        enumerateDevices();
+        return;
+      } catch (combinedErr: any) {
+        console.warn("[DevicePreCheck] Combined media stream failed, attempting independent fallback:", combinedErr);
       }
 
-      // Start audio VU meter
-      startAudioAnalysis(stream);
+      // 2. Try Video stream independently (so lack of mic doesn't break camera)
+      try {
+        const videoConstraints: MediaStreamConstraints = {
+          video: selectedVideoId
+            ? { deviceId: selectedVideoId, width: { ideal: 1280 }, height: { ideal: 720 } }
+            : { width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false,
+        };
+        videoStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
+      } catch (vErr) {
+        console.warn("[DevicePreCheck] Independent video stream failed:", vErr);
+      }
 
-      // Re-enumerate devices now that permissions are explicitly granted
-      enumerateDevices();
+      // 3. Try Audio stream independently (so lack of camera doesn't break mic)
+      if (hasAudioDevices) {
+        try {
+          const audioConstraints: MediaStreamConstraints = {
+            audio: selectedAudioId ? { deviceId: selectedAudioId } : true,
+            video: false,
+          };
+          audioStream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+        } catch (aErr) {
+          console.warn("[DevicePreCheck] Independent audio stream failed:", aErr);
+        }
+      }
+
+      if (videoStream || audioStream) {
+        const combined = new MediaStream();
+        if (videoStream) {
+          videoStream.getVideoTracks().forEach((t) => combined.addTrack(t));
+          if (videoPreviewRef.current) {
+            videoPreviewRef.current.srcObject = combined;
+            videoPreviewRef.current.play().catch(() => {});
+          }
+        }
+        if (audioStream) {
+          audioStream.getAudioTracks().forEach((t) => combined.addTrack(t));
+          startAudioAnalysis(audioStream);
+        }
+        mediaStreamRef.current = combined;
+        setDevicePermissionGranted(true);
+        enumerateDevices();
+        return;
+      }
+
+      // Fallback to virtual generator if neither physical device is available
+      setUseVirtualMedia(true);
     } catch (err: any) {
-      console.warn("[DevicePreCheck] getUserMedia error:", err);
-      // If hardware fails (no camera attached), auto-switch to Virtual Media Generator!
+      console.warn("[DevicePreCheck] getUserMedia fatal fallback:", err);
       setUseVirtualMedia(true);
     }
-  }, [selectedAudioId, selectedVideoId, stopVirtualGenerator, stopAudioAnalysis, startAudioAnalysis, enumerateDevices]);
+  }, [selectedAudioId, selectedVideoId, audioInputDevices.length, stopVirtualGenerator, stopAudioAnalysis, startAudioAnalysis, enumerateDevices]);
 
   // Handle stream lifecycle when modal opens or settings change
   useEffect(() => {
@@ -1163,7 +1220,7 @@ export default function DevicePreCheckModal({
                     }}
                   >
                     {audioInputDevices.length === 0 ? (
-                      <option value="">Default Microphone</option>
+                      <option value="">🎧 No Microphone Detected (Listen-Only)</option>
                     ) : (
                       audioInputDevices.map((d, i) => (
                         <option key={d.deviceId || i} value={d.deviceId}>
