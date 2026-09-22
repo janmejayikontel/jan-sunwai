@@ -579,10 +579,17 @@ export default function App() {
     connectWebSocket();
 
     // High-reliability polling fallback:
-    // Runs every 2.5s while user is logged in and not in an active hearing.
-    // Catches incoming calls instantaneously even if WebSocket connection stalls or sleeps.
+    // When WebSocket is open, incoming call is delivered in 0ms via WebSocket push!
+    // A light fallback runs every 30s if WS is connected, or every 8s if WS is temporarily down.
+    let lastPollTime = 0;
     const pollInterval = setInterval(async () => {
       if (!isSubscribed || activeHearing || isConnectingHearing) return;
+
+      const isWsOpen = wsRef.current && wsRef.current.readyState === 1; // 1 = OPEN
+      const now = Date.now();
+      const threshold = isWsOpen ? 30000 : 8000;
+      if (now - lastPollTime < threshold) return;
+      lastPollTime = now;
 
       try {
         const checkUrl = `${base}/api/calls/check-incoming/${encodeURIComponent(currentUser.phone)}`;
@@ -614,7 +621,7 @@ export default function App() {
       } catch (err) {
         // network polling silent
       }
-    }, 2500);
+    }, 2000);
 
     return () => {
       isSubscribed = false;

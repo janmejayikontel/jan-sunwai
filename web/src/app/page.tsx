@@ -480,11 +480,20 @@ export default function JanSunwaiPortalPage() {
 
     connectWs();
 
-    // Fast polling fallback: checks every 2.5s for any active call ringing for this phone
-    // Ensures incoming call is received on laptop browser even if WebSocket disconnected or had network error
+    // Polling fallback: checks for incoming call ringing
+    // When WebSocket is connected, incoming call is delivered in 0ms via WebSocket push!
+    // A light fallback runs every 30s if WS is connected, or every 8s if WS is temporarily down.
+    let lastPollTime = 0;
     const pollInterval = setInterval(async () => {
       if (!active || !currentUser) return;
       if (livekitConnection || incomingCall) return;
+
+      const isWsOpen = wsRef.current?.readyState === WebSocket.OPEN;
+      const now = Date.now();
+      const threshold = isWsOpen ? 30000 : 8000;
+      if (now - lastPollTime < threshold) return;
+      lastPollTime = now;
+
       try {
         const checkRes = await fetch(
           `${API_BASE}/api/calls/check-incoming/${encodeURIComponent(currentUser.phone)}`
@@ -501,7 +510,7 @@ export default function JanSunwaiPortalPage() {
       } catch (err) {
         // quiet
       }
-    }, 2500);
+    }, 2000);
 
     return () => {
       active = false;

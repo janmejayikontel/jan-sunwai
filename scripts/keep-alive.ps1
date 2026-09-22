@@ -46,7 +46,7 @@ while ($true) {
         if (-not $cfProc) {
             Log "Cloudflared not running. Starting..."
             $cfLog = "$RootDir\scripts\cloudflared.log"
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$CloudflaredPath`" tunnel --url http://localhost:8080 > `"$cfLog`" 2>&1" -WindowStyle Hidden
+            Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$CloudflaredPath`" tunnel --url http://localhost:8080 --protocol http2 --edge-ip-version 4 > `"$cfLog`" 2>&1" -WindowStyle Hidden
             Start-Sleep -Seconds 6
 
             # Extract assigned quick tunnel URL and update server-url.txt

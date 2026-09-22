@@ -131,6 +131,7 @@ class JanSunwaiVoIPService : Service() {
     @Volatile private var isPollingActive = false
     private var pollingThread: Thread? = null
     private var lastUrlFetchTime = 0L
+    private var rateLimitBackoffUntil = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -487,8 +488,10 @@ class JanSunwaiVoIPService : Service() {
                         fetchLatestServerUrl()
                     }
 
-                    // Check incoming calls via HTTP dual-channel
-                    checkIncomingCallHttp()
+                    // Check incoming calls via HTTP (only if not rate limited)
+                    if (System.currentTimeMillis() >= rateLimitBackoffUntil) {
+                        checkIncomingCallHttp()
+                    }
 
                     // If WebSocket is disconnected and service is active, attempt reconnection
                     if (!isWebSocketConnected && userPhone.isNotEmpty() && serverUrl.isNotEmpty()) {
@@ -503,7 +506,10 @@ class JanSunwaiVoIPService : Service() {
                 }
 
                 try {
-                    Thread.sleep(3000L) // 3 seconds fast response
+                    // When WebSocket is connected, incoming calls arrive instantly (0ms) via WS push!
+                    // Light 30s fallback poll is plenty. If WS is disconnected, poll every 8s.
+                    val sleepMs = if (isWebSocketConnected) 30000L else 8000L
+                    Thread.sleep(sleepMs)
                 } catch (ie: InterruptedException) {
                     break
                 }
@@ -560,7 +566,10 @@ class JanSunwaiVoIPService : Service() {
                 .addHeader("Bypass-Tunnel-Reminder", "true")
                 .build()
             val res = client.newCall(req).execute()
-            if (res.isSuccessful) {
+            if (res.code == 429) {
+                Log.w(TAG, "Cloudflare tunnel rate limit (429) hit, pausing background polling for 30s")
+                rateLimitBackoffUntil = System.currentTimeMillis() + 30000L
+            } else if (res.isSuccessful) {
                 val body = res.body?.string() ?: ""
                 val json = JSONObject(body)
                 if (json.optBoolean("hasIncomingCall", false) && !isInCall && !isCallRinging) {
