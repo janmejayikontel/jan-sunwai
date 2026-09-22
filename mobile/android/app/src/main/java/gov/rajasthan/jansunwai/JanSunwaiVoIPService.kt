@@ -72,6 +72,14 @@ class JanSunwaiVoIPService : Service() {
             if (inCall) {
                 stopActiveRinging()
             }
+            // Persist to SharedPrefs so service restarts (START_STICKY) restore correct state
+            // This prevents re-ringing for an already-accepted call after service restart
+            try {
+                instance?.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                    ?.edit()?.putBoolean("is_in_call", inCall)?.apply()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to persist isInCall=$inCall to SharedPrefs", e)
+            }
         }
 
         fun dismissCall(callId: String?) {
@@ -90,7 +98,11 @@ class JanSunwaiVoIPService : Service() {
             try {
                 instance?.let { s ->
                     val prefs = s.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
-                    prefs.edit().remove("last_call_json").remove("pending_accepted_call").commit()
+                    prefs.edit()
+                        .remove("last_call_json")
+                        .remove("pending_accepted_call")
+                        .remove("is_in_call")   // clear in-call flag so service won't suppress next call
+                        .commit()
                 }
             } catch (e: Exception) {
                 // ignore
@@ -139,11 +151,19 @@ class JanSunwaiVoIPService : Service() {
         instance = this
         Log.i(TAG, "JanSunwaiVoIPService created")
 
-        isInCall = false
         isCallRinging = false
         currentRingingCallId = null
 
+        // Restore isInCall from SharedPrefs - prevents re-ringing after service restart
+        // when user already accepted a call (START_STICKY restart bug)
         val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+        isInCall = prefs.getBoolean("is_in_call", false)
+        if (isInCall) {
+            Log.i(TAG, "Service created: restoring isInCall=true from SharedPrefs (user is in a call)")
+        } else {
+            isInCall = false
+        }
+
         if (userPhone.isEmpty()) {
             userPhone = prefs.getString("phone", "") ?: ""
         }
@@ -188,7 +208,14 @@ class JanSunwaiVoIPService : Service() {
         super.onTaskRemoved(rootIntent)
         Log.i(TAG, "App task removed (swiped away) - keeping foreground VoIP service active")
 
-        isInCall = false
+        // Don't reset isInCall - check SharedPrefs to preserve accepted call state
+        val taskPrefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+        val savedInCall = taskPrefs.getBoolean("is_in_call", false)
+        if (!savedInCall) {
+            isInCall = false
+        } else {
+            Log.i(TAG, "onTaskRemoved: preserving isInCall=true (user still in a call)")
+        }
         isCallRinging = false
         currentRingingCallId = null
 

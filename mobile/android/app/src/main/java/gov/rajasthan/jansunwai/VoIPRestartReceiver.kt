@@ -28,7 +28,13 @@ class VoIPRestartReceiver : BroadcastReceiver() {
         val serverUrl = prefs.getString("server_url", "") ?: ""
 
         if (phone.isNotEmpty()) {
-            JanSunwaiVoIPService.isInCall = false
+        // Only reset isInCall if user is NOT already in a call (preserve accepted call state)
+            val savedInCall = prefs.getBoolean("is_in_call", false)
+            if (!savedInCall) {
+                JanSunwaiVoIPService.isInCall = false
+            } else {
+                Log.i(TAG, "VoIPRestartReceiver: preserving isInCall=true from SharedPrefs - user is in a call")
+            }
             JanSunwaiVoIPService.stopActiveRinging()
 
             Log.i(TAG, "Reviving JanSunwaiVoIPService for $phone @ $serverUrl")
