@@ -16,7 +16,7 @@
  * - Auto-dismiss after 60 seconds (ring timeout)
  */
 
-import React, { useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Phone, PhoneOff } from "lucide-react";
 
 // ─── Props ────────────────────────────────────────────────────
