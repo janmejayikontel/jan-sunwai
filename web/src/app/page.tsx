@@ -474,7 +474,7 @@ export default function JanSunwaiPortalPage() {
               break;
           }
         } catch (err) {
-          console.error("[WS] Error parsing message:", err);
+          console.warn("[WS] Error parsing message:", err);
         }
       };
 
@@ -487,7 +487,7 @@ export default function JanSunwaiPortalPage() {
       };
 
       ws.onerror = (err) => {
-        console.error("[WS] Error:", err);
+        console.warn("[WS] Network event (auto-reconnecting):", err);
       };
 
       wsRef.current = ws;
@@ -1086,7 +1086,7 @@ export default function JanSunwaiPortalPage() {
       }
     } catch (err) {
       showToast("Failed to accept call", "error");
-      console.error("Accept call error:", err);
+      console.warn("Accept call notice:", err);
     }
   };
 
@@ -1111,7 +1111,7 @@ export default function JanSunwaiPortalPage() {
         }),
       });
     } catch (err) {
-      console.error("Decline call error:", err);
+      console.warn("Decline call notice:", err);
     }
   };
 
