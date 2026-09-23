@@ -93,7 +93,7 @@ export default function App() {
       try {
         let activeSrv = DEFAULT_SERVER_URL;
         try {
-          const liveRes = await fetch('https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt');
+          const liveRes = await fetch(`https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=${Date.now()}`);
           const liveTxt = (await liveRes.text()).trim();
           if (liveTxt.startsWith('http')) {
             console.log('[App] Fetched live server URL from GitHub:', liveTxt);
@@ -283,8 +283,10 @@ export default function App() {
     // If pre-fetched LiveKit token exists from IncomingCallActivity, enter room in 0ms!
     if (target.livekitToken && target.livekitRoomName) {
       console.log('[App] Entering meeting room immediately with pre-fetched LiveKit token');
+      setIncomingCall(null);
+      setIsConnectingHearingAndRef(false);
       setActiveHearingAndRef({
-        serverUrl: target.livekitUrl || cleanServerUrl(target.serverUrl || serverUrl),
+        serverUrl: target.livekitUrl || cleanServerUrl(serverUrl || target.serverUrl || DEFAULT_SERVER_URL),
         token: target.livekitToken,
         roomName: target.livekitRoomName,
         grievanceId: target.grievanceId,
@@ -292,8 +294,6 @@ export default function App() {
         role: user?.role || 'citizen',
         callId: target.callId,
       });
-      setIncomingCall(null);
-      setIsConnectingHearingAndRef(false);
       return;
     }
 
@@ -305,7 +305,7 @@ export default function App() {
     }
 
     try {
-      const base = cleanServerUrl(target.serverUrl || serverUrl);
+      const base = cleanServerUrl(serverUrl || target.serverUrl || DEFAULT_SERVER_URL);
       const rawId = (target.callId || '').toString().trim();
       const effectiveCallId = (rawId && rawId !== 'undefined' && rawId !== 'null')
         ? rawId
@@ -343,6 +343,8 @@ export default function App() {
       console.log('[App] Accept response:', data);
 
       if (data.success && data.livekit) {
+        setIncomingCall(null);
+        setIsConnectingHearingAndRef(false);
         setActiveHearingAndRef({
           serverUrl: data.livekit.url || base,
           token: data.livekit.token,
@@ -353,9 +355,13 @@ export default function App() {
           callId: target.callId || effectiveCallId,
         });
       } else {
+        setIncomingCall(null);
+        setIsConnectingHearingAndRef(false);
         Alert.alert('Unable to Join', data.error || 'Failed to accept call session.');
       }
     } catch (err: any) {
+      setIncomingCall(null);
+      setIsConnectingHearingAndRef(false);
       console.error('Accept call error:', err);
       Alert.alert('Connection Error', err?.message || 'Failed to join call.');
     } finally {
@@ -807,7 +813,9 @@ export default function App() {
           />
 
           <IncomingCallModal
-            incomingCall={!isConnectingHearing ? incomingCall : null}
+            incomingCall={!isConnectingHearing && !activeHearing ? incomingCall : null}
+            isInCall={!!activeHearing}
+            isConnecting={isConnectingHearing}
             onAccept={handleAcceptIncomingCall}
             onDecline={handleDeclineIncomingCall}
           />

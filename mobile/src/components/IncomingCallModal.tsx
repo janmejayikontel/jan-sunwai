@@ -22,17 +22,21 @@ export interface IncomingCallData {
 
 interface IncomingCallModalProps {
   incomingCall: IncomingCallData | null;
+  isInCall?: boolean;
+  isConnecting?: boolean;
   onAccept: () => void;
   onDecline: () => void;
 }
 
 export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
   incomingCall,
+  isInCall = false,
+  isConnecting = false,
   onAccept,
   onDecline,
 }) => {
   useEffect(() => {
-    if (incomingCall) {
+    if (incomingCall && !isInCall && !isConnecting) {
       // Vibrate like an incoming phone call
       const ONE_SECOND_IN_MS = 1000;
       const PATTERN = [
@@ -50,15 +54,15 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
     return () => {
       Vibration.cancel();
     };
-  }, [incomingCall]);
+  }, [incomingCall, isInCall, isConnecting]);
 
-  if (!incomingCall) return null;
+  if (!incomingCall || isInCall || isConnecting) return null;
 
   return (
     <Modal
       transparent
       animationType="slide"
-      visible={!!incomingCall}
+      visible={!!incomingCall && !isInCall && !isConnecting}
       onRequestClose={onDecline}
     >
       <View style={styles.overlay}>

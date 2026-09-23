@@ -24,6 +24,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * Native Full-Screen Incoming Call Activity
@@ -398,21 +399,28 @@ class IncomingCallActivity : AppCompatActivity() {
         isPulseActive = false
         handler.removeCallbacksAndMessages(null)
 
-        // 1. Immediately dismiss this activity and all native UI BEFORE launching the meeting room
-        //    finish() is called first so the activity is gone before MainActivity starts
         CallOverlayManager.dismiss(applicationContext)
         JanSunwaiVoIPService.stopActiveRinging()
         JanSunwaiVoIPService.setInCallState(true)
-
-        // 2. Consume lastReceivedCallData so AppState-triggered checkPendingNativeCall
-        //    doesn't re-show the incoming popup after user enters the meeting room
         JanSunwaiVoIPService.lastReceivedCallData = null
 
-        // 3. Post accept response to server in background (non-blocking)
-        if (callId.isNotEmpty() && serverUrl.isNotEmpty() && userPhone.isNotEmpty()) {
-            Thread {
-                try {
-                    val cleanBase = serverUrl.trim().trimEnd('/')
+        // Fetch LiveKit token in worker thread before launching MainActivity
+        // This ensures MainActivity enters the VideoHearingScreen in 0ms with zero popups
+        Thread {
+            var token = ""
+            var roomName = ""
+            var lkUrl = ""
+            try {
+                var cleanBase = serverUrl.trim().trimEnd('/')
+                if (cleanBase.isEmpty()) {
+                    val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                    cleanBase = (prefs.getString("server_url", "") ?: "").trim().trimEnd('/')
+                }
+                if (cleanBase.isEmpty()) {
+                    cleanBase = "https://organisms-issues-pounds-horizontal.trycloudflare.com"
+                }
+
+                if (callId.isNotEmpty() && userPhone.isNotEmpty()) {
                     val url = "${cleanBase}/api/calls/${callId}/respond"
                     val body = JSONObject().apply {
                         put("phone", userPhone)
@@ -420,22 +428,39 @@ class IncomingCallActivity : AppCompatActivity() {
                         put("callId", callId)
                     }.toString()
 
-                    val client = OkHttpClient()
+                    val client = OkHttpClient.Builder()
+                        .connectTimeout(3, TimeUnit.SECONDS)
+                        .readTimeout(3, TimeUnit.SECONDS)
+                        .build()
                     val req = Request.Builder()
                         .url(url)
                         .addHeader("Bypass-Tunnel-Reminder", "true")
                         .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
                         .build()
-                    client.newCall(req).execute().close()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Background accept notify error", e)
-                }
-            }.start()
-        }
+                    val resp = client.newCall(req).execute()
+                    val respBody = resp.body?.string() ?: ""
+                    resp.close()
 
-        // 4. Launch MainActivity (this will show the meeting room via React Native)
-        //    finish() is called INSIDE launchMainActivity after startActivity
-        launchMainActivity("", "", "")
+                    if (resp.isSuccessful && respBody.isNotEmpty()) {
+                        val json = JSONObject(respBody)
+                        if (json.optBoolean("success", false)) {
+                            val lk = json.optJSONObject("livekit")
+                            if (lk != null) {
+                                token = lk.optString("token", "")
+                                roomName = lk.optString("roomName", "")
+                                lkUrl = lk.optString("url", "")
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error fetching livekit token on accept: ${e.message}")
+            }
+
+            handler.post {
+                launchMainActivity(token, roomName, lkUrl)
+            }
+        }.start()
     }
 
     private fun launchMainActivity(token: String, roomName: String, lkUrl: String) {

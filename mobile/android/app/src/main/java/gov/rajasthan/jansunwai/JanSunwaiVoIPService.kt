@@ -605,7 +605,7 @@ class JanSunwaiVoIPService : Service() {
                 .readTimeout(4, TimeUnit.SECONDS)
                 .build()
             val req = Request.Builder()
-                .url("https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt")
+                .url("https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=" + System.currentTimeMillis())
                 .header("Cache-Control", "no-cache")
                 .build()
             val res = client.newCall(req).execute()
