@@ -141,6 +141,8 @@ export default function IncomingCallModal({
     onAcceptRef.current = onAccept;
   }, [onDecline, onAccept]);
 
+  const [isAccepting, setIsAccepting] = useState(false);
+
   // Start ringtone & mobile vibration on mount, stop on unmount
   useEffect(() => {
     const ringtone = createRingtone();
@@ -180,6 +182,8 @@ export default function IncomingCallModal({
   }, []); // Empty dependency array: runs only on modal mount/unmount
 
   const handleAccept = () => {
+    if (isAccepting) return;
+    setIsAccepting(true);
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
       try { navigator.vibrate(0); } catch {}
     }
@@ -207,7 +211,9 @@ export default function IncomingCallModal({
 
         {/* Ringing Indicator */}
         <div className="call-modal__ringing">
-          🔔 इनकमिंग जन सुनवाई वीडियो कॉल • Incoming Video Call
+          {isAccepting
+            ? "⏳ सुनवाई कक्ष में प्रवेश हो रहा है... • Connecting to Room"
+            : "🔔 इनकमिंग जन सुनवाई वीडियो कॉल • Incoming Video Call"}
         </div>
 
         {/* Caller Info */}
@@ -231,37 +237,45 @@ export default function IncomingCallModal({
 
         {/* Action Buttons (Large, Touch-Friendly for Mobile) */}
         <div className="call-modal__actions">
-          {/* Decline Button */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-            <button
-              type="button"
-              className="call-modal__btn call-modal__btn--decline"
-              onClick={handleDecline}
-              aria-label="Decline hearing call"
-            >
-              <PhoneOff size={32} color="white" />
-            </button>
-            <div className="call-modal__btn-label" style={{ color: "#fca5a5" }}>
-              <strong>अस्वीकार</strong>
-              <div style={{ fontSize: "0.7rem", opacity: 0.8 }}>Decline</div>
+          {isAccepting ? (
+            <div style={{ padding: "16px", color: "#38bdf8", fontWeight: 700, fontSize: "1rem", textAlign: "center" }}>
+              ⏳ Connecting to Hearing Room...
             </div>
-          </div>
+          ) : (
+            <>
+              {/* Decline Button */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="call-modal__btn call-modal__btn--decline"
+                  onClick={handleDecline}
+                  aria-label="Decline hearing call"
+                >
+                  <PhoneOff size={32} color="white" />
+                </button>
+                <div className="call-modal__btn-label" style={{ color: "#fca5a5" }}>
+                  <strong>अस्वीकार</strong>
+                  <div style={{ fontSize: "0.7rem", opacity: 0.8 }}>Decline</div>
+                </div>
+              </div>
 
-          {/* Accept Button */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
-            <button
-              type="button"
-              className="call-modal__btn call-modal__btn--accept"
-              onClick={handleAccept}
-              aria-label="Accept hearing call"
-            >
-              <Phone size={32} color="white" />
-            </button>
-            <div className="call-modal__btn-label" style={{ color: "#6ee7b7" }}>
-              <strong>स्वीकार करें</strong>
-              <div style={{ fontSize: "0.7rem", opacity: 0.8 }}>Join Hearing</div>
-            </div>
-          </div>
+              {/* Accept Button */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="call-modal__btn call-modal__btn--accept"
+                  onClick={handleAccept}
+                  aria-label="Accept hearing call"
+                >
+                  <Phone size={32} color="white" />
+                </button>
+                <div className="call-modal__btn-label" style={{ color: "#6ee7b7" }}>
+                  <strong>स्वीकार करें</strong>
+                  <div style={{ fontSize: "0.7rem", opacity: 0.8 }}>Join Hearing</div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

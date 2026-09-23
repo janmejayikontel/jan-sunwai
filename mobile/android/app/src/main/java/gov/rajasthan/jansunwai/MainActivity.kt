@@ -30,6 +30,7 @@ class MainActivity : ReactActivity() {
       } catch (e: Exception) {
         // ignore
       }
+      JanSunwaiVoIPModule.emitIncomingCall(intentCallData)
     } else {
       // Fallback: check SharedPrefs for call data saved by background service (cold start from Accept notification)
       try {
@@ -38,6 +39,7 @@ class MainActivity : ReactActivity() {
         if (!savedCall.isNullOrBlank()) {
           JanSunwaiVoIPModule.pendingIncomingCallJson = savedCall
           android.util.Log.i("MainActivity", "Cold-start: restored pending_accepted_call from SharedPrefs: $savedCall")
+          JanSunwaiVoIPModule.emitIncomingCall(savedCall)
         }
       } catch (e: Exception) {
         // ignore
@@ -60,6 +62,8 @@ class MainActivity : ReactActivity() {
       } catch (e: Exception) {
         // ignore
       }
+      // CRITICAL: Immediately emit to React Native so it directly transitions into VideoHearingScreen
+      JanSunwaiVoIPModule.emitIncomingCall(it)
     }
   }
 

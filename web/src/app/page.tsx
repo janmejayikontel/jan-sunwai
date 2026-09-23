@@ -257,6 +257,11 @@ export default function JanSunwaiPortalPage() {
   const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(
     null
   );
+  const livekitConnectionRef = useRef<LiveKitConnection | null>(null);
+  useEffect(() => {
+    livekitConnectionRef.current = livekitConnection;
+  }, [livekitConnection]);
+  const dismissedCallIdsRef = useRef<Set<string>>(new Set());
 
   // Mid-call Add Officer state
   const [showAddOfficer, setShowAddOfficer] = useState(false);
@@ -415,9 +420,19 @@ export default function JanSunwaiPortalPage() {
           console.log("[WS] Received:", data.type, data);
 
           switch (data.type) {
-            case "incoming_call":
-              setIncomingCall(data.data as IncomingCallData);
+            case "incoming_call": {
+              if (livekitConnectionRef.current) {
+                console.log("[WS] User already inside meeting room — ignoring incoming call");
+                break;
+              }
+              const incData = data.data as IncomingCallData;
+              if (incData?.callId && dismissedCallIdsRef.current.has(incData.callId)) {
+                console.log("[WS] Call already accepted or dismissed — ignoring duplicate ring:", incData.callId);
+                break;
+              }
+              setIncomingCall(incData);
               break;
+            }
             case "call_accepted":
               showToast(
                 `${data.data.participantName} joined the hearing`,
@@ -486,7 +501,7 @@ export default function JanSunwaiPortalPage() {
     let lastPollTime = 0;
     const pollInterval = setInterval(async () => {
       if (!active || !currentUser) return;
-      if (livekitConnection || incomingCall) return;
+      if (livekitConnectionRef.current || incomingCall) return;
 
       const isWsOpen = wsRef.current?.readyState === WebSocket.OPEN;
       const now = Date.now();
@@ -501,9 +516,13 @@ export default function JanSunwaiPortalPage() {
         if (checkRes.ok) {
           const checkData = await checkRes.json();
           if (checkData.hasIncomingCall && checkData.incomingCall) {
+            const inc = checkData.incomingCall;
+            if (livekitConnectionRef.current) return;
+            if (dismissedCallIdsRef.current.has(inc.callId)) return;
+
             setIncomingCall((prev) => {
-              if (prev && prev.callId === checkData.incomingCall.callId) return prev;
-              return checkData.incomingCall;
+              if (prev && prev.callId === inc.callId) return prev;
+              return inc;
             });
           }
         }
@@ -517,7 +536,7 @@ export default function JanSunwaiPortalPage() {
       clearInterval(pollInterval);
       wsRef.current?.close();
     };
-  }, [currentUser, showToast, livekitConnection, incomingCall]);
+  }, [currentUser, showToast]);
 
   // ─── Fetch Grievances for Citizen / Field Employee ──────────
   useEffect(() => {
@@ -1031,9 +1050,18 @@ export default function JanSunwaiPortalPage() {
     stopAllRingtones();
     if (!incomingCall || !currentUser) return;
 
+    const callToAccept = incomingCall;
+    // 1. Immediately blacklist call IDs so no event or poll re-shows this call
+    if (callToAccept.callId) dismissedCallIdsRef.current.add(callToAccept.callId);
+    if (callToAccept.roomName) dismissedCallIdsRef.current.add(callToAccept.roomName);
+
+    // 2. IMMEDIATELY CLOSE THE POPUP so citizen screen is clean
+    setIncomingCall(null);
+    showToast("Connecting to video hearing room...", "info");
+
     try {
       const res = await fetch(
-        `${API_BASE}/api/calls/${incomingCall.callId}/respond`,
+        `${API_BASE}/api/calls/${callToAccept.callId}/respond`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1051,11 +1079,11 @@ export default function JanSunwaiPortalPage() {
           token: data.livekit.token,
           url: data.livekit.url,
           roomName: data.livekit.roomName,
-          callId: incomingCall.callId,
+          callId: callToAccept.callId,
         });
+      } else {
+        showToast(data.error || "Failed to join hearing room", "error");
       }
-
-      setIncomingCall(null);
     } catch (err) {
       showToast("Failed to accept call", "error");
       console.error("Accept call error:", err);
@@ -1066,8 +1094,15 @@ export default function JanSunwaiPortalPage() {
     stopAllRingtones();
     if (!incomingCall || !currentUser) return;
 
+    const callToDecline = incomingCall;
+    if (callToDecline.callId) dismissedCallIdsRef.current.add(callToDecline.callId);
+    if (callToDecline.roomName) dismissedCallIdsRef.current.add(callToDecline.roomName);
+
+    // IMMEDIATELY CLOSE THE POPUP
+    setIncomingCall(null);
+
     try {
-      await fetch(`${API_BASE}/api/calls/${incomingCall.callId}/respond`, {
+      await fetch(`${API_BASE}/api/calls/${callToDecline.callId}/respond`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1078,8 +1113,6 @@ export default function JanSunwaiPortalPage() {
     } catch (err) {
       console.error("Decline call error:", err);
     }
-
-    setIncomingCall(null);
   };
 
   const handleEndCall = async () => {
@@ -1332,16 +1365,6 @@ export default function JanSunwaiPortalPage() {
     return (
       <main className="main-layout" style={{ padding: "0.5rem" }}>
         {renderToast()}
-        {incomingCall && (
-          <IncomingCallModal
-            callerName={incomingCall.callerName}
-            callerDesignation={incomingCall.callerDesignation}
-            subject={incomingCall.title}
-            participantCount={incomingCall.participantCount}
-            onAccept={handleAcceptIncomingCall}
-            onDecline={handleDeclineIncomingCall}
-          />
-        )}
         <div className="video-room-container">
           <div className="video-room-header">
             <div className="video-room-header__title">
