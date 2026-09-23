@@ -246,6 +246,14 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
                 // ignore
             }
             pendingIncomingCallJson = null
+            JanSunwaiVoIPService.lastReceivedCallData = null
+            // Clear SharedPrefs so getPendingCall never re-delivers this call
+            try {
+                reactContext.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                    .edit()
+                    .remove("pending_accepted_call")
+                    .apply()
+            } catch (e: Exception) { /* ignore */ }
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("DISMISS_CALL_ERROR", e.message, e)
@@ -259,9 +267,14 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
         if (savedCall != null) {
             prefs.edit().remove("pending_accepted_call").commit()
         }
-        val callData = savedCall ?: pendingIncomingCallJson ?: JanSunwaiVoIPService.lastReceivedCallData
+
+        // Don't return lastReceivedCallData if service already knows user is in a call
+        // This prevents AppState.change triggering re-show of popup after user accepted
+        val lastCall = if (JanSunwaiVoIPService.isInCall) null else JanSunwaiVoIPService.lastReceivedCallData
+
+        val callData = savedCall ?: pendingIncomingCallJson ?: lastCall
         pendingIncomingCallJson = null
-        JanSunwaiVoIPService.lastReceivedCallData = null // One-shot consumption so it never rings again on leave!
+        JanSunwaiVoIPService.lastReceivedCallData = null // One-shot consumption
         promise.resolve(callData)
     }
 }

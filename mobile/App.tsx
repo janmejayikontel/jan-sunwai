@@ -74,10 +74,13 @@ export default function App() {
     requestAndroidPermissions();
   }, []);
 
-  // ─── 0b. Silence Ringtone Immediately when Entering or Leaving a Hearing ─
+  // ─── 0b. Silence Ringtone & Kill Native Popup when Entering or Leaving a Hearing ─
   useEffect(() => {
     JanSunwaiVoIP?.stopRinging?.();
     if (activeHearing) {
+      // Safety net: explicitly dismiss IncomingCallActivity and CallOverlay
+      // even if dismissCall was already called in handleAcceptIncomingCall
+      JanSunwaiVoIP?.dismissCall?.(activeHearing.callId || activeHearing.grievanceId || null);
       JanSunwaiVoIP?.setInCall?.(true);
     } else {
       JanSunwaiVoIP?.setInCall?.(false);
@@ -248,6 +251,9 @@ export default function App() {
     setConnectingCaseInfo(target.grievanceId || target.roomName || 'Hearing');
 
     Vibration.cancel();
+    // dismissCall kills both IncomingCallActivity and CallOverlay immediately
+    // This is the most reliable way to ensure native UI is gone before meeting room opens
+    JanSunwaiVoIP?.dismissCall?.(target.callId || target.grievanceId || null);
     JanSunwaiVoIP?.stopRinging?.();
     JanSunwaiVoIP?.setInCall?.(true);
 

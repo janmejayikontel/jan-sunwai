@@ -396,16 +396,19 @@ class IncomingCallActivity : AppCompatActivity() {
     private fun onAcceptClicked() {
         Log.i(TAG, "User tapped ACCEPT on incoming call screen")
         isPulseActive = false
+        handler.removeCallbacksAndMessages(null)
 
-        // 1. Immediately dismiss CallOverlay and stop ringing/vibration
+        // 1. Immediately dismiss this activity and all native UI BEFORE launching the meeting room
+        //    finish() is called first so the activity is gone before MainActivity starts
         CallOverlayManager.dismiss(applicationContext)
         JanSunwaiVoIPService.stopActiveRinging()
         JanSunwaiVoIPService.setInCallState(true)
 
-        // 2. Immediately launch MainActivity so user sees the meeting room right away
-        launchMainActivity("", "", "")
+        // 2. Consume lastReceivedCallData so AppState-triggered checkPendingNativeCall
+        //    doesn't re-show the incoming popup after user enters the meeting room
+        JanSunwaiVoIPService.lastReceivedCallData = null
 
-        // 3. Post accept response to server in background thread as non-blocking confirmation
+        // 3. Post accept response to server in background (non-blocking)
         if (callId.isNotEmpty() && serverUrl.isNotEmpty() && userPhone.isNotEmpty()) {
             Thread {
                 try {
@@ -429,6 +432,10 @@ class IncomingCallActivity : AppCompatActivity() {
                 }
             }.start()
         }
+
+        // 4. Launch MainActivity (this will show the meeting room via React Native)
+        //    finish() is called INSIDE launchMainActivity after startActivity
+        launchMainActivity("", "", "")
     }
 
     private fun launchMainActivity(token: String, roomName: String, lkUrl: String) {
