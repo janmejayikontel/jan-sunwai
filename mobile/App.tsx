@@ -232,18 +232,11 @@ export default function App() {
     const target = overrideCall || incomingCall;
     if (!target) return;
 
-    // Immediately blacklist this call's IDs so WebSocket/polling never re-show the popup
-    [target.callId, target.grievanceId, target.roomName].forEach((id) => {
-      if (id) {
-        dismissedCallIdsRef.current.add(id);
-        const clean = id.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
-        if (clean) {
-          dismissedCallIdsRef.current.add(clean);
-          dismissedCallIdsRef.current.add(`JS-${clean}`);
-          dismissedCallIdsRef.current.add(`hearing_${clean}`);
-        }
-      }
-    });
+    // Only blacklist this specific call session ID so duplicate notifications don't re-prompt
+    // NEVER blacklist grievanceId so subsequent calls for this grievance ring properly
+    if (target.callId && !target.callId.startsWith('JS-') && !target.callId.startsWith('RAJ-')) {
+      dismissedCallIdsRef.current.add(target.callId);
+    }
 
     // IMMEDIATELY HIDE THE INCOMING CALL MODAL and mark as connecting
     setIncomingCall(null);
@@ -371,20 +364,9 @@ export default function App() {
   };
 
   const isDismissedCall = (callId?: string, grievanceId?: string, roomName?: string): boolean => {
-    if (!callId && !grievanceId && !roomName) return false;
-    const ids = [callId, grievanceId, roomName].filter(Boolean) as string[];
-    for (const id of ids) {
-      if (dismissedCallIdsRef.current.has(id)) return true;
-      const clean = id.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
-      if (clean && (
-        dismissedCallIdsRef.current.has(clean) ||
-        dismissedCallIdsRef.current.has(`JS-${clean}`) ||
-        dismissedCallIdsRef.current.has(`hearing_${clean}`)
-      )) {
-        return true;
-      }
-    }
-    return false;
+    // Only blacklist specific session callId. NEVER blacklist grievanceId so subsequent hearing calls ring properly!
+    if (!callId) return false;
+    return dismissedCallIdsRef.current.has(callId);
   };
 
   const handleDeclineIncomingCall = async () => {
@@ -393,19 +375,10 @@ export default function App() {
     const grievanceId = incomingCall.grievanceId;
     const roomName = incomingCall.roomName;
 
-    // Immediately blacklist all identifiers so no ringing sound or prompt persists
-    [targetCallId, grievanceId, roomName].forEach((id) => {
-      if (id) {
-        dismissedCallIdsRef.current.add(id);
-        const clean = id.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
-        if (clean) {
-          dismissedCallIdsRef.current.add(clean);
-          dismissedCallIdsRef.current.add(`JS-${clean}`);
-          dismissedCallIdsRef.current.add(`hearing_${clean}`);
-        }
-        JanSunwaiVoIP?.dismissCall?.(id);
-      }
-    });
+    if (targetCallId && !targetCallId.startsWith('JS-') && !targetCallId.startsWith('RAJ-')) {
+      dismissedCallIdsRef.current.add(targetCallId);
+    }
+    JanSunwaiVoIP?.dismissCall?.(targetCallId || null);
     Vibration.cancel();
     JanSunwaiVoIP?.stopRinging?.();
 
@@ -444,19 +417,11 @@ export default function App() {
       const roomName = activeHearing.roomName;
       const base = cleanServerUrl(serverUrl);
 
-      // 2. Blacklist all identifiers in both React Native ref and Native Android VoIP service
-      [callId, roomName, grievanceId].forEach((id) => {
-        if (id) {
-          dismissedCallIdsRef.current.add(id);
-          const clean = id.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
-          if (clean) {
-            dismissedCallIdsRef.current.add(clean);
-            dismissedCallIdsRef.current.add(`JS-${clean}`);
-            dismissedCallIdsRef.current.add(`hearing_${clean}`);
-          }
-          JanSunwaiVoIP?.dismissCall?.(id);
-        }
-      });
+      // Only blacklist this specific call session ID, never grievanceId
+      if (callId && !callId.startsWith('JS-') && !callId.startsWith('RAJ-')) {
+        dismissedCallIdsRef.current.add(callId);
+      }
+      JanSunwaiVoIP?.dismissCall?.(callId || null);
 
       const targetLeaveId = callId || grievanceId || roomName;
       if (targetLeaveId && currentUser?.phone) {

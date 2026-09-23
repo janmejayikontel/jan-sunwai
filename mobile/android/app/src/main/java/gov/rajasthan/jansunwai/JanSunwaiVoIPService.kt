@@ -96,16 +96,14 @@ class JanSunwaiVoIPService : Service() {
         fun dismissCall(callId: String?) {
             if (!callId.isNullOrBlank()) {
                 val c = callId.trim().uppercase()
-                dismissedCallIds.add(c)
-                val clean = c.replace(Regex("^(HEARING_|JS-)"), "")
-                if (clean.isNotEmpty()) {
-                    dismissedCallIds.add(clean)
-                    dismissedCallIds.add("JS-$clean")
-                    dismissedCallIds.add("HEARING_$clean")
+                // Only blacklist specific session call ID, NEVER blacklist grievance ID (e.g. RAJ-..., JS-...)
+                if (!c.startsWith("RAJ-") && !c.startsWith("JS-")) {
+                    dismissedCallIds.add(c)
+                    Log.i(TAG, "Dismissed callId added to blacklist: $c")
                 }
-                Log.i(TAG, "Dismissed callId added to blacklist: $c (total dismissed: ${dismissedCallIds.size})")
             }
             lastReceivedCallData = null
+            isInCall = false
             try {
                 CallOverlayManager.dismiss()
                 IncomingCallActivity.activeInstance?.finishAndRemoveTask()
@@ -126,18 +124,10 @@ class JanSunwaiVoIPService : Service() {
             stopActiveRinging()
         }
 
-        fun isCallDismissed(callId: String?, grievanceId: String?): Boolean {
+        fun isCallDismissed(callId: String?, grievanceId: String? = null): Boolean {
             if (!callId.isNullOrBlank()) {
                 val c = callId.trim().uppercase()
                 if (dismissedCallIds.contains(c)) return true
-                val clean = c.replace(Regex("^(HEARING_|JS-)"), "")
-                if (dismissedCallIds.contains(clean) || dismissedCallIds.contains("JS-$clean") || dismissedCallIds.contains("HEARING_$clean")) return true
-            }
-            if (!grievanceId.isNullOrBlank()) {
-                val g = grievanceId.trim().uppercase()
-                if (dismissedCallIds.contains(g)) return true
-                val cleanG = g.replace(Regex("^(HEARING_|JS-)"), "")
-                if (dismissedCallIds.contains(cleanG) || dismissedCallIds.contains("JS-$cleanG") || dismissedCallIds.contains("HEARING_$cleanG")) return true
             }
             return false
         }
@@ -222,18 +212,17 @@ class JanSunwaiVoIPService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        Log.i(TAG, "App task removed (swiped away) - keeping foreground VoIP service active")
+        Log.i(TAG, "App task removed (swiped away) - resetting in-call state and keeping foreground VoIP service active")
 
-        // Don't reset isInCall - check SharedPrefs to preserve accepted call state
-        val taskPrefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
-        val savedInCall = taskPrefs.getBoolean("is_in_call", false)
-        if (!savedInCall) {
-            isInCall = false
-        } else {
-            Log.i(TAG, "onTaskRemoved: preserving isInCall=true (user still in a call)")
-        }
+        isInCall = false
         isCallRinging = false
         currentRingingCallId = null
+
+        val taskPrefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+        taskPrefs.edit()
+            .putBoolean("is_in_call", false)
+            .remove("pending_accepted_call")
+            .commit()
 
         // Stop any active ringtone/vibration safely without dropping foreground status
         try { mediaPlayer?.stop(); mediaPlayer?.reset(); mediaPlayer?.release(); mediaPlayer = null } catch (e: Throwable) {}
@@ -665,13 +654,12 @@ class JanSunwaiVoIPService : Service() {
             } else if (res.isSuccessful) {
                 val body = res.body?.string() ?: ""
                 val json = JSONObject(body)
-                if (json.optBoolean("hasIncomingCall", false) && !isInCall && !isCallRinging) {
+                if (json.optBoolean("hasIncomingCall", false) && !isCallRinging) {
                     val callObj = json.optJSONObject("incomingCall")
-                    if (callObj != null && !isCallRinging && !isInCall) {
+                    if (callObj != null && !isCallRinging) {
                         val callId = callObj.optString("callId", "")
-                        val grievanceId = callObj.optString("grievanceId", "")
-                        if (isCallDismissed(callId, grievanceId)) {
-                            Log.i(TAG, "Ignoring incoming call in background poll — call $callId / case $grievanceId was already left/dismissed")
+                        if (callId.isNotEmpty() && isCallDismissed(callId)) {
+                            Log.i(TAG, "Ignoring incoming call in background poll — call $callId was already dismissed")
                         } else {
                             handler.post {
                                 handleIncomingCall(callObj.toString())
@@ -687,8 +675,6 @@ class JanSunwaiVoIPService : Service() {
     }
 
     fun handleIncomingCall(callJsonString: String) {
-        if (isInCall || isCallRinging) return
-
         try {
             val json = JSONObject(callJsonString)
             val callId = json.optString("callId")
@@ -697,10 +683,18 @@ class JanSunwaiVoIPService : Service() {
             val callerDesig = json.optString("callerDesignation", "Presiding Officer")
             val title = json.optString("title", "Jan Sunwai Video Hearing")
 
-            if (isCallDismissed(callId, grievanceId)) {
-                Log.i(TAG, "handleIncomingCall: Aborting ring — call $callId / case $grievanceId was already left/dismissed")
+            if (isCallRinging && currentRingingCallId == callId && callId.isNotEmpty()) {
+                Log.i(TAG, "handleIncomingCall: Already ringing for call $callId")
                 return
             }
+
+            if (callId.isNotEmpty() && isCallDismissed(callId)) {
+                Log.i(TAG, "handleIncomingCall: Aborting ring — call $callId was dismissed")
+                return
+            }
+
+            // Always allow new incoming call from officer: reset inCall state
+            isInCall = false
 
             isCallRinging = true
             lastReceivedCallData = callJsonString
