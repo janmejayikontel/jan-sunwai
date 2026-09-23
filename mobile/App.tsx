@@ -32,9 +32,22 @@ export default function App() {
   const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
   const [hasOverlayPermission, setHasOverlayPermission] = useState<boolean>(true);
 
+  // Keep refs in sync with state so WebSocket/polling closures always see fresh values
+  const setActiveHearingAndRef = (val: ActiveHearingState | null) => {
+    activeHearingRef.current = val;
+    setActiveHearing(val);
+  };
+  const setIsConnectingHearingAndRef = (val: boolean) => {
+    isConnectingHearingRef.current = val;
+    setIsConnectingHearing(val);
+  };
+
   const wsRef = useRef<WebSocket | null>(null);
   const pendingCallRef = useRef<any>(null);
   const dismissedCallIdsRef = useRef<Set<string>>(new Set());
+  // Refs that shadow state — used in WebSocket/polling closures to avoid stale captures
+  const activeHearingRef = useRef<ActiveHearingState | null>(null);
+  const isConnectingHearingRef = useRef<boolean>(false);
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
   // ─── 0. Request Notification Permissions on Android 13+ ──────
@@ -216,10 +229,22 @@ export default function App() {
     const target = overrideCall || incomingCall;
     if (!target) return;
 
-    // IMMEDIATELY HIDE THE INCOMING CALL MODAL!
-    // Never allow the incoming call modal or "Join Hearing" button to linger on screen!
+    // Immediately blacklist this call's IDs so WebSocket/polling never re-show the popup
+    [target.callId, target.grievanceId, target.roomName].forEach((id) => {
+      if (id) {
+        dismissedCallIdsRef.current.add(id);
+        const clean = id.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+        if (clean) {
+          dismissedCallIdsRef.current.add(clean);
+          dismissedCallIdsRef.current.add(`JS-${clean}`);
+          dismissedCallIdsRef.current.add(`hearing_${clean}`);
+        }
+      }
+    });
+
+    // IMMEDIATELY HIDE THE INCOMING CALL MODAL and mark as connecting
     setIncomingCall(null);
-    setIsConnectingHearing(true);
+    setIsConnectingHearingAndRef(true);
     setConnectingCaseInfo(target.grievanceId || target.roomName || 'Hearing');
 
     Vibration.cancel();
@@ -252,7 +277,7 @@ export default function App() {
     // If pre-fetched LiveKit token exists from IncomingCallActivity, enter room in 0ms!
     if (target.livekitToken && target.livekitRoomName) {
       console.log('[App] Entering meeting room immediately with pre-fetched LiveKit token');
-      setActiveHearing({
+      setActiveHearingAndRef({
         serverUrl: target.livekitUrl || cleanServerUrl(target.serverUrl || serverUrl),
         token: target.livekitToken,
         roomName: target.livekitRoomName,
@@ -262,14 +287,14 @@ export default function App() {
         callId: target.callId,
       });
       setIncomingCall(null);
-      setIsConnectingHearing(false);
+      setIsConnectingHearingAndRef(false);
       return;
     }
 
     if (!user) {
       console.log('[App] User session not ready yet, queuing pending call...');
       pendingCallRef.current = target;
-      setIsConnectingHearing(false);
+      setIsConnectingHearingAndRef(false);
       return;
     }
 
@@ -312,7 +337,7 @@ export default function App() {
       console.log('[App] Accept response:', data);
 
       if (data.success && data.livekit) {
-        setActiveHearing({
+        setActiveHearingAndRef({
           serverUrl: data.livekit.url || base,
           token: data.livekit.token,
           roomName: data.livekit.roomName,
@@ -329,7 +354,7 @@ export default function App() {
       Alert.alert('Connection Error', err?.message || 'Failed to join call.');
     } finally {
       setIncomingCall(null);
-      setIsConnectingHearing(false);
+      setIsConnectingHearingAndRef(false);
     }
   };
 
@@ -441,7 +466,7 @@ export default function App() {
     }
     JanSunwaiVoIP?.stopRinging?.();
     setIncomingCall(null);
-    setActiveHearing(null);
+    setActiveHearingAndRef(null);
   };
 
   // ─── 1b. Check if Native VoIP Service has a pending incoming call (woken from closed/bg) ─
@@ -462,11 +487,11 @@ export default function App() {
             }
             if (data.autoAccept) {
               setIncomingCall(null);
-              setIsConnectingHearing(true);
+              setIsConnectingHearingAndRef(true);
               setConnectingCaseInfo(data.grievanceId || data.roomName || 'Hearing');
               handleAcceptIncomingCall(data, currentUser);
             } else {
-              if (!activeHearing && !isConnectingHearing) {
+              if (!activeHearingRef.current && !isConnectingHearingRef.current) {
                 setIncomingCall(data as IncomingCallData);
               }
             }
@@ -492,11 +517,11 @@ export default function App() {
           }
           if (data.autoAccept) {
             setIncomingCall(null);
-            setIsConnectingHearing(true);
+            setIsConnectingHearingAndRef(true);
             setConnectingCaseInfo(data.grievanceId || data.roomName || 'Hearing');
             handleAcceptIncomingCall(data, currentUser);
           } else {
-            if (!activeHearing && !isConnectingHearing) {
+            if (!activeHearingRef.current && !isConnectingHearingRef.current) {
               setIncomingCall(data as IncomingCallData);
             }
           }
@@ -570,7 +595,8 @@ export default function App() {
                 JanSunwaiVoIP?.stopRinging?.();
                 return;
               }
-              if (!activeHearing && !isConnectingHearing) {
+              // Use refs — not state — to avoid stale closure capturing initial false/null values
+              if (!activeHearingRef.current && !isConnectingHearingRef.current) {
                 setIncomingCall(msg.data as IncomingCallData);
               }
             } else if (msg.type === 'call_ended' || msg.type === 'call_declined') {
@@ -610,7 +636,8 @@ export default function App() {
     // A light fallback runs every 30s if WS is connected, or every 8s if WS is temporarily down.
     let lastPollTime = 0;
     const pollInterval = setInterval(async () => {
-      if (!isSubscribed || activeHearing || isConnectingHearing) return;
+      // Use refs so this closure always sees the current value even after state changes
+      if (!isSubscribed || activeHearingRef.current || isConnectingHearingRef.current) return;
 
       const isWsOpen = wsRef.current && wsRef.current.readyState === 1; // 1 = OPEN
       const now = Date.now();
@@ -625,7 +652,8 @@ export default function App() {
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.hasIncomingCall && data.incomingCall && !isConnectingHearing && !activeHearing) {
+          // Use refs to check current state to avoid stale closure
+          if (data.hasIncomingCall && data.incomingCall && !isConnectingHearingRef.current && !activeHearingRef.current) {
             const inc = data.incomingCall;
             if (isDismissedCall(inc.callId, inc.grievanceId, inc.roomName)) {
               return;
@@ -684,7 +712,7 @@ export default function App() {
     JanSunwaiVoIP?.stopRinging?.();
     JanSunwaiVoIP?.setInCall?.(false);
     JanSunwaiVoIP?.stopService?.();
-    setActiveHearing(null);
+    setActiveHearingAndRef(null);
     setCurrentUser(null);
     setIncomingCall(null);
     try {
@@ -768,7 +796,7 @@ export default function App() {
           <HomeScreen
             user={currentUser}
             serverUrl={serverUrl}
-            onJoinHearing={(params) => setActiveHearing(params)}
+            onJoinHearing={(params) => setActiveHearingAndRef(params)}
             onLogout={handleLogout}
           />
 
