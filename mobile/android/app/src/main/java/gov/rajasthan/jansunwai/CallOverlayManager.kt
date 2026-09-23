@@ -345,7 +345,7 @@ object CallOverlayManager {
                         marginStart = dp(12)
                     }
                     setOnClickListener {
-                        Log.i(TAG, "User tapped ACCEPT on CallOverlay")
+                        Log.i(TAG, "User tapped ACCEPT on CallOverlay — closing overlay immediately")
                         dismiss(context)
                         IncomingCallActivity.activeInstance?.finish()
 
@@ -353,11 +353,39 @@ object CallOverlayManager {
                         JanSunwaiVoIPService.setInCallState(true)
                         JanSunwaiVoIPService.lastReceivedCallData = null
 
-                        // Fetch LiveKit token in worker thread before launching MainActivity
+                        val updatedCallData = try {
+                            val j = if (callJsonString.isNotEmpty()) JSONObject(callJsonString) else JSONObject()
+                            j.put("autoAccept", true)
+                            j.put("callId", effectiveCallId)
+                            if (serverUrl.isNotEmpty()) j.put("serverUrl", serverUrl)
+                            if (userPhone.isNotEmpty()) j.put("userPhone", userPhone)
+                            j.toString()
+                        } catch (e: Exception) {
+                            callJsonString
+                        }
+
+                        try {
+                            val prefs = context.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                            prefs.edit().putString("pending_accepted_call", updatedCallData).commit()
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Error saving pending_accepted_call to prefs", e)
+                        }
+
+                        JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
+
+                        val launchIntent = Intent(context, MainActivity::class.java).apply {
+                            addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            )
+                            putExtra("action", "accept_call")
+                            putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
+                        }
+                        context.startActivity(launchIntent)
+
+                        // Fetch LiveKit token in background worker thread and deliver to React Native
                         Thread {
-                            var token = ""
-                            var roomName = ""
-                            var lkUrl = ""
                             try {
                                 var cleanBase = serverUrl.trim().trimEnd('/')
                                 if (cleanBase.isEmpty()) {
@@ -377,8 +405,8 @@ object CallOverlayManager {
                                     }.toString()
 
                                     val client = OkHttpClient.Builder()
-                                        .connectTimeout(3, TimeUnit.SECONDS)
-                                        .readTimeout(3, TimeUnit.SECONDS)
+                                        .connectTimeout(4, TimeUnit.SECONDS)
+                                        .readTimeout(4, TimeUnit.SECONDS)
                                         .build()
                                     val req = Request.Builder()
                                         .url(url)
@@ -394,51 +422,21 @@ object CallOverlayManager {
                                         if (json.optBoolean("success", false)) {
                                             val lk = json.optJSONObject("livekit")
                                             if (lk != null) {
-                                                token = lk.optString("token", "")
-                                                roomName = lk.optString("roomName", "")
-                                                lkUrl = lk.optString("url", "")
+                                                val token = lk.optString("token", "")
+                                                val roomName = lk.optString("roomName", "")
+                                                val lkUrl = lk.optString("url", "")
+                                                val withToken = JSONObject(updatedCallData).apply {
+                                                    put("livekitToken", token)
+                                                    put("livekitRoomName", roomName)
+                                                    put("livekitUrl", lkUrl)
+                                                }.toString()
+                                                JanSunwaiVoIPModule.emitIncomingCall(withToken)
                                             }
                                         }
                                     }
                                 }
                             } catch (e: Exception) {
-                                Log.w(TAG, "Error fetching livekit token on overlay accept: ${e.message}")
-                            }
-
-                            handler.post {
-                                val updatedCallData = try {
-                                    val j = if (callJsonString.isNotEmpty()) JSONObject(callJsonString) else JSONObject()
-                                    j.put("autoAccept", true)
-                                    j.put("callId", effectiveCallId)
-                                    if (serverUrl.isNotEmpty()) j.put("serverUrl", serverUrl)
-                                    if (userPhone.isNotEmpty()) j.put("userPhone", userPhone)
-                                    if (token.isNotEmpty()) j.put("livekitToken", token)
-                                    if (roomName.isNotEmpty()) j.put("livekitRoomName", roomName)
-                                    if (lkUrl.isNotEmpty()) j.put("livekitUrl", lkUrl)
-                                    j.toString()
-                                } catch (e: Exception) {
-                                    callJsonString
-                                }
-
-                                try {
-                                    val prefs = context.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
-                                    prefs.edit().putString("pending_accepted_call", updatedCallData).commit()
-                                } catch (e: Exception) {
-                                    Log.w(TAG, "Error saving pending_accepted_call to prefs", e)
-                                }
-
-                                JanSunwaiVoIPModule.pendingIncomingCallJson = updatedCallData
-
-                                val launchIntent = Intent(context, MainActivity::class.java).apply {
-                                    addFlags(
-                                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                    )
-                                    putExtra("action", "accept_call")
-                                    putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
-                                }
-                                context.startActivity(launchIntent)
+                                Log.w(TAG, "Error posting accept to server: ${e.message}")
                             }
                         }.start()
                     }

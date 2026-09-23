@@ -1,6 +1,7 @@
 
 package gov.rajasthan.jansunwai
 
+import android.app.ActivityOptions
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -22,6 +23,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.Person
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.OkHttpClient
@@ -37,7 +39,7 @@ class JanSunwaiVoIPService : Service() {
     companion object {
         const val TAG = "JanSunwaiVoIP"
         const val STANDBY_CHANNEL_ID = "jansunwai_standby_channel"
-        const val CALL_CHANNEL_ID = "jansunwai_incoming_call_channel_v5"
+        const val CALL_CHANNEL_ID = "jansunwai_incoming_call_channel_v7"
         const val NOTIFICATION_ID_STANDBY = 1001
         const val NOTIFICATION_ID_CALL = 9999
 
@@ -750,19 +752,35 @@ class JanSunwaiVoIPService : Service() {
             val incomingCallIntent = Intent(this, IncomingCallActivity::class.java).apply {
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
                 )
                 putExtra(EXTRA_CALL_ID, callId)
                 putExtra(EXTRA_CALL_DATA, callJsonString)
                 putExtra(EXTRA_SERVER_URL, serverUrl)
                 putExtra(EXTRA_PHONE, userPhone)
             }
-            val fullScreenPendingIntent = PendingIntent.getActivity(
-                this, reqCode, incomingCallIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+
+            // CRITICAL (Android 14+ / API 34+): Explicitly allow Background Activity Launch (BAL)
+            // Without this bundle, Android 14 silently blocks full-screen intent launches from background services
+            val activityOptionsBundle = if (Build.VERSION.SDK_INT >= 34) {
+                ActivityOptions.makeBasic()
+                    .setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                    .toBundle()
+            } else null
+
+            val fullScreenPendingIntent = if (Build.VERSION.SDK_INT >= 34 && activityOptionsBundle != null) {
+                PendingIntent.getActivity(
+                    this, reqCode, incomingCallIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    activityOptionsBundle
+                )
+            } else {
+                PendingIntent.getActivity(
+                    this, reqCode, incomingCallIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            }
 
             // Accept: directly launch MainActivity via PendingIntent so Android grants BAL (Background Activity Launch)
             // even when app process is completely killed. Saves call data to SharedPrefs first.
@@ -787,13 +805,21 @@ class JanSunwaiVoIPService : Service() {
             // Also pre-save to SharedPrefs so MainActivity reads the call on cold start
             try {
                 val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
-                prefs.edit().putString("pending_accepted_call", acceptCallData).apply()
+                prefs.edit().putString("pending_accepted_call", acceptCallData).commit()
             } catch (e: Exception) {}
 
-            val acceptPendingIntent = PendingIntent.getActivity(
-                this, reqCode + 1, acceptMainIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            val acceptPendingIntent = if (Build.VERSION.SDK_INT >= 34 && activityOptionsBundle != null) {
+                PendingIntent.getActivity(
+                    this, reqCode + 1, acceptMainIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                    activityOptionsBundle
+                )
+            } else {
+                PendingIntent.getActivity(
+                    this, reqCode + 1, acceptMainIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            }
 
             // Decline intent from notification action button
             val declineIntent = Intent(this, JanSunwaiVoIPService::class.java).apply {
@@ -807,6 +833,11 @@ class JanSunwaiVoIPService : Service() {
 
             val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
                 ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+            val callerPerson = Person.Builder()
+                .setName(callerName)
+                .setImportant(true)
+                .build()
 
             val notification = NotificationCompat.Builder(this, CALL_CHANNEL_ID)
                 .setContentTitle("🏛️ $callerName ($callerDesig)")
@@ -823,8 +854,11 @@ class JanSunwaiVoIPService : Service() {
                 .addAction(R.mipmap.ic_launcher, "📞 ACCEPT", acceptPendingIntent)
                 .addAction(R.mipmap.ic_launcher, "❌ DECLINE", declinePendingIntent)
                 .setStyle(
-                    NotificationCompat.BigTextStyle()
-                        .bigText("$callerName ($callerDesig) is calling you into the official Jan Sunwai video hearing for Case #$grievanceId.\n\nTap to answer full-screen.")
+                    NotificationCompat.CallStyle.forIncomingCall(
+                        callerPerson,
+                        declinePendingIntent,
+                        acceptPendingIntent
+                    )
                 )
                 .build()
 
@@ -857,10 +891,18 @@ class JanSunwaiVoIPService : Service() {
             // 2. Launch native full-screen incoming call UI immediately on main thread as primary layer
             handler.post {
                 try {
-                    fullScreenPendingIntent.send()
+                    if (Build.VERSION.SDK_INT >= 34 && activityOptionsBundle != null) {
+                        fullScreenPendingIntent.send(this, 0, null, null, null, null, activityOptionsBundle)
+                    } else {
+                        fullScreenPendingIntent.send()
+                    }
                 } catch (e: Exception) {
                     try {
-                        startActivity(incomingCallIntent)
+                        if (Build.VERSION.SDK_INT >= 34 && activityOptionsBundle != null) {
+                            startActivity(incomingCallIntent, activityOptionsBundle)
+                        } else {
+                            startActivity(incomingCallIntent)
+                        }
                     } catch (e2: Exception) {
                         Log.i(TAG, "Direct launch will show via fullScreenIntent / overlay: ${e2.message}")
                     }

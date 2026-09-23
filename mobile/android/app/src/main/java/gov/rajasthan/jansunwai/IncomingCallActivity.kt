@@ -395,7 +395,7 @@ class IncomingCallActivity : AppCompatActivity() {
     }
 
     private fun onAcceptClicked() {
-        Log.i(TAG, "User tapped ACCEPT on incoming call screen")
+        Log.i(TAG, "User tapped ACCEPT on incoming call screen — closing popup immediately")
         isPulseActive = false
         handler.removeCallbacksAndMessages(null)
 
@@ -404,81 +404,18 @@ class IncomingCallActivity : AppCompatActivity() {
         JanSunwaiVoIPService.setInCallState(true)
         JanSunwaiVoIPService.lastReceivedCallData = null
 
-        // Fetch LiveKit token in worker thread before launching MainActivity
-        // This ensures MainActivity enters the VideoHearingScreen in 0ms with zero popups
-        Thread {
-            var token = ""
-            var roomName = ""
-            var lkUrl = ""
-            try {
-                var cleanBase = serverUrl.trim().trimEnd('/')
-                if (cleanBase.isEmpty()) {
-                    val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
-                    cleanBase = (prefs.getString("server_url", "") ?: "").trim().trimEnd('/')
-                }
-                if (cleanBase.isEmpty()) {
-                    cleanBase = "https://organisms-issues-pounds-horizontal.trycloudflare.com"
-                }
-
-                if (callId.isNotEmpty() && userPhone.isNotEmpty()) {
-                    val url = "${cleanBase}/api/calls/${callId}/respond"
-                    val body = JSONObject().apply {
-                        put("phone", userPhone)
-                        put("action", "accept")
-                        put("callId", callId)
-                    }.toString()
-
-                    val client = OkHttpClient.Builder()
-                        .connectTimeout(3, TimeUnit.SECONDS)
-                        .readTimeout(3, TimeUnit.SECONDS)
-                        .build()
-                    val req = Request.Builder()
-                        .url(url)
-                        .addHeader("Bypass-Tunnel-Reminder", "true")
-                        .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
-                        .build()
-                    val resp = client.newCall(req).execute()
-                    val respBody = resp.body?.string() ?: ""
-                    resp.close()
-
-                    if (resp.isSuccessful && respBody.isNotEmpty()) {
-                        val json = JSONObject(respBody)
-                        if (json.optBoolean("success", false)) {
-                            val lk = json.optJSONObject("livekit")
-                            if (lk != null) {
-                                token = lk.optString("token", "")
-                                roomName = lk.optString("roomName", "")
-                                lkUrl = lk.optString("url", "")
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Error fetching livekit token on accept: ${e.message}")
-            }
-
-            handler.post {
-                launchMainActivity(token, roomName, lkUrl)
-            }
-        }.start()
-    }
-
-    private fun launchMainActivity(token: String, roomName: String, lkUrl: String) {
         val updatedCallData = try {
             val j = if (callDataStr.isNotEmpty()) JSONObject(callDataStr) else JSONObject()
             j.put("autoAccept", true)
             j.put("callId", callId)
             if (serverUrl.isNotEmpty()) j.put("serverUrl", serverUrl)
             if (userPhone.isNotEmpty()) j.put("userPhone", userPhone)
-            if (token.isNotEmpty()) j.put("livekitToken", token)
-            if (roomName.isNotEmpty()) j.put("livekitRoomName", roomName)
-            if (lkUrl.isNotEmpty()) j.put("livekitUrl", lkUrl)
             j.toString()
         } catch (e: Exception) {
             callDataStr
         }
 
-        // Save synchronously to SharedPreferences so MainActivity in the main process reads it immediately
+        // Save synchronously to SharedPreferences so MainActivity reads it immediately on cold start
         try {
             val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
             prefs.edit().putString("pending_accepted_call", updatedCallData).commit()
@@ -498,9 +435,65 @@ class IncomingCallActivity : AppCompatActivity() {
             putExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA, updatedCallData)
         }
 
-        CallOverlayManager.dismiss(applicationContext)
+        // Launch MainActivity and close the popup immediately!
         startActivity(launchIntent)
         finish()
+
+        // Fetch LiveKit token in background worker thread and deliver to React Native
+        Thread {
+            try {
+                var cleanBase = serverUrl.trim().trimEnd('/')
+                if (cleanBase.isEmpty()) {
+                    val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                    cleanBase = (prefs.getString("server_url", "") ?: "").trim().trimEnd('/')
+                }
+                if (cleanBase.isEmpty()) {
+                    cleanBase = "https://organisms-issues-pounds-horizontal.trycloudflare.com"
+                }
+
+                if (callId.isNotEmpty() && userPhone.isNotEmpty()) {
+                    val url = "${cleanBase}/api/calls/${callId}/respond"
+                    val body = JSONObject().apply {
+                        put("phone", userPhone)
+                        put("action", "accept")
+                        put("callId", callId)
+                    }.toString()
+
+                    val client = OkHttpClient.Builder()
+                        .connectTimeout(4, TimeUnit.SECONDS)
+                        .readTimeout(4, TimeUnit.SECONDS)
+                        .build()
+                    val req = Request.Builder()
+                        .url(url)
+                        .addHeader("Bypass-Tunnel-Reminder", "true")
+                        .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
+                        .build()
+                    val resp = client.newCall(req).execute()
+                    val respBody = resp.body?.string() ?: ""
+                    resp.close()
+
+                    if (resp.isSuccessful && respBody.isNotEmpty()) {
+                        val json = JSONObject(respBody)
+                        if (json.optBoolean("success", false)) {
+                            val lk = json.optJSONObject("livekit")
+                            if (lk != null) {
+                                val token = lk.optString("token", "")
+                                val roomName = lk.optString("roomName", "")
+                                val lkUrl = lk.optString("url", "")
+                                val withToken = JSONObject(updatedCallData).apply {
+                                    put("livekitToken", token)
+                                    put("livekitRoomName", roomName)
+                                    put("livekitUrl", lkUrl)
+                                }.toString()
+                                JanSunwaiVoIPModule.emitIncomingCall(withToken)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error posting accept to server: ${e.message}")
+            }
+        }.start()
     }
 
     override fun onDestroy() {
