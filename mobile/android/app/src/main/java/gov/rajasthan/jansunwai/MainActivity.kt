@@ -18,7 +18,10 @@ class MainActivity : ReactActivity() {
     super.onCreate(null)
     applyWindowFlags()
     CallOverlayManager.dismiss(this)
-    IncomingCallActivity.activeInstance?.finish()
+    try {
+      IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+      IncomingCallActivity.activeInstance?.finish()
+    } catch (e: Exception) {}
 
     // Read call data from intent (e.g. from notification Accept button)
     val intentCallData = intent?.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)
@@ -52,7 +55,10 @@ class MainActivity : ReactActivity() {
     setIntent(intent)
     applyWindowFlags()
     CallOverlayManager.dismiss(this)
-    IncomingCallActivity.activeInstance?.finish()
+    try {
+      IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+      IncomingCallActivity.activeInstance?.finish()
+    } catch (e: Exception) {}
 
     intent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
       JanSunwaiVoIPModule.pendingIncomingCallJson = it
@@ -71,7 +77,10 @@ class MainActivity : ReactActivity() {
     super.onResume()
     applyWindowFlags()
     CallOverlayManager.dismiss(this)
-    IncomingCallActivity.activeInstance?.finish()
+    try {
+      IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+      IncomingCallActivity.activeInstance?.finish()
+    } catch (e: Exception) {}
   }
 
   private fun applyWindowFlags() {

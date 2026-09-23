@@ -391,7 +391,12 @@ class IncomingCallActivity : AppCompatActivity() {
         }
 
         CallOverlayManager.dismiss(applicationContext)
-        finish()
+        try { window.decorView.visibility = View.GONE } catch (e: Throwable) {}
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            finishAndRemoveTask()
+        } else {
+            finish()
+        }
     }
 
     private fun onAcceptClicked() {
@@ -399,6 +404,7 @@ class IncomingCallActivity : AppCompatActivity() {
         isPulseActive = false
         handler.removeCallbacksAndMessages(null)
 
+        try { window.decorView.visibility = View.GONE } catch (e: Throwable) {}
         CallOverlayManager.dismiss(applicationContext)
         JanSunwaiVoIPService.stopActiveRinging()
         JanSunwaiVoIPService.setInCallState(true)
@@ -437,7 +443,11 @@ class IncomingCallActivity : AppCompatActivity() {
 
         // Launch MainActivity and close the popup immediately!
         startActivity(launchIntent)
-        finish()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            finishAndRemoveTask()
+        } else {
+            finish()
+        }
 
         // Fetch LiveKit token in background worker thread and deliver to React Native
         Thread {

@@ -37,6 +37,7 @@ object CallOverlayManager {
 
     private const val TAG = "CallOverlayManager"
     private var overlayView: View? = null
+    private var savedWindowManager: WindowManager? = null
     private var isPulseActive = false
     private val handler = Handler(Looper.getMainLooper())
 
@@ -59,7 +60,8 @@ object CallOverlayManager {
                 // If an overlay is already active, dismiss it first
                 dismiss(context)
 
-                val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                val windowManager = (context.applicationContext ?: context).getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                savedWindowManager = windowManager
 
                 val json = try {
                     JSONObject(callJsonString)
@@ -290,8 +292,12 @@ object CallOverlayManager {
                     }
                     setOnClickListener {
                         Log.i(TAG, "User tapped DECLINE on CallOverlay")
+                        try { rootLayout.visibility = View.GONE } catch (e: Throwable) {}
                         dismiss(context)
-                        IncomingCallActivity.activeInstance?.finish()
+                        try {
+                            IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+                            IncomingCallActivity.activeInstance?.finish()
+                        } catch (e: Exception) {}
                         JanSunwaiVoIPService.dismissCall(callId)
                         if (effectiveCallId.isNotEmpty() && effectiveCallId != callId) {
                             JanSunwaiVoIPService.dismissCall(effectiveCallId)
@@ -345,9 +351,13 @@ object CallOverlayManager {
                         marginStart = dp(12)
                     }
                     setOnClickListener {
-                        Log.i(TAG, "User tapped ACCEPT on CallOverlay — closing overlay immediately")
+                        Log.i(TAG, "User tapped ACCEPT on CallOverlay — closing overlay immediately in 0ms")
+                        try { rootLayout.visibility = View.GONE } catch (e: Throwable) {}
                         dismiss(context)
-                        IncomingCallActivity.activeInstance?.finish()
+                        try {
+                            IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+                            IncomingCallActivity.activeInstance?.finish()
+                        } catch (e: Exception) {}
 
                         JanSunwaiVoIPService.stopActiveRinging()
                         JanSunwaiVoIPService.setInCallState(true)
@@ -480,30 +490,48 @@ object CallOverlayManager {
         }
     }
 
-    fun dismiss(context: Context) {
-        handler.post {
+    fun dismiss(context: Context? = null) {
+        val runDismiss = Runnable {
             isPulseActive = false
-            handler.removeCallbacksAndMessages(null)
-            overlayView?.let { view ->
+            val view = overlayView
+            val wm = savedWindowManager ?: (context?.applicationContext ?: context)?.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+
+            if (view != null) {
                 try {
-                    val windowManager = (context.applicationContext ?: context).getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                    windowManager.removeViewImmediate(view)
-                    Log.i(TAG, "CallOverlay successfully removed from WindowManager")
+                    view.visibility = View.GONE
+                    view.alpha = 0f
+                    if (view is ViewGroup) {
+                        view.removeAllViews()
+                    }
+                } catch (e: Throwable) {}
+
+                try {
+                    wm?.removeViewImmediate(view)
+                    Log.i(TAG, "CallOverlay successfully removed from WindowManager (immediate)")
                 } catch (e: Exception) {
                     try {
-                        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-                        windowManager.removeView(view)
+                        wm?.removeView(view)
+                        Log.i(TAG, "CallOverlay successfully removed from WindowManager (fallback)")
                     } catch (e2: Exception) {
-                        Log.w(TAG, "Error removing CallOverlay view", e2)
+                        Log.w(TAG, "Error removing CallOverlay view: ${e2.message}")
                     }
                 }
-                overlayView = null
             }
+            overlayView = null
+            savedWindowManager = null
+
             try {
+                IncomingCallActivity.activeInstance?.finishAndRemoveTask()
                 IncomingCallActivity.activeInstance?.finish()
             } catch (e: Exception) {
                 // ignore
             }
+        }
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            runDismiss.run()
+        } else {
+            handler.post(runDismiss)
         }
     }
 }

@@ -73,12 +73,21 @@ class JanSunwaiVoIPService : Service() {
             isInCall = inCall
             if (inCall) {
                 stopActiveRinging()
+                try {
+                    instance?.let { s ->
+                        CallOverlayManager.dismiss(s)
+                    } ?: run {
+                        CallOverlayManager.dismiss()
+                    }
+                    IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+                    IncomingCallActivity.activeInstance?.finish()
+                } catch (e: Exception) {}
             }
             // Persist to SharedPrefs so service restarts (START_STICKY) restore correct state
             // This prevents re-ringing for an already-accepted call after service restart
             try {
                 instance?.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
-                    ?.edit()?.putBoolean("is_in_call", inCall)?.apply()
+                    ?.edit()?.putBoolean("is_in_call", inCall)?.commit()
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to persist isInCall=$inCall to SharedPrefs", e)
             }
@@ -97,6 +106,11 @@ class JanSunwaiVoIPService : Service() {
                 Log.i(TAG, "Dismissed callId added to blacklist: $c (total dismissed: ${dismissedCallIds.size})")
             }
             lastReceivedCallData = null
+            try {
+                CallOverlayManager.dismiss()
+                IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+                IncomingCallActivity.activeInstance?.finish()
+            } catch (e: Exception) {}
             try {
                 instance?.let { s ->
                     val prefs = s.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)

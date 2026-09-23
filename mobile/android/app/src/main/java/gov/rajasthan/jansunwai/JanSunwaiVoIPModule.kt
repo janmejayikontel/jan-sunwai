@@ -97,7 +97,10 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     fun stopRinging(promise: Promise) {
         try {
             CallOverlayManager.dismiss(reactContext)
-            IncomingCallActivity.activeInstance?.finish()
+            try {
+                IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+                IncomingCallActivity.activeInstance?.finish()
+            } catch (e: Exception) {}
             JanSunwaiVoIPService.stopActiveRinging()
             try {
                 val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
@@ -118,7 +121,10 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
         try {
             if (inCall) {
                 CallOverlayManager.dismiss(reactContext)
-                IncomingCallActivity.activeInstance?.finish()
+                try {
+                    IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+                    IncomingCallActivity.activeInstance?.finish()
+                } catch (e: Exception) {}
             }
             JanSunwaiVoIPService.setInCallState(inCall)
             val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
@@ -234,7 +240,10 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     fun dismissCall(callId: String?, promise: Promise) {
         try {
             CallOverlayManager.dismiss(reactContext)
-            IncomingCallActivity.activeInstance?.finish()
+            try {
+                IncomingCallActivity.activeInstance?.finishAndRemoveTask()
+                IncomingCallActivity.activeInstance?.finish()
+            } catch (e: Exception) {}
             JanSunwaiVoIPService.dismissCall(callId)
             try {
                 val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
