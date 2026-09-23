@@ -200,61 +200,14 @@ export async function initiateCall(input: InitiateCallInput): Promise<{
   callSession: CallSession;
   hostToken: string;
 }> {
-  // Check if an active call session already exists for this grievance
+  // Always clean up any previous call session for this grievance so every initiate call is fresh with a new unique callId
   for (const existing of activeCalls.values()) {
     if (existing.grievanceId.toUpperCase() === input.grievanceId.toUpperCase()) {
-      if (existing.status === 'ringing' || existing.status === 'active') {
-        console.log(`[CallManager] Call already active for ${input.grievanceId}: ${existing.id}. Re-ringing.`);
-        
-        // Reset all invited non-host participants to 'ringing' so they can answer
-        existing.participants.forEach((p) => {
-          if (p.role !== 'host') {
-            p.ringStatus = 'ringing';
-            p.ringStartedAt = new Date();
-            p.leftAt = undefined;
-          }
-        });
-
-        // Clear previous timeout and restart fresh 60s ring timeout
-        const oldTimeout = ringTimeouts.get(existing.id);
-        if (oldTimeout) clearTimeout(oldTimeout);
-        const newTimeout = setTimeout(() => {
-          handleRingTimeout(existing.id);
-        }, RING_TIMEOUT_MS);
-        ringTimeouts.set(existing.id, newTimeout);
-
-        const incomingCallData = {
-          callId: existing.id,
-          grievanceId: existing.grievanceId,
-          title: existing.title,
-          callerName: existing.hostName,
-          callerDesignation: existing.hostDesignation,
-          roomName: existing.livekitRoomName,
-          participantCount: existing.participants.length,
-        };
-        sendToClient(input.citizenPhone, {
-          type: 'incoming_call',
-          callId: existing.id,
-          data: { ...incomingCallData, yourRole: 'citizen' },
-        });
-        sendToClient(input.employeePhone, {
-          type: 'incoming_call',
-          callId: existing.id,
-          data: { ...incomingCallData, yourRole: 'employee' },
-        });
-
-        const hostToken = await livekitService.generateToken({
-          identity: input.hostUserId,
-          name: `${input.hostName} (${input.hostDesignation})`,
-          roomName: existing.livekitRoomName,
-          isHost: true,
-        });
-
-        return { callSession: existing, hostToken };
-      } else {
-        // If previous call session was completed, missed, or cancelled, purge it so a clean session is created
-        activeCalls.delete(existing.id);
-      }
+      console.log(`[CallManager] Cleaning up prior call session for ${input.grievanceId}: ${existing.id} for fresh initiate.`);
+      const oldTimeout = ringTimeouts.get(existing.id);
+      if (oldTimeout) clearTimeout(oldTimeout);
+      ringTimeouts.delete(existing.id);
+      activeCalls.delete(existing.id);
     }
   }
 
@@ -985,10 +938,7 @@ export function getIncomingCallForPhone(phone: string): {
     const participant = call.participants.find((p) => matchPhone(p.phone, phone));
     if (!participant || participant.role === 'host') continue;
 
-    // CRITICAL: If participant has ALREADY answered/entered this call or has left/declined,
-    // they MUST NEVER receive an incoming call prompt for it again!
-    if (participant.answeredAt !== undefined) continue;
-    if (participant.leftAt !== undefined) continue;
+    // Participant must be actively ringing to receive the call alert
     if (participant.ringStatus !== 'ringing') continue;
 
     return {

@@ -44,7 +44,7 @@ export default function App() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const pendingCallRef = useRef<any>(null);
-  const dismissedCallIdsRef = useRef<Set<string>>(new Set());
+  const dismissedCallTimesRef = useRef<Map<string, number>>(new Map());
   // Refs that shadow state — used in WebSocket/polling closures to avoid stale captures
   const activeHearingRef = useRef<ActiveHearingState | null>(null);
   const isConnectingHearingRef = useRef<boolean>(false);
@@ -232,10 +232,10 @@ export default function App() {
     const target = overrideCall || incomingCall;
     if (!target) return;
 
-    // Only blacklist this specific call session ID so duplicate notifications don't re-prompt
+    // Only suppress this specific call session ID for 15s so duplicate notifications don't re-prompt
     // NEVER blacklist grievanceId so subsequent calls for this grievance ring properly
     if (target.callId && !target.callId.startsWith('JS-') && !target.callId.startsWith('RAJ-')) {
-      dismissedCallIdsRef.current.add(target.callId);
+      dismissedCallTimesRef.current.set(target.callId, Date.now());
     }
 
     // IMMEDIATELY HIDE THE INCOMING CALL MODAL and mark as connecting
@@ -364,9 +364,17 @@ export default function App() {
   };
 
   const isDismissedCall = (callId?: string, grievanceId?: string, roomName?: string): boolean => {
-    // Only blacklist specific session callId. NEVER blacklist grievanceId so subsequent hearing calls ring properly!
+    // Only blacklist specific session callId with 15s TTL. NEVER blacklist grievanceId so subsequent hearing calls ring properly!
     if (!callId) return false;
-    return dismissedCallIdsRef.current.has(callId);
+    const ts = dismissedCallTimesRef.current.get(callId);
+    if (ts) {
+      if (Date.now() - ts < 15000) {
+        return true;
+      } else {
+        dismissedCallTimesRef.current.delete(callId);
+      }
+    }
+    return false;
   };
 
   const handleDeclineIncomingCall = async () => {
@@ -376,7 +384,7 @@ export default function App() {
     const roomName = incomingCall.roomName;
 
     if (targetCallId && !targetCallId.startsWith('JS-') && !targetCallId.startsWith('RAJ-')) {
-      dismissedCallIdsRef.current.add(targetCallId);
+      dismissedCallTimesRef.current.set(targetCallId, Date.now());
     }
     JanSunwaiVoIP?.dismissCall?.(targetCallId || null);
     Vibration.cancel();
@@ -417,9 +425,9 @@ export default function App() {
       const roomName = activeHearing.roomName;
       const base = cleanServerUrl(serverUrl);
 
-      // Only blacklist this specific call session ID, never grievanceId
+      // Only suppress this specific call session ID for 15s, never grievanceId
       if (callId && !callId.startsWith('JS-') && !callId.startsWith('RAJ-')) {
-        dismissedCallIdsRef.current.add(callId);
+        dismissedCallTimesRef.current.set(callId, Date.now());
       }
       JanSunwaiVoIP?.dismissCall?.(callId || null);
 

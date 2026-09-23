@@ -61,7 +61,7 @@ class JanSunwaiVoIPService : Service() {
         var isInCall = false
         var currentRingingCallId: String? = null
         var lastReceivedCallData: String? = null
-        val dismissedCallIds: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+        private val recentlyDismissedCallIds: MutableMap<String, Long> = java.util.concurrent.ConcurrentHashMap()
 
         private var instance: JanSunwaiVoIPService? = null
 
@@ -96,10 +96,10 @@ class JanSunwaiVoIPService : Service() {
         fun dismissCall(callId: String?) {
             if (!callId.isNullOrBlank()) {
                 val c = callId.trim().uppercase()
-                // Only blacklist specific session call ID, NEVER blacklist grievance ID (e.g. RAJ-..., JS-...)
+                // Only suppress specific callId temporarily for 15s to silence duplicate ring events
                 if (!c.startsWith("RAJ-") && !c.startsWith("JS-")) {
-                    dismissedCallIds.add(c)
-                    Log.i(TAG, "Dismissed callId added to blacklist: $c")
+                    recentlyDismissedCallIds[c] = System.currentTimeMillis()
+                    Log.i(TAG, "Dismissed callId temporarily suppressed for 15s: $c")
                 }
             }
             lastReceivedCallData = null
@@ -127,7 +127,14 @@ class JanSunwaiVoIPService : Service() {
         fun isCallDismissed(callId: String?, grievanceId: String? = null): Boolean {
             if (!callId.isNullOrBlank()) {
                 val c = callId.trim().uppercase()
-                if (dismissedCallIds.contains(c)) return true
+                val ts = recentlyDismissedCallIds[c]
+                if (ts != null) {
+                    if (System.currentTimeMillis() - ts < 15000L) {
+                        return true
+                    } else {
+                        recentlyDismissedCallIds.remove(c)
+                    }
+                }
             }
             return false
         }
