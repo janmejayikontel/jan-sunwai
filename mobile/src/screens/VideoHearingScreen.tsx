@@ -68,6 +68,18 @@ const RoomContent: React.FC<{
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
 
+  const isExitingRef = React.useRef(false);
+  const [inCallNotice, setInCallNotice] = useState<string | null>(null);
+  const noticeTimerRef = React.useRef<any>(null);
+
+  const showNotice = (text: string) => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    setInCallNotice(text);
+    noticeTimerRef.current = setTimeout(() => {
+      setInCallNotice(null);
+    }, 4500);
+  };
+
   const isOfficer = role === 'officer' || role === 'collector' || role === 'admin' || !role;
   const isAdmin = role === 'admin';
   const effectiveCallId = callId || grievanceId;
@@ -256,17 +268,22 @@ const RoomContent: React.FC<{
     if (!room) return;
 
     const processModerationAction = (data: any) => {
-      if (!data) return;
+      if (isExitingRef.current) return;
+      if (!data || !data.action) return;
+
       const myIdentity = room.localParticipant?.identity || '';
       const cleanDigits = (p: string) => (p || '').replace(/\D/g, '').slice(-10);
       const myPhone = cleanDigits(myIdentity);
 
-      const target = data.target || data.targetPhone || data.targetIdentity || '';
+      const target = (data.target || data.targetPhone || data.targetIdentity || '').trim();
       const targetPhone = cleanDigits(target);
 
+      const senderPhone = cleanDigits(data.senderPhone || '');
+      const senderIdentity = (data.senderIdentity || '').trim();
+
       const isSender =
-        (data.senderIdentity && data.senderIdentity === myIdentity) ||
-        (data.senderPhone && myPhone && cleanDigits(data.senderPhone) === myPhone);
+        (senderIdentity && myIdentity && senderIdentity === myIdentity) ||
+        (senderPhone && myPhone && senderPhone.length >= 10 && senderPhone === myPhone);
 
       // Never apply moderation actions to the officer/admin who triggered them
       if (isSender) return;
@@ -276,32 +293,31 @@ const RoomContent: React.FC<{
         data.targetIdentity === 'all' ||
         data.action === 'disable_all_video' ||
         data.action === 'mute_all' ||
-        target === myIdentity ||
-        data.targetIdentity === myIdentity ||
-        data.targetPhone === myIdentity ||
-        (targetPhone && myPhone && targetPhone === myPhone) ||
-        (target && myIdentity && (myIdentity.includes(target) || target.includes(myIdentity)));
+        (target && myIdentity && target === myIdentity) ||
+        (data.targetIdentity && myIdentity && data.targetIdentity === myIdentity) ||
+        (data.targetPhone && myIdentity && data.targetPhone === myIdentity) ||
+        (targetPhone && myPhone && targetPhone.length >= 10 && myPhone.length >= 10 && targetPhone === myPhone);
 
-      if ((data.action === 'mute_all' || data.action === 'mute_mic' || data.action === 'mute_audio') && isTarget) {
+      if (!isTarget) return;
+
+      if (data.action === 'mute_all' || data.action === 'mute_mic' || data.action === 'mute_audio') {
         room.localParticipant?.setMicrophoneEnabled(false);
         setIsMuted(true);
-        Alert.alert('🔇 Microphone Muted', 'The Presiding Officer / Super Admin has muted your microphone.');
-      } else if (data.action === 'unmute_mic' && isTarget) {
-        Alert.alert('🎙️ Speak Request', 'The Presiding Officer has requested you to unmute your microphone.');
-      } else if (
-        (data.action === 'disable_all_video' || data.action === 'disable_video') &&
-        isTarget
-      ) {
+        showNotice('🔇 Microphone muted by Presiding Officer');
+      } else if (data.action === 'unmute_mic') {
+        showNotice('🎙️ Presiding Officer requested you to unmute');
+      } else if (data.action === 'disable_all_video' || data.action === 'disable_video') {
         room.localParticipant?.setCameraEnabled(false);
         setIsCameraOff(true);
-        Alert.alert('📷 Video Disabled', 'The Presiding Officer / Super Admin has disabled your video camera.');
-      } else if (data.action === 'enable_video' && isTarget) {
-        Alert.alert('📹 Video Request', 'The Presiding Officer has requested you to turn on your camera.');
-      } else if (data.action === 'eject' && isTarget) {
-        Alert.alert('⛔ Disconnected', 'You have been disconnected from the hearing by the Presiding Officer.', [
-          { text: 'OK', onPress: onLeave },
-        ]);
-        onLeave();
+        showNotice('📷 Camera turned off by Presiding Officer');
+      } else if (data.action === 'enable_video') {
+        showNotice('📹 Presiding Officer requested you to turn on camera');
+      } else if (data.action === 'eject') {
+        isExitingRef.current = true;
+        showNotice('⛔ Hearing concluded by Presiding Officer');
+        setTimeout(() => {
+          handleExitCall();
+        }, 600);
       }
     };
 
@@ -595,24 +611,21 @@ const RoomContent: React.FC<{
           actorRole: role,
         }),
       });
-      Alert.alert(
-        willDisable ? '📷 Video Disabled' : '📹 Requested',
-        `${willDisable ? 'Disabled video for' : 'Sent video request to'} ${member.name}`
-      );
+      showNotice(willDisable ? `📷 Camera turned off for ${member.name}` : `📹 Video requested for ${member.name}`);
     } catch (e) {
-      Alert.alert('Notice', `Command dispatched to ${member.name}`);
+      showNotice(`Command dispatched to ${member.name}`);
     }
   };
 
   // 5. Eject / remove participant
   const handleEjectMember = (member: { identity: string; name: string }) => {
     Alert.alert(
-      'Remove Participant',
-      `Are you sure you want to eject ${member.name} (${member.identity}) from this hearing?`,
+      'Disconnect Participant',
+      `Are you sure you want to disconnect ${member.name} (${member.identity}) from this hearing?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Remove',
+          text: 'Disconnect',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -636,6 +649,7 @@ const RoomContent: React.FC<{
   const hasActiveScreenShare = screenShareTracks.length > 0;
 
   const handleExitCall = () => {
+    isExitingRef.current = true;
     try {
       NativeModules.JanSunwaiVoIP?.stopRinging?.();
       NativeModules.JanSunwaiVoIP?.setInCall?.(false);
@@ -647,6 +661,55 @@ const RoomContent: React.FC<{
       }
     } catch (e) {}
     onLeave();
+  };
+
+  const handlePressEndButton = () => {
+    if (isOfficer) {
+      Alert.alert(
+        'Hearing Bench Controls',
+        'Do you want to terminate this hearing for everyone or leave the call?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Leave Hearing (केवल मैं निकलूँ)',
+            onPress: () => {
+              isExitingRef.current = true;
+              handleExitCall();
+            },
+          },
+          {
+            text: 'Terminate Hearing (सभी के लिए समाप्त)',
+            style: 'destructive',
+            onPress: async () => {
+              isExitingRef.current = true;
+              try {
+                await sendModerationPacket({ type: 'moderation', action: 'eject' });
+                await fetch(`${cleanServerUrl(serverUrl)}/api/calls/${effectiveCallId}/end`, {
+                  method: 'POST',
+                });
+              } catch (e) {}
+              handleExitCall();
+            },
+          },
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Leave Hearing',
+        'Are you sure you want to leave this Jan Sunwai video hearing?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Leave (बाहर निकलें)',
+            style: 'destructive',
+            onPress: () => {
+              isExitingRef.current = true;
+              handleExitCall();
+            },
+          },
+        ]
+      );
+    }
   };
 
   return (
@@ -689,6 +752,13 @@ const RoomContent: React.FC<{
           👥 1,000+ Concurrency (1,500 Cap) • 🔒 256-Bit E2EE Active • SFU Dynacast
         </Text>
       </View>
+
+      {/* Dynamic In-Call Notification Banner (moderation, ringing, status) */}
+      {inCallNotice && (
+        <View style={styles.inCallNoticeBanner}>
+          <Text style={styles.inCallNoticeText}>{inCallNotice}</Text>
+        </View>
+      )}
 
       {/* Main Video View Area */}
       <View
@@ -760,7 +830,7 @@ const RoomContent: React.FC<{
         onToggleCamera={handleToggleCamera}
         onFlipCamera={handleFlipCamera}
         onToggleScreenShare={handleToggleScreenShare}
-        onLeaveCall={handleExitCall}
+        onLeaveCall={handlePressEndButton}
         onAddParticipant={isOfficer ? () => setShowAddParticipant(true) : undefined}
         onToggleChat={() => {
           setShowChat((prev) => {
@@ -792,6 +862,9 @@ const RoomContent: React.FC<{
         serverUrl={effectiveApiUrl}
         apiBaseUrl={effectiveApiUrl}
         onClose={() => setShowAddParticipant(false)}
+        onParticipantDialed={(name, phone) => {
+          showNotice(`📞 Ringing ${name} (${phone})...`);
+        }}
       />
 
       {/* Cryptographic Safety Numbers Modal (Short Authentication String) */}
@@ -867,7 +940,7 @@ const RoomContent: React.FC<{
                     style={[styles.modActionBtn, { flex: 1, marginBottom: 0 }]}
                     onPress={handleDisableAllVideo}
                   >
-                    <Text style={styles.modActionBtnText}>📷 Disable All Cams</Text>
+                    <Text style={styles.modActionBtnText}>📷 Cam Off All</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -928,7 +1001,7 @@ const RoomContent: React.FC<{
                           onPress={() => handleToggleMemberVideo(member)}
                         >
                           <Text style={styles.modMemberBtnText}>
-                            {member.isVideoOff ? '📹 Enable' : '📷 Disable'}
+                            {member.isVideoOff ? '📹 Cam On' : '📷 Cam Off'}
                           </Text>
                         </TouchableOpacity>
 
@@ -936,7 +1009,7 @@ const RoomContent: React.FC<{
                           style={[styles.modMemberBtn, styles.btnEject]}
                           onPress={() => handleEjectMember(member)}
                         >
-                          <Text style={styles.modMemberBtnText}>⛔ Eject</Text>
+                          <Text style={styles.modMemberBtnText}>⛔ Disconnect</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -1473,5 +1546,22 @@ const styles = StyleSheet.create({
   btnEject: {
     backgroundColor: '#334155',
     maxWidth: 68,
+  },
+  inCallNoticeBanner: {
+    backgroundColor: '#0284c7',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#38bdf8',
+    zIndex: 99,
+  },
+  inCallNoticeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });

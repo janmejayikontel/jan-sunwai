@@ -46,6 +46,7 @@ interface AddParticipantModalProps {
   serverUrl: string;
   apiBaseUrl?: string;
   onClose: () => void;
+  onParticipantDialed?: (name: string, phone: string) => void;
 }
 
 export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
@@ -55,6 +56,7 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
   serverUrl,
   apiBaseUrl,
   onClose,
+  onParticipantDialed,
 }) => {
   const [activeTab, setActiveTab] = useState<'directory' | 'phone'>('directory');
 
@@ -277,10 +279,7 @@ export const AddParticipantModal: React.FC<AddParticipantModalProps> = ({
 
       const data = await res.json();
       if (res.ok && data.success) {
-        Alert.alert(
-          lookupResult?.found ? '📞 Calling Official' : '📞 Calling Guest Participant',
-          `Calling ${participant.name} (${participant.phone}). Their phone is ringing now and they will enter the video hearing once they accept.`
-        );
+        onParticipantDialed?.(participant.name, participant.phone);
         onClose();
       } else {
         Alert.alert('Unable to Ring', data.error || 'Failed to add participant to hearing.');

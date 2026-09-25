@@ -529,15 +529,19 @@ export async function addParticipantToCall(
   }
 
   // Check if participant already exists in the call
-  let targetParticipant = call.participants.find((p) => matchPhone(p.phone, phone));
-  if (targetParticipant) {
-    targetParticipant.name = name;
-    targetParticipant.ringStatus = 'ringing';
-    targetParticipant.ringStartedAt = new Date();
-    targetParticipant.leftAt = undefined;
-    targetParticipant.answeredAt = undefined;
-    if (designation) targetParticipant.designation = designation;
-    if (department) targetParticipant.department = department;
+  const existingList = call.participants.filter((p) => matchPhone(p.phone, phone));
+  let targetParticipant: CallParticipant;
+  if (existingList.length > 0) {
+    targetParticipant = existingList[0];
+    existingList.forEach((p) => {
+      p.name = name;
+      p.ringStatus = 'ringing';
+      p.ringStartedAt = new Date();
+      p.leftAt = undefined;
+      p.answeredAt = undefined;
+      if (designation) p.designation = designation;
+      if (department) p.department = department;
+    });
   } else {
     targetParticipant = {
       id: uuidv4(),
@@ -940,17 +944,16 @@ export function getIncomingCallForPhone(phone: string): {
     if (call.hostPhone && matchPhone(call.hostPhone, phone)) continue;
     if (call.hostUserId && matchPhone(call.hostUserId, phone)) continue;
 
-    // RULE 2: If phone matches any participant with role 'host' or who has already accepted or left, NEVER ring them!
-    const alreadyConnectedOrHost = call.participants.some(
-      (p) => matchPhone(p.phone, phone) && (p.role === 'host' || p.ringStatus === 'accepted' || p.ringStatus === 'left')
+    // RULE 2: If phone matches any participant with role 'host' or who is already accepted/active in room, NEVER ring them!
+    const isAlreadyConnected = call.participants.some(
+      (p) => matchPhone(p.phone, phone) && (p.role === 'host' || p.ringStatus === 'accepted')
     );
-    if (alreadyConnectedOrHost) continue;
+    if (isAlreadyConnected) continue;
 
-    const participant = call.participants.find((p) => matchPhone(p.phone, phone));
+    const participant = call.participants.find(
+      (p) => matchPhone(p.phone, phone) && p.ringStatus === 'ringing'
+    );
     if (!participant || participant.role === 'host') continue;
-
-    // Participant must be actively ringing to receive the call alert
-    if (participant.ringStatus !== 'ringing') continue;
 
     return {
       callId: call.id,
