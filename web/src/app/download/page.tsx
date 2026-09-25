@@ -103,11 +103,11 @@ export default function DownloadPage() {
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "0.85rem" }}>
             <span style={{ color: "#94a3b8" }}>Version:</span>
-            <span style={{ color: "#34d399", fontWeight: 700 }}>v1.0.0 (Release)</span>
+            <span style={{ color: "#34d399", fontWeight: 700 }}>v1.0.3 (Latest Release)</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "0.85rem" }}>
             <span style={{ color: "#94a3b8" }}>File Size:</span>
-            <span style={{ color: "#f8fafc", fontWeight: 600 }}>105.8 MB</span>
+            <span style={{ color: "#f8fafc", fontWeight: 600 }}>105.9 MB</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
             <span style={{ color: "#94a3b8" }}>Platform:</span>
