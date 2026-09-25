@@ -59,6 +59,7 @@ class JanSunwaiVoIPService : Service() {
 
         var isServiceRunning = false
         var isInCall = false
+        var isCallRinging = false
         var currentRingingCallId: String? = null
         var lastReceivedCallData: String? = null
         private val recentlyDismissedCallIds: MutableMap<String, Long> = java.util.concurrent.ConcurrentHashMap()
@@ -178,7 +179,6 @@ class JanSunwaiVoIPService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private var pollRunnable: Runnable? = null
-    private var isCallRinging = false
     private var isWebSocketConnected = false
     @Volatile private var isPollingActive = false
     private var pollingThread: Thread? = null
