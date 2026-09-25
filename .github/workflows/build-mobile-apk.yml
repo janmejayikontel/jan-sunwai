@@ -24,9 +24,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Mobile Dependencies
         working-directory: mobile
         run: npm install --legacy-peer-deps

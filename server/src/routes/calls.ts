@@ -145,6 +145,32 @@ router.post('/initiate', async (req: Request, res: Response) => {
   employeeDesignation = employeeDesignation || 'Official';
   employeeDepartment = employeeDepartment || 'District Administration';
 
+  // Auto-resolve hostPhone from hostUserId if not explicitly supplied
+  if (!hostPhone && hostUserId) {
+    if (hostUserId.startsWith('+') || /^\d{10,12}$/.test(hostUserId)) {
+      hostPhone = hostUserId;
+    } else {
+      try {
+        const row = db.prepare(`
+          SELECT phone FROM officers WHERE id = ?
+          UNION ALL
+          SELECT phone FROM call_center_reps WHERE id = ?
+          UNION ALL
+          SELECT phone FROM admins WHERE id = ?
+          UNION ALL
+          SELECT phone FROM employees WHERE id = ?
+          UNION ALL
+          SELECT phone FROM citizens WHERE id = ?
+        `).get(hostUserId, hostUserId, hostUserId, hostUserId, hostUserId) as any;
+        if (row?.phone) {
+          hostPhone = row.phone;
+        }
+      } catch (err) {
+        console.warn('[Calls/Initiate] Could not resolve hostPhone from hostUserId:', err);
+      }
+    }
+  }
+
   try {
     const { callSession, hostToken } = await callManager.initiateCall({
       grievanceId,
@@ -183,9 +209,9 @@ router.post('/initiate', async (req: Request, res: Response) => {
         roomName: callSession.livekitRoomName,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('[Calls] Error initiating call:', error);
-    res.status(500).json({ error: 'Failed to initiate call' });
+    res.status(500).json({ error: error?.message || 'Failed to initiate call' });
   }
 });
 

@@ -116,14 +116,19 @@ export interface CreateRoomOptions {
 export async function createRoom(options: CreateRoomOptions) {
   const { name, maxParticipants = 1500, emptyTimeout = 300 } = options;
 
-  const room = await roomService.createRoom({
-    name,
-    maxParticipants,
-    emptyTimeout,
-  });
+  try {
+    const room = await roomService.createRoom({
+      name,
+      maxParticipants,
+      emptyTimeout,
+    });
 
-  console.log(`[LiveKit] Room created: ${name} (capacity: ${maxParticipants})`);
-  return room;
+    console.log(`[LiveKit] Room created: ${name} (capacity: ${maxParticipants})`);
+    return room;
+  } catch (err: any) {
+    console.warn(`[LiveKit] Room creation notice (room will auto-create on join):`, err?.message || err);
+    return null;
+  }
 }
 
 /**

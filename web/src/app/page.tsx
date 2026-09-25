@@ -1002,31 +1002,61 @@ export default function JanSunwaiPortalPage() {
     setIsCallInitiating(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/calls/initiate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          grievanceId: grievance.grievanceId,
-          title: `Jan Sunwai — ${grievance.title}`,
-          hostUserId: currentUser.id,
-          hostName: currentUser.name,
-          hostDesignation: currentUser.designation || "District Collector",
-          citizenPhone: grievance.citizen.phone,
-          citizenName: grievance.citizen.name,
-          employeePhone: grievance.assignedEmployee.phone,
-          employeeName: grievance.assignedEmployee.name,
-          employeeDesignation: grievance.assignedEmployee.designation,
-          employeeDepartment: grievance.assignedEmployee.department,
-          autoRecord,
-        }),
-      });
+      const payload = {
+        grievanceId: grievance.grievanceId,
+        title: `Jan Sunwai — ${grievance.title}`,
+        hostUserId: currentUser.id,
+        hostName: currentUser.name,
+        hostPhone: currentUser.phone || '',
+        hostDesignation: currentUser.designation || "District Collector",
+        citizenPhone: grievance.citizen?.phone || '+917735807328',
+        citizenName: grievance.citizen?.name || 'Citizen',
+        employeePhone: grievance.assignedEmployee?.phone || '+917749852013',
+        employeeName: grievance.assignedEmployee?.name || 'Field Officer',
+        employeeDesignation: grievance.assignedEmployee?.designation || 'Official',
+        employeeDepartment: grievance.assignedEmployee?.department || 'District Administration',
+        autoRecord,
+      };
 
-      const data = await res.json();
+      const reqHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Bypass-Tunnel-Reminder": "true",
+      };
+
+      let res = await fetch(`${API_BASE}/api/calls/initiate`, {
+        method: "POST",
+        headers: reqHeaders,
+        body: JSON.stringify(payload),
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        const fallbackRes = await fetch(`/api/calls/initiate`, {
+          method: "POST",
+          headers: reqHeaders,
+          body: JSON.stringify(payload),
+        }).catch(() => null);
+        if (fallbackRes && fallbackRes.ok) {
+          res = fallbackRes;
+        }
+      }
+
+      if (!res) {
+        throw new Error("Unable to connect to hearing server");
+      }
+
+      const data = await res.json().catch(() => null);
 
       if (!res.ok) {
-        showToast(data.error || "Failed to initiate call", "error");
+        showToast(data?.error || `Failed to initiate call (${res.status})`, "error");
         return;
       }
+
+      // 1. Immediately blacklist own initiated call so caller device never pops up incoming call
+      if (data.call?.id) dismissedCallIdsRef.current.add(data.call.id);
+      if (data.livekit?.roomName) dismissedCallIdsRef.current.add(data.livekit.roomName);
+      if (grievance.grievanceId) dismissedCallIdsRef.current.add(grievance.grievanceId);
+      setIncomingCall(null);
+      stopAllRingtones();
 
       setLivekitConnection({
         token: data.livekit.token,
@@ -1036,8 +1066,8 @@ export default function JanSunwaiPortalPage() {
       });
 
       showToast("📞 Ringing citizen and employee...", "success");
-    } catch (err) {
-      showToast("Failed to connect to server", "error");
+    } catch (err: any) {
+      showToast(err?.message || "Failed to connect to server", "error");
       console.error("Call initiation error:", err);
     } finally {
       setIsCallInitiating(false);

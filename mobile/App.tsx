@@ -781,7 +781,29 @@ export default function App() {
           <HomeScreen
             user={currentUser}
             serverUrl={serverUrl}
-            onJoinHearing={(params) => setActiveHearingAndRef(params)}
+            onJoinHearing={(params) => {
+              // 1. Tell native VoIP service this device is in a call
+              JanSunwaiVoIP?.setInCall?.(true);
+              JanSunwaiVoIP?.stopRinging?.();
+
+              // 2. Blacklist initiated call/room IDs so caller device never rings itself
+              if (params.callId) {
+                dismissedCallIdsRef.current.add(params.callId);
+                dismissedCallTimesRef.current.set(params.callId, Date.now());
+              }
+              if (params.roomName) {
+                dismissedCallIdsRef.current.add(params.roomName);
+              }
+              if (params.grievanceId) {
+                dismissedCallIdsRef.current.add(params.grievanceId);
+              }
+
+              // 3. Clear any incoming call dialog
+              setIncomingCall(null);
+
+              // 4. Enter video hearing screen
+              setActiveHearingAndRef(params);
+            }}
             onLogout={handleLogout}
           />
 

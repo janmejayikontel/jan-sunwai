@@ -235,13 +235,17 @@ export async function initiateCall(input: InitiateCallInput): Promise<{
     answeredAt: new Date(),
   };
 
+  const isCitizenHost = Boolean(hostPhone && matchPhone(input.citizenPhone, hostPhone));
+  const isEmployeeHost = Boolean(hostPhone && matchPhone(input.employeePhone, hostPhone));
+
   const citizenParticipant: CallParticipant = {
     id: uuidv4(),
     phone: input.citizenPhone,
     name: input.citizenName,
     role: 'citizen',
-    ringStatus: 'ringing',
+    ringStatus: isCitizenHost ? 'accepted' : 'ringing',
     ringStartedAt: new Date(),
+    ...(isCitizenHost && { answeredAt: new Date() }),
   };
 
   const employeeParticipant: CallParticipant = {
@@ -251,8 +255,9 @@ export async function initiateCall(input: InitiateCallInput): Promise<{
     role: 'employee',
     designation: input.employeeDesignation,
     department: input.employeeDepartment,
-    ringStatus: 'ringing',
+    ringStatus: isEmployeeHost ? 'accepted' : 'ringing',
     ringStartedAt: new Date(),
+    ...(isEmployeeHost && { answeredAt: new Date() }),
   };
 
   // 3. Create call session
@@ -931,9 +936,15 @@ export function getIncomingCallForPhone(phone: string): {
   for (const call of activeCalls.values()) {
     if (call.status === 'completed' || call.status === 'cancelled') continue;
 
-    // RULE: If this phone is the HOST/CALLER who initiated this call, NEVER ring them!
+    // RULE 1: If this phone is the HOST/CALLER who initiated this call, NEVER ring them!
     if (call.hostPhone && matchPhone(call.hostPhone, phone)) continue;
     if (call.hostUserId && matchPhone(call.hostUserId, phone)) continue;
+
+    // RULE 2: If phone matches any participant with role 'host' or who has already accepted or left, NEVER ring them!
+    const alreadyConnectedOrHost = call.participants.some(
+      (p) => matchPhone(p.phone, phone) && (p.role === 'host' || p.ringStatus === 'accepted' || p.ringStatus === 'left')
+    );
+    if (alreadyConnectedOrHost) continue;
 
     const participant = call.participants.find((p) => matchPhone(p.phone, phone));
     if (!participant || participant.role === 'host') continue;
