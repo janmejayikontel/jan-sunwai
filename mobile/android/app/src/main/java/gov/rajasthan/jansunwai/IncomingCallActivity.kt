@@ -362,8 +362,12 @@ class IncomingCallActivity : AppCompatActivity() {
         isPulseActive = false
 
         // Stop ringing sound and vibration immediately and blacklist call from re-ringing
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.cancel(JanSunwaiVoIPService.NOTIFICATION_ID_CALL)
+        } catch (e: Throwable) {}
         JanSunwaiVoIPService.dismissCall(callId)
-        JanSunwaiVoIPService.stopActiveRinging()
+        JanSunwaiVoIPService.stopActiveRinging(this)
 
         // Send decline signal to backend in background thread
         if (callId.isNotEmpty() && serverUrl.isNotEmpty() && userPhone.isNotEmpty()) {
@@ -404,9 +408,13 @@ class IncomingCallActivity : AppCompatActivity() {
         isPulseActive = false
         handler.removeCallbacksAndMessages(null)
 
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.cancel(JanSunwaiVoIPService.NOTIFICATION_ID_CALL)
+        } catch (e: Throwable) {}
         try { window.decorView.visibility = View.GONE } catch (e: Throwable) {}
         CallOverlayManager.dismiss(applicationContext)
-        JanSunwaiVoIPService.stopActiveRinging()
+        JanSunwaiVoIPService.stopActiveRinging(this)
         JanSunwaiVoIPService.setInCallState(true)
         JanSunwaiVoIPService.lastReceivedCallData = null
 

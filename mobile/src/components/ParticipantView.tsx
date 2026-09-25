@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { VideoTrack, TrackReferenceOrPlaceholder } from '@livekit/react-native';
+import { Track } from 'livekit-client';
 
 interface ParticipantViewProps {
   trackRef: TrackReferenceOrPlaceholder;
@@ -36,14 +37,18 @@ export const ParticipantView: React.FC<ParticipantViewProps> = ({
   const isLocal = trackRef.participant?.isLocal;
   const name = trackRef.participant?.name || trackRef.participant?.identity || 'Participant';
   const isSpeaking = !!trackRef.participant?.isSpeaking;
-  const isMicMuted = trackRef.participant?.isMicrophoneEnabled === false;
-  
-  // Track publication video check
+
+  // Check microphone status from track publication
+  const micPub = trackRef.participant?.getTrackPublication?.(Track.Source.Microphone);
+  const isMicMuted = micPub != null
+    ? micPub.isMuted
+    : (trackRef.participant ? trackRef.participant.isMicrophoneEnabled === false : false);
+
+  // Track publication video check - show video whenever the track is active and unmuted
   const hasVideoTrack =
     !isScreenShare &&
     !!trackRef.publication?.track &&
-    !trackRef.publication?.isMuted &&
-    trackRef.participant?.isCameraEnabled !== false;
+    !trackRef.publication?.isMuted;
 
   return (
     <View

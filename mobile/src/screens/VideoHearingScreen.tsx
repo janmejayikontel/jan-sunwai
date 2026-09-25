@@ -17,6 +17,7 @@ import {
   LiveKitRoom,
   useTracks,
   useRoomContext,
+  useLocalParticipant,
   AudioSession,
 } from '@livekit/react-native';
 import { Track, RoomEvent } from 'livekit-client';
@@ -53,9 +54,16 @@ const RoomContent: React.FC<{
   onLeave: () => void;
 }> = ({ serverUrl, apiBaseUrl, roomName, grievanceId, callId, role, userName, onLeave }) => {
   const room = useRoomContext();
-  const [isMuted, setIsMuted] = useState(false);
-  const [isCameraOff, setIsCameraOff] = useState(false);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const {
+    isMicrophoneEnabled,
+    isCameraEnabled,
+    isScreenShareEnabled,
+    localParticipant,
+  } = useLocalParticipant();
+
+  const isMuted = !isMicrophoneEnabled;
+  const isCameraOff = !isCameraEnabled;
+  const isScreenSharing = isScreenShareEnabled;
   const [showAddParticipant, setShowAddParticipant] = useState(false);
   const [showSafetyNumbers, setShowSafetyNumbers] = useState(false);
   const [showModeration, setShowModeration] = useState(false);
@@ -200,15 +208,6 @@ const RoomContent: React.FC<{
     };
   }, [callId, grievanceId]);
 
-  // Sync state with local participant
-  useEffect(() => {
-    if (room?.localParticipant) {
-      setIsMuted(!room.localParticipant.isMicrophoneEnabled);
-      setIsCameraOff(!room.localParticipant.isCameraEnabled);
-      setIsScreenSharing(room.localParticipant.isScreenShareEnabled);
-    }
-  }, [room]);
-
   // Sync live remote members list
   useEffect(() => {
     if (!room) return;
@@ -223,11 +222,17 @@ const RoomContent: React.FC<{
       }> = [];
 
       room.remoteParticipants.forEach((p) => {
+        const micPub = p.getTrackPublication(Track.Source.Microphone);
+        const camPub = p.getTrackPublication(Track.Source.Camera);
+
+        const micMuted = micPub != null ? micPub.isMuted : !p.isMicrophoneEnabled;
+        const videoOff = camPub != null ? camPub.isMuted : !p.isCameraEnabled;
+
         list.push({
           identity: p.identity,
           name: p.name || p.identity,
-          isMicMuted: !p.isMicrophoneEnabled,
-          isVideoOff: !p.isCameraEnabled,
+          isMicMuted: micMuted,
+          isVideoOff: videoOff,
           isSpeaking: p.isSpeaking,
         });
       });
@@ -301,14 +306,14 @@ const RoomContent: React.FC<{
       if (!isTarget) return;
 
       if (data.action === 'mute_all' || data.action === 'mute_mic' || data.action === 'mute_audio') {
-        room.localParticipant?.setMicrophoneEnabled(false);
-        setIsMuted(true);
+        const lp = localParticipant || room?.localParticipant;
+        lp?.setMicrophoneEnabled(false);
         showNotice('🔇 Microphone muted by Presiding Officer');
       } else if (data.action === 'unmute_mic') {
         showNotice('🎙️ Presiding Officer requested you to unmute');
       } else if (data.action === 'disable_all_video' || data.action === 'disable_video') {
-        room.localParticipant?.setCameraEnabled(false);
-        setIsCameraOff(true);
+        const lp = localParticipant || room?.localParticipant;
+        lp?.setCameraEnabled(false);
         showNotice('📷 Camera turned off by Presiding Officer');
       } else if (data.action === 'enable_video') {
         showNotice('📹 Presiding Officer requested you to turn on camera');
@@ -371,11 +376,9 @@ const RoomContent: React.FC<{
           publication?.kind === 'audio';
 
         if (isVideo) {
-          room.localParticipant?.setCameraEnabled(false);
-          setIsCameraOff(true);
+          (localParticipant || room?.localParticipant)?.setCameraEnabled(false);
         } else if (isAudio) {
-          room.localParticipant?.setMicrophoneEnabled(false);
-          setIsMuted(true);
+          (localParticipant || room?.localParticipant)?.setMicrophoneEnabled(false);
         }
       }
     };
@@ -439,11 +442,10 @@ const RoomContent: React.FC<{
 
   // 1-Click Native Screen Sharing
   const handleToggleScreenShare = async () => {
-    if (!room?.localParticipant) return;
+    const lp = localParticipant || room?.localParticipant;
+    if (!lp) return;
     try {
-      const nextState = !isScreenSharing;
-      await room.localParticipant.setScreenShareEnabled(nextState);
-      setIsScreenSharing(nextState);
+      await lp.setScreenShareEnabled(!isScreenSharing);
     } catch (err: any) {
       console.error('[JanSunwai Mobile] Screen share error:', err);
       Alert.alert(
@@ -454,22 +456,20 @@ const RoomContent: React.FC<{
   };
 
   const handleToggleMic = async () => {
-    if (!room?.localParticipant) return;
+    const lp = localParticipant || room?.localParticipant;
+    if (!lp) return;
     try {
-      const nextState = isMuted; // if currently muted, next state is unmuted (true)
-      await room.localParticipant.setMicrophoneEnabled(nextState);
-      setIsMuted(!nextState);
+      await lp.setMicrophoneEnabled(!isMicrophoneEnabled);
     } catch (err) {
       console.warn('Toggle mic error:', err);
     }
   };
 
   const handleToggleCamera = async () => {
-    if (!room?.localParticipant) return;
+    const lp = localParticipant || room?.localParticipant;
+    if (!lp) return;
     try {
-      const nextState = isCameraOff; // if currently off, next state is on (true)
-      await room.localParticipant.setCameraEnabled(nextState);
-      setIsCameraOff(!nextState);
+      await lp.setCameraEnabled(!isCameraEnabled);
     } catch (err) {
       console.warn('Toggle camera error:', err);
     }
@@ -477,9 +477,10 @@ const RoomContent: React.FC<{
 
   // Flip between front and back camera
   const handleFlipCamera = async () => {
-    if (!room?.localParticipant) return;
+    const lp = localParticipant || room?.localParticipant;
+    if (!lp) return;
     try {
-      const videoTrack = room.localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
+      const videoTrack = lp.getTrackPublication(Track.Source.Camera)?.videoTrack;
       if (videoTrack && typeof (videoTrack as any).restart === 'function') {
         const currentFacingMode = (videoTrack as any).mediaStreamTrack?.getSettings?.()?.facingMode;
         const newFacing = currentFacingMode === 'environment' ? 'user' : 'environment';

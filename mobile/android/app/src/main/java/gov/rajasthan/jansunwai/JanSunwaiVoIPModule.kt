@@ -96,12 +96,16 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stopRinging(promise: Promise) {
         try {
+            try {
+                val nm = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                nm?.cancel(JanSunwaiVoIPService.NOTIFICATION_ID_CALL)
+            } catch (e: Throwable) {}
             CallOverlayManager.dismiss(reactContext)
             try {
                 IncomingCallActivity.activeInstance?.finishAndRemoveTask()
                 IncomingCallActivity.activeInstance?.finish()
             } catch (e: Exception) {}
-            JanSunwaiVoIPService.stopActiveRinging()
+            JanSunwaiVoIPService.stopActiveRinging(reactContext)
             try {
                 val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
                     action = JanSunwaiVoIPService.ACTION_STOP_RINGING
@@ -120,11 +124,16 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
     fun setInCall(inCall: Boolean, promise: Promise) {
         try {
             if (inCall) {
+                try {
+                    val nm = reactContext.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+                    nm?.cancel(JanSunwaiVoIPService.NOTIFICATION_ID_CALL)
+                } catch (e: Throwable) {}
                 CallOverlayManager.dismiss(reactContext)
                 try {
                     IncomingCallActivity.activeInstance?.finishAndRemoveTask()
                     IncomingCallActivity.activeInstance?.finish()
                 } catch (e: Exception) {}
+                JanSunwaiVoIPService.stopActiveRinging(reactContext)
             }
             JanSunwaiVoIPService.setInCallState(inCall)
             val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {

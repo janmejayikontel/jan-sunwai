@@ -64,8 +64,38 @@ class JanSunwaiVoIPService : Service() {
         private val recentlyDismissedCallIds: MutableMap<String, Long> = java.util.concurrent.ConcurrentHashMap()
 
         private var instance: JanSunwaiVoIPService? = null
+        @Volatile var activeMediaPlayer: MediaPlayer? = null
+        @Volatile var activeVibrator: Vibrator? = null
 
-        fun stopActiveRinging() {
+        fun stopActiveRinging(context: Context? = null) {
+            isCallRinging = false
+            currentRingingCallId = null
+
+            // 1. Immediately kill active MediaPlayer synchronously
+            try {
+                activeMediaPlayer?.let { mp ->
+                    try { if (mp.isPlaying) mp.stop() } catch (e: Throwable) {}
+                    try { mp.reset() } catch (e: Throwable) {}
+                    try { mp.release() } catch (e: Throwable) {}
+                }
+                activeMediaPlayer = null
+            } catch (e: Throwable) {}
+
+            // 2. Immediately cancel vibrator
+            try {
+                activeVibrator?.cancel()
+            } catch (e: Throwable) {}
+
+            // 3. Immediately cancel NOTIFICATION_ID_CALL via NotificationManager
+            val ctx = context ?: instance?.applicationContext
+            if (ctx != null) {
+                try {
+                    val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    nm.cancel(NOTIFICATION_ID_CALL)
+                } catch (e: Throwable) {}
+            }
+
+            // 4. Delegate to instance
             instance?.stopRinging()
         }
 
@@ -84,7 +114,6 @@ class JanSunwaiVoIPService : Service() {
                 } catch (e: Exception) {}
             }
             // Persist to SharedPrefs so service restarts (START_STICKY) restore correct state
-            // This prevents re-ringing for an already-accepted call after service restart
             try {
                 instance?.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
                     ?.edit()?.putBoolean("is_in_call", inCall)?.commit()
@@ -96,14 +125,11 @@ class JanSunwaiVoIPService : Service() {
         fun dismissCall(callId: String?) {
             if (!callId.isNullOrBlank()) {
                 val c = callId.trim().uppercase()
-                // Only suppress specific callId temporarily for 15s to silence duplicate ring events
-                if (!c.startsWith("RAJ-") && !c.startsWith("JS-")) {
-                    recentlyDismissedCallIds[c] = System.currentTimeMillis()
-                    Log.i(TAG, "Dismissed callId temporarily suppressed for 15s: $c")
-                }
+                recentlyDismissedCallIds[c] = System.currentTimeMillis()
+                Log.i(TAG, "Dismissed callId temporarily suppressed: $c")
             }
             lastReceivedCallData = null
-            isInCall = false
+            // DO NOT set isInCall = false here! If user is in a call, isInCall must stay true!
             try {
                 CallOverlayManager.dismiss()
                 IncomingCallActivity.activeInstance?.finishAndRemoveTask()
@@ -115,28 +141,28 @@ class JanSunwaiVoIPService : Service() {
                     prefs.edit()
                         .remove("last_call_json")
                         .remove("pending_accepted_call")
-                        .remove("is_in_call")   // clear in-call flag so service won't suppress next call
                         .commit()
                 }
-            } catch (e: Exception) {
-                // ignore
-            }
+            } catch (e: Exception) {}
             stopActiveRinging()
         }
 
         fun isCallDismissed(callId: String?, grievanceId: String? = null): Boolean {
-            if (!callId.isNullOrBlank()) {
-                val c = callId.trim().uppercase()
+            val now = System.currentTimeMillis()
+            fun checkId(id: String?): Boolean {
+                if (id.isNullOrBlank()) return false
+                val c = id.trim().uppercase()
                 val ts = recentlyDismissedCallIds[c]
                 if (ts != null) {
-                    if (System.currentTimeMillis() - ts < 15000L) {
+                    if (now - ts < 20000L) {
                         return true
                     } else {
                         recentlyDismissedCallIds.remove(c)
                     }
                 }
+                return false
             }
-            return false
+            return checkId(callId) || checkId(grievanceId)
         }
     }
 
@@ -745,6 +771,7 @@ class JanSunwaiVoIPService : Service() {
                     prepare()
                     start()
                 }
+                activeMediaPlayer = mediaPlayer
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to play ringtone with MediaPlayer", e)
             }
@@ -758,6 +785,7 @@ class JanSunwaiVoIPService : Service() {
                     @Suppress("DEPRECATION")
                     vibrator?.vibrate(pattern, 0)
                 }
+                activeVibrator = vibrator
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to vibrate", e)
             }
@@ -945,7 +973,7 @@ class JanSunwaiVoIPService : Service() {
         // 1. Synchronously stop and release MediaPlayer immediately
         try {
             mediaPlayer?.let { mp ->
-                try { mp.stop() } catch (e: Throwable) {}
+                try { if (mp.isPlaying) mp.stop() } catch (e: Throwable) {}
                 try { mp.reset() } catch (e: Throwable) {}
                 try { mp.release() } catch (e: Throwable) {}
             }
@@ -953,74 +981,66 @@ class JanSunwaiVoIPService : Service() {
         } catch (e: Throwable) {
             Log.w(TAG, "Failed to stop mediaPlayer synchronously", e)
         }
+        try {
+            activeMediaPlayer?.let { mp ->
+                try { if (mp.isPlaying) mp.stop() } catch (e: Throwable) {}
+                try { mp.reset() } catch (e: Throwable) {}
+                try { mp.release() } catch (e: Throwable) {}
+            }
+            activeMediaPlayer = null
+        } catch (e: Throwable) {}
 
         // 2. Synchronously cancel vibrator immediately
         try {
             vibrator?.cancel()
-        } catch (e: Throwable) {
-            // ignore
-        }
+            activeVibrator?.cancel()
+        } catch (e: Throwable) {}
 
         // 3. Release wake lock
         try {
             wakeLock?.let {
                 if (it.isHeld) it.release()
             }
+        } catch (e: Throwable) {}
+
+        // 4. CRITICAL: Stop CallStyle incoming call foreground notification immediately
+        // In Android, a CallStyle notification attached to startForeground plays system ringtone until removed!
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.cancel(NOTIFICATION_ID_CALL)
         } catch (e: Throwable) {
-            // ignore
+            Log.w(TAG, "Failed to cancel call foreground notification: ${e.message}")
         }
 
+        // 5. Restore silent standby or in-call notification
+        if (isServiceRunning) {
+            try {
+                val ongoingNotif = if (isInCall) createInCallNotification() else createStandbyNotification()
+                startForeground(NOTIFICATION_ID_STANDBY, ongoingNotif)
+            } catch (e: Throwable) {
+                Log.w(TAG, "startForeground ongoingNotif error: ${e.message}")
+            }
+        }
+
+        // 6. Dismiss CallOverlay and IncomingCallActivity immediately
+        try {
+            CallOverlayManager.dismiss(applicationContext)
+        } catch (e: Throwable) {}
+        try {
+            IncomingCallActivity.activeInstance?.finish()
+        } catch (e: Throwable) {}
+
         handler.post {
-            // Double check MediaPlayer release on main thread
-            try {
-                mediaPlayer?.let { mp ->
-                    try { mp.stop() } catch (e: Throwable) {}
-                    try { mp.reset() } catch (e: Throwable) {}
-                    try { mp.release() } catch (e: Throwable) {}
-                }
-                mediaPlayer = null
-            } catch (e: Throwable) {
-                // ignore
-            }
-
-            try {
-                vibrator?.cancel()
-            } catch (e: Throwable) {
-                // ignore
-            }
-
-            // Cancel the call alert notification without dropping foreground status
             try {
                 val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 notificationManager.cancel(NOTIFICATION_ID_CALL)
-            } catch (e: Throwable) {
-                // ignore
-            }
-
-            // Immediately switch to the non-alerting ongoing foreground notification
-            if (isServiceRunning) {
-                try {
-                    val ongoingNotif = if (isInCall) createInCallNotification() else createStandbyNotification()
-                    startForeground(NOTIFICATION_ID_STANDBY, ongoingNotif)
-                } catch (e: Throwable) {
-                    Log.w(TAG, "startForeground ongoingNotif error: ${e.message}")
-                }
-            }
-
-            // Dismiss CallOverlay if active
-            try {
-                CallOverlayManager.dismiss(applicationContext)
-            } catch (e: Throwable) {
-                // ignore
-            }
-
-            // Also dismiss native IncomingCallActivity if open
-            try {
-                IncomingCallActivity.activeInstance?.finish()
-            } catch (e: Throwable) {
-                // ignore
-            }
-
+            } catch (e: Throwable) {}
             Log.i(TAG, "Stopped ringing, silenced audio and restored standby/in-call notification (isInCall: $isInCall)")
         }
     }

@@ -75,13 +75,11 @@ export default function App() {
     requestAndroidPermissions();
   }, []);
 
-  // ─── 0b. Silence Ringtone & Kill Native Popup when Entering or Leaving a Hearing ─
+  // ─── 0b. Silence Ringtone & Lock In-Call State when Entering or Leaving a Hearing ─
   useEffect(() => {
+    Vibration.cancel();
     JanSunwaiVoIP?.stopRinging?.();
     if (activeHearing) {
-      // Safety net: explicitly dismiss IncomingCallActivity and CallOverlay
-      // even if dismissCall was already called in handleAcceptIncomingCall
-      JanSunwaiVoIP?.dismissCall?.(activeHearing.callId || activeHearing.grievanceId || null);
       JanSunwaiVoIP?.setInCall?.(true);
     } else {
       JanSunwaiVoIP?.setInCall?.(false);

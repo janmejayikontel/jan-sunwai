@@ -22,10 +22,16 @@ class MainActivity : ReactActivity() {
       IncomingCallActivity.activeInstance?.finishAndRemoveTask()
       IncomingCallActivity.activeInstance?.finish()
     } catch (e: Exception) {}
+    try {
+      val nm = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+      nm.cancel(JanSunwaiVoIPService.NOTIFICATION_ID_CALL)
+    } catch (e: Throwable) {}
+    JanSunwaiVoIPService.stopActiveRinging(this)
 
     // Read call data from intent (e.g. from notification Accept button)
     val intentCallData = intent?.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)
     if (!intentCallData.isNullOrBlank()) {
+      JanSunwaiVoIPService.setInCallState(true)
       JanSunwaiVoIPModule.pendingIncomingCallJson = intentCallData
       try {
         val prefs = getSharedPreferences("jansunwai_voip_prefs", android.content.Context.MODE_PRIVATE)
@@ -40,6 +46,7 @@ class MainActivity : ReactActivity() {
         val prefs = getSharedPreferences("jansunwai_voip_prefs", android.content.Context.MODE_PRIVATE)
         val savedCall = prefs.getString("pending_accepted_call", null)
         if (!savedCall.isNullOrBlank()) {
+          JanSunwaiVoIPService.setInCallState(true)
           JanSunwaiVoIPModule.pendingIncomingCallJson = savedCall
           android.util.Log.i("MainActivity", "Cold-start: restored pending_accepted_call from SharedPrefs: $savedCall")
           JanSunwaiVoIPModule.emitIncomingCall(savedCall)
@@ -59,8 +66,14 @@ class MainActivity : ReactActivity() {
       IncomingCallActivity.activeInstance?.finishAndRemoveTask()
       IncomingCallActivity.activeInstance?.finish()
     } catch (e: Exception) {}
+    try {
+      val nm = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+      nm.cancel(JanSunwaiVoIPService.NOTIFICATION_ID_CALL)
+    } catch (e: Throwable) {}
+    JanSunwaiVoIPService.stopActiveRinging(this)
 
     intent.getStringExtra(JanSunwaiVoIPService.EXTRA_CALL_DATA)?.let {
+      JanSunwaiVoIPService.setInCallState(true)
       JanSunwaiVoIPModule.pendingIncomingCallJson = it
       try {
         val prefs = getSharedPreferences("jansunwai_voip_prefs", android.content.Context.MODE_PRIVATE)
@@ -81,6 +94,11 @@ class MainActivity : ReactActivity() {
       IncomingCallActivity.activeInstance?.finishAndRemoveTask()
       IncomingCallActivity.activeInstance?.finish()
     } catch (e: Exception) {}
+    try {
+      val nm = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+      nm.cancel(JanSunwaiVoIPService.NOTIFICATION_ID_CALL)
+    } catch (e: Throwable) {}
+    JanSunwaiVoIPService.stopActiveRinging(this)
   }
 
   private fun applyWindowFlags() {
