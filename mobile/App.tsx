@@ -45,6 +45,7 @@ export default function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const pendingCallRef = useRef<any>(null);
   const dismissedCallTimesRef = useRef<Map<string, number>>(new Map());
+  const dismissedCallIdsRef = useRef<Set<string>>(new Set());
   // Refs that shadow state — used in WebSocket/polling closures to avoid stale captures
   const activeHearingRef = useRef<ActiveHearingState | null>(null);
   const isConnectingHearingRef = useRef<boolean>(false);
@@ -793,9 +794,11 @@ export default function App() {
               }
               if (params.roomName) {
                 dismissedCallIdsRef.current.add(params.roomName);
+                dismissedCallTimesRef.current.set(params.roomName, Date.now());
               }
               if (params.grievanceId) {
                 dismissedCallIdsRef.current.add(params.grievanceId);
+                dismissedCallTimesRef.current.set(params.grievanceId, Date.now());
               }
 
               // 3. Clear any incoming call dialog
