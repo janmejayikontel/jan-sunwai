@@ -61,14 +61,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         const clean = txt.trim();
         if (clean.startsWith('http')) {
           console.log('[LoginScreen] Fetched remote live server URL:', clean);
+          setServerBase(clean);
           try {
-            const healthRes = await fetch(`${clean}/api/health`, { method: 'GET' });
-            if (healthRes.ok) {
-              setServerBase(clean);
-            }
-          } catch {
-            console.log('[LoginScreen] Remote URL not responding, retaining fallback');
-          }
+            await fetch(`${clean}/api/health`, {
+              method: 'GET',
+              headers: { 'Bypass-Tunnel-Reminder': 'true' },
+            });
+          } catch {}
         }
       })
       .catch((e) => console.log('[LoginScreen] Using default server URL:', e.message));
