@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Modal,
   Vibration,
+  Animated,
   Platform,
 } from 'react-native';
 
@@ -35,91 +36,103 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
   onAccept,
   onDecline,
 }) => {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(60)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
   useEffect(() => {
     if (incomingCall && !isInCall && !isConnecting) {
-      // Vibrate like an incoming phone call
-      const ONE_SECOND_IN_MS = 1000;
-      const PATTERN = [
-        0,
-        ONE_SECOND_IN_MS,
-        ONE_SECOND_IN_MS,
-        ONE_SECOND_IN_MS,
-        ONE_SECOND_IN_MS,
-      ];
-      Vibration.vibrate(PATTERN, true);
+      Vibration.vibrate([0, 1000, 1000, 1000, 1000], true);
+
+      // Slide in
+      Animated.parallel([
+        Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, tension: 60, friction: 10 }),
+        Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+      ]).start();
+
+      // Pulse ring
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.15, duration: 700, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
+        ])
+      ).start();
     } else {
       Vibration.cancel();
     }
-
-    return () => {
-      Vibration.cancel();
-    };
+    return () => { Vibration.cancel(); };
   }, [incomingCall, isInCall, isConnecting]);
 
   if (!incomingCall || isInCall || isConnecting) return null;
 
+  const initials = (incomingCall.callerName || 'DC')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w: string) => w[0])
+    .join('')
+    .toUpperCase();
+
   return (
     <Modal
       transparent
-      animationType="slide"
+      animationType="none"
       visible={!!incomingCall && !isInCall && !isConnecting}
       onRequestClose={onDecline}
     >
-      <View style={styles.overlay}>
-        <View style={styles.card}>
-          {/* Pulsing ring emblem */}
-          <View style={styles.ringIndicator}>
-            <Text style={styles.ringIcon}>📞</Text>
-          </View>
+      <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
+        <Animated.View style={[styles.card, { transform: [{ translateY: slideAnim }] }]}>
 
-          <Text style={styles.callBadge}>INCOMING VIDEO HEARING</Text>
-          <Text style={styles.hindiSubtitle}>जन सुनवाई वीडियो कॉल आमंत्रण</Text>
-
-          {/* Caller Details */}
-          <View style={styles.callerBox}>
-            <Text style={styles.callerName}>{incomingCall.callerName}</Text>
-            <View style={styles.designationBadge}>
-              <Text style={styles.designationText}>
-                🏛️ {incomingCall.callerDesignation || 'District Collector & DM'}
-              </Text>
+          {/* Pulse Ring + Avatar */}
+          <View style={styles.avatarArea}>
+            <Animated.View style={[styles.pulseRing, { transform: [{ scale: pulseAnim }] }]} />
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarText}>{initials}</Text>
             </View>
           </View>
 
-          {/* Grievance Info */}
-          <View style={styles.infoBox}>
-            <Text style={styles.infoLabel}>GRIEVANCE / CASE DETAILS</Text>
+          {/* Call label */}
+          <View style={styles.callTypeTag}>
+            <View style={styles.liveRingDot} />
+            <Text style={styles.callTypeText}>INCOMING VIDEO HEARING</Text>
+          </View>
+
+          {/* Caller name */}
+          <Text style={styles.callerName}>{incomingCall.callerName}</Text>
+          <Text style={styles.callerDesig}>{incomingCall.callerDesignation || 'Presiding Officer'}</Text>
+
+          {/* Case info */}
+          <View style={styles.caseBox}>
+            <Text style={styles.caseLabel}>CASE</Text>
             <Text style={styles.caseId}>#{incomingCall.grievanceId}</Text>
-            <Text style={styles.caseTitle} numberOfLines={2}>
-              {incomingCall.title}
-            </Text>
+            {!!incomingCall.title && (
+              <Text style={styles.caseTitle} numberOfLines={2}>{incomingCall.title}</Text>
+            )}
           </View>
 
-          <Text style={styles.helpNote}>
-            The Presiding Officer has called you into the active hearing session.
-          </Text>
-
-          {/* Action Buttons */}
+          {/* Action buttons */}
           <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={[styles.btn, styles.declineBtn]}
-              onPress={onDecline}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.declineIcon}>✕</Text>
-              <Text style={styles.declineText}>Decline</Text>
+            <TouchableOpacity style={styles.declineBtn} onPress={onDecline} activeOpacity={0.8}>
+              {/* X icon */}
+              <View style={styles.iconX}>
+                <View style={[styles.xBar, { transform: [{ rotate: '45deg' }] }]} />
+                <View style={[styles.xBar, { transform: [{ rotate: '-45deg' }] }]} />
+              </View>
+              <Text style={styles.declineTxt}>Decline</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.btn, styles.acceptBtn]}
-              onPress={onAccept}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.acceptIcon}>📞</Text>
-              <Text style={styles.acceptText}>Join Hearing</Text>
+            <TouchableOpacity style={styles.acceptBtn} onPress={onAccept} activeOpacity={0.8}>
+              {/* Phone icon */}
+              <View style={styles.phoneIcon}>
+                <View style={styles.phoneBody} />
+              </View>
+              <Text style={styles.acceptTxt}>Join Hearing</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
+
+          <Text style={styles.footNote}>जन सुनवाई • Government of Rajasthan</Text>
+        </Animated.View>
+      </Animated.View>
     </Modal>
   );
 };
@@ -127,144 +140,205 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.92)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 24,
   },
   card: {
     width: '100%',
-    maxWidth: 380,
-    backgroundColor: '#0f172a',
-    borderRadius: 24,
-    padding: 24,
+    maxWidth: 360,
+    backgroundColor: '#0d1526',
+    borderRadius: 28,
+    padding: 28,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#38bdf8',
+    borderWidth: 1,
+    borderColor: 'rgba(56,189,248,0.25)',
     shadowColor: '#38bdf8',
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 10,
+    shadowOpacity: 0.2,
+    shadowRadius: 30,
+    elevation: 20,
   },
-  ringIndicator: {
+
+  // Avatar
+  avatarArea: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    width: 96,
+    height: 96,
+  },
+  pulseRing: {
+    position: 'absolute',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 2,
+    borderColor: 'rgba(56,189,248,0.35)',
+  },
+  avatarCircle: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#0369a1',
+    backgroundColor: '#1e40af',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-    borderWidth: 3,
+    borderWidth: 2.5,
     borderColor: '#38bdf8',
   },
-  ringIcon: {
-    fontSize: 34,
+  avatarText: {
+    color: '#fff',
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
-  callBadge: {
+
+  // Call type tag
+  callTypeTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  liveRingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#38bdf8',
+  },
+  callTypeText: {
     color: '#38bdf8',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.5,
-    marginBottom: 4,
   },
-  hindiSubtitle: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginBottom: 16,
-  },
-  callerBox: {
-    alignItems: 'center',
-    marginBottom: 18,
-  },
+
+  // Caller info
   callerName: {
     color: '#f8fafc',
     fontSize: 22,
     fontWeight: '800',
     textAlign: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  designationBadge: {
-    backgroundColor: 'rgba(139, 92, 246, 0.2)',
-    borderColor: '#8b5cf6',
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 16,
-  },
-  designationText: {
-    color: '#c084fc',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  infoBox: {
-    width: '100%',
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#f59e0b',
-  },
-  infoLabel: {
+  callerDesig: {
     color: '#94a3b8',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  caseId: {
-    color: '#f59e0b',
-    fontSize: 14,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  caseTitle: {
-    color: '#cbd5e1',
     fontSize: 13,
-    lineHeight: 18,
-  },
-  helpNote: {
-    color: '#64748b',
-    fontSize: 11,
+    fontWeight: '600',
     textAlign: 'center',
     marginBottom: 20,
   },
+
+  // Case box
+  caseBox: {
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 14,
+    borderLeftWidth: 3,
+    borderLeftColor: '#f59e0b',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 24,
+  },
+  caseLabel: {
+    color: '#64748b',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1,
+    marginBottom: 3,
+  },
+  caseId: {
+    color: '#f59e0b',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 3,
+  },
+  caseTitle: {
+    color: '#cbd5e1',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+
+  // Action buttons
   actionRow: {
     flexDirection: 'row',
     width: '100%',
     gap: 12,
+    marginBottom: 18,
   },
-  btn: {
+  declineBtn: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
+    height: 56,
+    backgroundColor: '#7f1d1d',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    gap: 6,
+  },
+  acceptBtn: {
+    flex: 1.5,
+    height: 56,
+    backgroundColor: '#064e3b',
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 8,
+    borderWidth: 1,
+    borderColor: '#10b981',
+    gap: 10,
+    shadowColor: '#10b981',
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  declineBtn: {
-    backgroundColor: '#dc2626',
+  declineTxt: {
+    color: '#fca5a5',
+    fontSize: 13,
+    fontWeight: '700',
   },
-  declineIcon: {
+  acceptTxt: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
-  declineText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '700',
+
+  // X icon
+  iconX: {
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  acceptBtn: {
-    backgroundColor: '#059669',
+  xBar: {
+    position: 'absolute',
+    width: 18,
+    height: 2.5,
+    backgroundColor: '#fca5a5',
+    borderRadius: 2,
   },
-  acceptIcon: {
-    fontSize: 18,
+
+  // Phone icon (simple)
+  phoneIcon: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  acceptText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '700',
+  phoneBody: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2.5,
+    borderColor: '#34d399',
+    borderTopColor: 'transparent',
+    transform: [{ rotate: '-45deg' }],
+  },
+
+  footNote: {
+    color: '#334155',
+    fontSize: 11,
+    textAlign: 'center',
   },
 });

@@ -64,6 +64,15 @@ const RoomContent: React.FC<{
   const isMuted = !isMicrophoneEnabled;
   const isCameraOff = !isCameraEnabled;
   const isScreenSharing = isScreenShareEnabled;
+
+  // Local override state: reflects officer moderation commands instantly,
+  // independent of LiveKit hook re-render cycle.
+  const [micMutedOverride, setMicMutedOverride] = React.useState<boolean | null>(null);
+  const [cameraOffOverride, setCameraOffOverride] = React.useState<boolean | null>(null);
+
+  // Effective display states: use override if set, otherwise use LiveKit reactive value
+  const effectiveMuted = micMutedOverride !== null ? micMutedOverride : isMuted;
+  const effectiveCameraOff = cameraOffOverride !== null ? cameraOffOverride : isCameraOff;
   const [showAddParticipant, setShowAddParticipant] = useState(false);
   const [showSafetyNumbers, setShowSafetyNumbers] = useState(false);
   const [showModeration, setShowModeration] = useState(false);
@@ -308,15 +317,23 @@ const RoomContent: React.FC<{
       if (data.action === 'mute_all' || data.action === 'mute_mic' || data.action === 'mute_audio') {
         const lp = localParticipant || room?.localParticipant;
         lp?.setMicrophoneEnabled(false);
+        setMicMutedOverride(true);
         showNotice('🔇 Microphone muted by Presiding Officer');
       } else if (data.action === 'unmute_mic') {
-        showNotice('🎙️ Presiding Officer requested you to unmute');
+        const lp = localParticipant || room?.localParticipant;
+        lp?.setMicrophoneEnabled(true);
+        setMicMutedOverride(false);
+        showNotice('🎙️ Microphone unmuted by Presiding Officer');
       } else if (data.action === 'disable_all_video' || data.action === 'disable_video') {
         const lp = localParticipant || room?.localParticipant;
         lp?.setCameraEnabled(false);
+        setCameraOffOverride(true);
         showNotice('📷 Camera turned off by Presiding Officer');
       } else if (data.action === 'enable_video') {
-        showNotice('📹 Presiding Officer requested you to turn on camera');
+        const lp = localParticipant || room?.localParticipant;
+        lp?.setCameraEnabled(true);
+        setCameraOffOverride(false);
+        showNotice('📹 Camera turned on by Presiding Officer');
       } else if (data.action === 'eject') {
         isExitingRef.current = true;
         showNotice('⛔ Hearing concluded by Presiding Officer');
@@ -459,7 +476,9 @@ const RoomContent: React.FC<{
     const lp = localParticipant || room?.localParticipant;
     if (!lp) return;
     try {
-      await lp.setMicrophoneEnabled(!isMicrophoneEnabled);
+      const next = !isMicrophoneEnabled;
+      await lp.setMicrophoneEnabled(next);
+      setMicMutedOverride(!next); // clear override — user is now in control
     } catch (err) {
       console.warn('Toggle mic error:', err);
     }
@@ -469,7 +488,9 @@ const RoomContent: React.FC<{
     const lp = localParticipant || room?.localParticipant;
     if (!lp) return;
     try {
-      await lp.setCameraEnabled(!isCameraEnabled);
+      const next = !isCameraEnabled;
+      await lp.setCameraEnabled(next);
+      setCameraOffOverride(!next); // clear override — user is now in control
     } catch (err) {
       console.warn('Toggle camera error:', err);
     }
@@ -750,7 +771,7 @@ const RoomContent: React.FC<{
       {/* High-Concurrency & E2EE Banner */}
       <View style={styles.concurrencyBanner}>
         <Text style={styles.concurrencyBannerText}>
-          👥 1,000+ Concurrency (1,500 Cap) • 🔒 256-Bit E2EE Active • SFU Dynacast
+          🔒 E2EE Encrypted Stream • High-Concurrency SFU Active
         </Text>
       </View>
 
@@ -824,8 +845,8 @@ const RoomContent: React.FC<{
 
       {/* Control Bar */}
       <ControlBar
-        isMuted={isMuted}
-        isCameraOff={isCameraOff}
+        isMuted={effectiveMuted}
+        isCameraOff={effectiveCameraOff}
         isScreenSharing={isScreenSharing}
         onToggleMic={handleToggleMic}
         onToggleCamera={handleToggleCamera}

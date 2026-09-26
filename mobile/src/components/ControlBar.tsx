@@ -1,5 +1,326 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, ViewStyle } from 'react-native';
+
+// ─── SVG-style Icon Components (pure RN Views, no library needed) ─────────────
+
+const MicIcon = ({ muted, size = 20 }: { muted: boolean; size?: number }) => {
+  const color = muted ? '#ef4444' : '#ffffff';
+  return (
+    <View style={{ width: size, height: size + 6, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Capsule body */}
+      <View style={{
+        width: size * 0.52,
+        height: size * 0.72,
+        borderRadius: size * 0.26,
+        backgroundColor: color,
+        position: 'absolute',
+        top: 0,
+      }} />
+      {/* Arc stand */}
+      <View style={{
+        width: size * 0.78,
+        height: size * 0.38,
+        borderBottomLeftRadius: size * 0.4,
+        borderBottomRightRadius: size * 0.4,
+        borderLeftWidth: 2,
+        borderRightWidth: 2,
+        borderBottomWidth: 2,
+        borderColor: color,
+        position: 'absolute',
+        top: size * 0.46,
+      }} />
+      {/* Vertical pole */}
+      <View style={{
+        width: 2,
+        height: size * 0.22,
+        backgroundColor: color,
+        position: 'absolute',
+        bottom: 0,
+      }} />
+      {/* Base line */}
+      <View style={{
+        width: size * 0.56,
+        height: 2,
+        backgroundColor: color,
+        position: 'absolute',
+        bottom: 0,
+      }} />
+      {/* Slash when muted */}
+      {muted && (
+        <View style={{
+          position: 'absolute',
+          width: size * 1.2,
+          height: 2.5,
+          backgroundColor: '#ef4444',
+          borderRadius: 2,
+          transform: [{ rotate: '-45deg' }],
+          top: size * 0.2,
+        }} />
+      )}
+    </View>
+  );
+};
+
+const CameraIcon = ({ off, size = 20 }: { off: boolean; size?: number }) => {
+  const color = off ? '#ef4444' : '#ffffff';
+  return (
+    <View style={{ width: size + 6, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Camera body */}
+      <View style={{
+        width: size * 0.72,
+        height: size * 0.58,
+        borderRadius: 4,
+        borderWidth: 2.5,
+        borderColor: color,
+        position: 'absolute',
+        left: 0,
+        top: size * 0.21,
+      }}>
+        {/* Lens */}
+        <View style={{
+          width: size * 0.28,
+          height: size * 0.28,
+          borderRadius: size * 0.15,
+          borderWidth: 2,
+          borderColor: color,
+          position: 'absolute',
+          alignSelf: 'center',
+          top: size * 0.06,
+        }} />
+      </View>
+      {/* Viewfinder hump */}
+      <View style={{
+        width: size * 0.3,
+        height: size * 0.18,
+        borderTopLeftRadius: 3,
+        borderTopRightRadius: 3,
+        backgroundColor: color,
+        position: 'absolute',
+        top: size * 0.1,
+        left: size * 0.18,
+      }} />
+      {/* Video triangle play head */}
+      <View style={{
+        position: 'absolute',
+        right: 0,
+        top: size * 0.28,
+        width: 0,
+        height: 0,
+        borderTopWidth: size * 0.22,
+        borderBottomWidth: size * 0.22,
+        borderLeftWidth: size * 0.28,
+        borderStyle: 'solid',
+        borderTopColor: 'transparent',
+        borderBottomColor: 'transparent',
+        borderLeftColor: color,
+      }} />
+      {/* Slash when off */}
+      {off && (
+        <View style={{
+          position: 'absolute',
+          width: size * 1.3,
+          height: 2.5,
+          backgroundColor: '#ef4444',
+          borderRadius: 2,
+          transform: [{ rotate: '-45deg' }],
+        }} />
+      )}
+    </View>
+  );
+};
+
+const ScreenShareIcon = ({ active, size = 20 }: { active: boolean; size?: number }) => {
+  const color = active ? '#34d399' : '#ffffff';
+  return (
+    <View style={{ width: size + 4, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Monitor frame */}
+      <View style={{
+        width: size + 4,
+        height: size * 0.7,
+        borderRadius: 3,
+        borderWidth: 2.5,
+        borderColor: color,
+        position: 'absolute',
+        top: 0,
+        overflow: 'hidden',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        {active ? (
+          // Stop square
+          <View style={{ width: size * 0.28, height: size * 0.28, backgroundColor: '#34d399', borderRadius: 2 }} />
+        ) : (
+          // Arrow up
+          <View style={{ alignItems: 'center' }}>
+            <View style={{ width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 6, borderStyle: 'solid', borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: color }} />
+            <View style={{ width: 2, height: 5, backgroundColor: color }} />
+          </View>
+        )}
+      </View>
+      {/* Stand */}
+      <View style={{ width: size * 0.36, height: size * 0.22, backgroundColor: color, position: 'absolute', bottom: 0, borderBottomLeftRadius: 2, borderBottomRightRadius: 2 }} />
+      <View style={{ width: size * 0.6, height: 2, backgroundColor: color, position: 'absolute', bottom: 0 }} />
+    </View>
+  );
+};
+
+const ChatIcon = ({ active, unread = 0, size = 20 }: { active: boolean; unread?: number; size?: number }) => {
+  const color = active ? '#38bdf8' : '#ffffff';
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Bubble */}
+      <View style={{
+        width: size,
+        height: size * 0.78,
+        borderRadius: size * 0.22,
+        borderWidth: 2.5,
+        borderColor: color,
+        position: 'absolute',
+        top: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 3,
+        paddingHorizontal: 4,
+      }}>
+        {/* Lines inside bubble */}
+        <View style={{ width: '70%', height: 2, backgroundColor: color, borderRadius: 1 }} />
+        <View style={{ width: '50%', height: 2, backgroundColor: color, borderRadius: 1 }} />
+      </View>
+      {/* Tail */}
+      <View style={{
+        position: 'absolute',
+        bottom: 0,
+        left: size * 0.15,
+        width: 0, height: 0,
+        borderTopWidth: size * 0.22,
+        borderRightWidth: size * 0.22,
+        borderStyle: 'solid',
+        borderTopColor: color,
+        borderRightColor: 'transparent',
+      }} />
+      {/* Badge */}
+      {unread > 0 && (
+        <View style={{
+          position: 'absolute',
+          top: -4, right: -4,
+          minWidth: 16, height: 16,
+          borderRadius: 8,
+          backgroundColor: '#ef4444',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingHorizontal: 3,
+          borderWidth: 1.5,
+          borderColor: '#0f172a',
+        }}>
+          <Text style={{ color: '#fff', fontSize: 8, fontWeight: '800' }}>
+            {unread > 9 ? '9+' : unread}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+};
+
+const AddPersonIcon = ({ size = 20 }: { size?: number }) => (
+  <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+    {/* Head circle */}
+    <View style={{
+      width: size * 0.42,
+      height: size * 0.42,
+      borderRadius: size * 0.22,
+      borderWidth: 2,
+      borderColor: '#38bdf8',
+      position: 'absolute',
+      top: 0,
+      left: size * 0.06,
+    }} />
+    {/* Shoulders arc */}
+    <View style={{
+      width: size * 0.62,
+      height: size * 0.32,
+      borderTopLeftRadius: size * 0.32,
+      borderTopRightRadius: size * 0.32,
+      borderTopWidth: 2,
+      borderLeftWidth: 2,
+      borderRightWidth: 2,
+      borderColor: '#38bdf8',
+      position: 'absolute',
+      bottom: 0,
+      left: size * 0.0,
+    }} />
+    {/* Plus sign */}
+    <View style={{ position: 'absolute', right: -2, bottom: size * 0.1 }}>
+      <View style={{ width: 10, height: 2, backgroundColor: '#38bdf8', borderRadius: 1 }} />
+      <View style={{ width: 2, height: 10, backgroundColor: '#38bdf8', borderRadius: 1, position: 'absolute', left: 4, top: -4 }} />
+    </View>
+  </View>
+);
+
+const FlipIcon = ({ size = 20 }: { size?: number }) => (
+  <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+    {/* Circular arrow */}
+    <View style={{
+      width: size * 0.78,
+      height: size * 0.78,
+      borderRadius: size * 0.4,
+      borderWidth: 2.5,
+      borderColor: '#ffffff',
+      borderTopColor: 'transparent',
+      transform: [{ rotate: '-30deg' }],
+    }} />
+    {/* Arrowhead */}
+    <View style={{
+      position: 'absolute',
+      top: 0,
+      right: size * 0.08,
+      width: 0, height: 0,
+      borderLeftWidth: 5, borderRightWidth: 5, borderBottomWidth: 8,
+      borderStyle: 'solid',
+      borderLeftColor: 'transparent', borderRightColor: 'transparent',
+      borderBottomColor: '#ffffff',
+      transform: [{ rotate: '60deg' }],
+    }} />
+  </View>
+);
+
+const EndCallIcon = ({ size = 22 }: { size?: number }) => (
+  <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+    {/* Phone receiver shape */}
+    <View style={{
+      width: size * 0.88,
+      height: size * 0.44,
+      borderRadius: size * 0.22,
+      borderWidth: 2.5,
+      borderColor: '#ffffff',
+      transform: [{ rotate: '135deg' }],
+    }} />
+    {/* Earpiece notch */}
+    <View style={{
+      position: 'absolute',
+      width: size * 0.22,
+      height: size * 0.22,
+      borderRadius: size * 0.11,
+      backgroundColor: '#dc2626',
+      borderWidth: 2,
+      borderColor: '#ffffff',
+      top: size * 0.1,
+      left: size * 0.1,
+    }} />
+    <View style={{
+      position: 'absolute',
+      width: size * 0.22,
+      height: size * 0.22,
+      borderRadius: size * 0.11,
+      backgroundColor: '#dc2626',
+      borderWidth: 2,
+      borderColor: '#ffffff',
+      top: size * 0.1,
+      right: size * 0.1,
+    }} />
+  </View>
+);
+
+// ─── ControlBar Component ────────────────────────────────────────────────────
 
 interface ControlBarProps {
   isMuted: boolean;
@@ -33,106 +354,91 @@ export const ControlBar: React.FC<ControlBarProps> = ({
 }) => {
   return (
     <View style={styles.container}>
+
       {/* Mic Button */}
-      <View style={styles.btnWrapper}>
-        <TouchableOpacity
-          style={[styles.circleBtn, isMuted ? styles.btnDanger : styles.btnDefault]}
-          onPress={onToggleMic}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.btnIcon}>{isMuted ? '🔇' : '🎤'}</Text>
-        </TouchableOpacity>
-        <Text style={styles.btnLabel}>{isMuted ? 'Unmute' : 'Mute'}</Text>
-      </View>
+      <TouchableOpacity
+        style={[styles.btn, isMuted ? styles.btnDanger : styles.btnDefault]}
+        onPress={onToggleMic}
+        activeOpacity={0.75}
+      >
+        <MicIcon muted={isMuted} size={20} />
+        <Text style={[styles.label, isMuted && styles.labelDanger]}>
+          {isMuted ? 'Unmute' : 'Mute'}
+        </Text>
+      </TouchableOpacity>
 
       {/* Camera Button */}
-      <View style={styles.btnWrapper}>
-        <TouchableOpacity
-          style={[styles.circleBtn, isCameraOff ? styles.btnDanger : styles.btnDefault]}
-          onPress={onToggleCamera}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.btnIcon}>{isCameraOff ? '📷' : '📹'}</Text>
-        </TouchableOpacity>
-        <Text style={styles.btnLabel}>{isCameraOff ? 'Cam Off' : 'Cam On'}</Text>
-      </View>
+      <TouchableOpacity
+        style={[styles.btn, isCameraOff ? styles.btnDanger : styles.btnDefault]}
+        onPress={onToggleCamera}
+        activeOpacity={0.75}
+      >
+        <CameraIcon off={isCameraOff} size={20} />
+        <Text style={[styles.label, isCameraOff && styles.labelDanger]}>
+          {isCameraOff ? 'Start Cam' : 'Stop Cam'}
+        </Text>
+      </TouchableOpacity>
 
-      {/* In-Call Chat Button */}
+      {/* Chat Button */}
       {onToggleChat && (
-        <View style={styles.btnWrapper}>
-          <TouchableOpacity
-            style={[styles.circleBtn, isChatOpen ? styles.btnActiveChat : styles.btnDefault]}
-            onPress={onToggleChat}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.btnIcon}>💬</Text>
-            {unreadChatCount > 0 && (
-              <View style={styles.chatBadge}>
-                <Text style={styles.chatBadgeText}>
-                  {unreadChatCount > 9 ? '9+' : unreadChatCount}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          <Text style={[styles.btnLabel, (isChatOpen || unreadChatCount > 0) && { color: '#38bdf8', fontWeight: '700' }]}>
-            Chat
-          </Text>
-        </View>
-      )}
-
-      {/* Add Person Button (Available for Officer / Collector) */}
-      {onAddParticipant && (
-        <View style={styles.btnWrapper}>
-          <TouchableOpacity
-            style={[styles.circleBtn, styles.btnAddPerson]}
-            onPress={onAddParticipant}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.btnIcon, { fontSize: 20 }]}>➕</Text>
-          </TouchableOpacity>
-          <Text style={[styles.btnLabel, { color: '#38bdf8', fontWeight: '700' }]}>Add</Text>
-        </View>
-      )}
-
-      {/* Screen Share Button */}
-      <View style={styles.btnWrapper}>
         <TouchableOpacity
-          style={[styles.circleBtn, isScreenSharing ? styles.btnActiveShare : styles.btnDefault]}
-          onPress={onToggleScreenShare}
-          activeOpacity={0.7}
+          style={[styles.btn, isChatOpen ? styles.btnActiveBlue : styles.btnDefault]}
+          onPress={onToggleChat}
+          activeOpacity={0.75}
         >
-          <Text style={styles.btnIcon}>{isScreenSharing ? '⏹️' : '📱'}</Text>
+          <ChatIcon active={isChatOpen} unread={unreadChatCount} size={20} />
+          <Text style={[styles.label, isChatOpen && styles.labelBlue]}>
+            Chat{unreadChatCount > 0 ? ` (${unreadChatCount})` : ''}
+          </Text>
         </TouchableOpacity>
-        <Text style={[styles.btnLabel, isScreenSharing && { color: '#34d399', fontWeight: '700' }]}>
+      )}
+
+      {/* Add Participant (Officers only) */}
+      {onAddParticipant && (
+        <TouchableOpacity
+          style={[styles.btn, styles.btnAddPerson]}
+          onPress={onAddParticipant}
+          activeOpacity={0.75}
+        >
+          <AddPersonIcon size={20} />
+          <Text style={[styles.label, styles.labelBlue]}>Add</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Screen Share */}
+      <TouchableOpacity
+        style={[styles.btn, isScreenSharing ? styles.btnActiveGreen : styles.btnDefault]}
+        onPress={onToggleScreenShare}
+        activeOpacity={0.75}
+      >
+        <ScreenShareIcon active={isScreenSharing} size={20} />
+        <Text style={[styles.label, isScreenSharing && styles.labelGreen]}>
           {isScreenSharing ? 'Stop' : 'Share'}
         </Text>
-      </View>
+      </TouchableOpacity>
 
-      {/* Flip Camera Button */}
+      {/* Flip Camera */}
       {onFlipCamera && (
-        <View style={styles.btnWrapper}>
-          <TouchableOpacity
-            style={[styles.circleBtn, styles.btnDefault]}
-            onPress={onFlipCamera}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.btnIcon}>🔄</Text>
-          </TouchableOpacity>
-          <Text style={styles.btnLabel}>Flip</Text>
-        </View>
+        <TouchableOpacity
+          style={[styles.btn, styles.btnDefault]}
+          onPress={onFlipCamera}
+          activeOpacity={0.75}
+        >
+          <FlipIcon size={20} />
+          <Text style={styles.label}>Flip</Text>
+        </TouchableOpacity>
       )}
 
-      {/* Leave / End Hearing Button */}
-      <View style={styles.btnWrapper}>
-        <TouchableOpacity
-          style={[styles.circleBtn, styles.btnEndCall]}
-          onPress={onLeaveCall}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.btnIcon, { transform: [{ rotate: '135deg' }] }]}>📞</Text>
-        </TouchableOpacity>
-        <Text style={[styles.btnLabel, { color: '#ef4444', fontWeight: '700' }]}>End</Text>
-      </View>
+      {/* End Call */}
+      <TouchableOpacity
+        style={[styles.btn, styles.btnEndCall]}
+        onPress={onLeaveCall}
+        activeOpacity={0.75}
+      >
+        <EndCallIcon size={22} />
+        <Text style={[styles.label, styles.labelDanger]}>End</Text>
+      </TouchableOpacity>
+
     </View>
   );
 };
@@ -140,83 +446,73 @@ export const ControlBar: React.FC<ControlBarProps> = ({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-evenly',
     alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'android' ? 22 : 32,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(9, 13, 22, 0.96)',
+    paddingTop: 14,
+    paddingBottom: Platform.OS === 'android' ? 20 : 30,
+    paddingHorizontal: 8,
+    backgroundColor: '#0a0f1e',
     borderTopWidth: 1,
-    borderTopColor: '#1e293b',
+    borderTopColor: 'rgba(255,255,255,0.07)',
   },
-  btnWrapper: {
+  btn: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  circleBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
+    width: 56,
+    height: 68,
+    borderRadius: 16,
+    gap: 6,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
   btnDefault: {
-    backgroundColor: '#1e293b',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   btnDanger: {
-    backgroundColor: '#991b1b',
+    backgroundColor: 'rgba(220, 38, 38, 0.18)',
     borderWidth: 1,
-    borderColor: '#ef4444',
-  },
-  btnAddPerson: {
-    backgroundColor: '#0369a1',
-    borderWidth: 1.5,
-    borderColor: '#38bdf8',
-  },
-  btnActiveShare: {
-    backgroundColor: '#047857',
-    borderWidth: 1.5,
-    borderColor: '#34d399',
+    borderColor: 'rgba(239, 68, 68, 0.5)',
   },
   btnEndCall: {
     backgroundColor: '#dc2626',
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    borderWidth: 0,
+    shadowColor: '#ef4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 8,
   },
-  btnActiveChat: {
-    backgroundColor: '#0284c7',
-    borderWidth: 1.5,
-    borderColor: '#38bdf8',
+  btnActiveBlue: {
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.45)',
   },
-  chatBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#ef4444',
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 1.5,
-    borderColor: '#0f172a',
+  btnActiveGreen: {
+    backgroundColor: 'rgba(52, 211, 153, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.45)',
   },
-  chatBadgeText: {
-    color: '#ffffff',
-    fontSize: 9,
-    fontWeight: '800',
+  btnAddPerson: {
+    backgroundColor: 'rgba(14, 116, 144, 0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.4)',
   },
-  btnIcon: {
-    fontSize: 18,
-  },
-  btnLabel: {
-    fontSize: 11,
-    color: '#94a3b8',
+  label: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.65)',
     fontWeight: '600',
+    letterSpacing: 0.2,
+    textAlign: 'center',
+  },
+  labelDanger: {
+    color: '#f87171',
+  },
+  labelBlue: {
+    color: '#38bdf8',
+  },
+  labelGreen: {
+    color: '#34d399',
   },
 });

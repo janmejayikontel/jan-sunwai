@@ -281,6 +281,45 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <Text style={styles.primaryButtonText}>Get OTP (ओटीपी प्राप्त करें) ➔</Text>
                   )}
                 </TouchableOpacity>
+
+                {/* Clean Quick Login Chips */}
+                <View style={styles.quickSection}>
+                  <Text style={styles.quickSectionTitle}>QUICK SELECT DEMO ROLE</Text>
+                  <View style={styles.quickGrid}>
+                    <TouchableOpacity
+                      style={[styles.quickChip, phone === '9829012345' && styles.quickChipActive]}
+                      onPress={() => setPhone('9829012345')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.quickChipRole}>🏛️ Officer / Collector</Text>
+                      <Text style={styles.quickChipNum}>9829012345</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.quickChip, phone === '7735807328' && styles.quickChipActive]}
+                      onPress={() => setPhone('7735807328')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.quickChipRole}>👤 Citizen</Text>
+                      <Text style={styles.quickChipNum}>7735807328</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.quickChip, phone === '9999999999' && styles.quickChipActive]}
+                      onPress={() => setPhone('9999999999')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.quickChipRole}>🛡️ Super Admin</Text>
+                      <Text style={styles.quickChipNum}>9999999999</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.quickChip, phone === '8888888888' && styles.quickChipActive]}
+                      onPress={() => setPhone('8888888888')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.quickChipRole}>🎧 181 Call Centre</Text>
+                      <Text style={styles.quickChipNum}>8888888888</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
             ) : (
               // Step 2: OTP input
@@ -967,6 +1006,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: '#ffffff',
+  },
+  quickSection: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#1e293b',
+  },
+  quickSectionTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 1,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  quickChip: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  quickChipActive: {
+    borderColor: '#38bdf8',
+    backgroundColor: 'rgba(56, 189, 248, 0.1)',
+  },
+  quickChipRole: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#f8fafc',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  quickChipNum: {
+    fontSize: 11,
+    color: '#38bdf8',
+    fontWeight: '600',
   },
 });
 

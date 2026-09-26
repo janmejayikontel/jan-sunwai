@@ -363,14 +363,17 @@ export default function App() {
   };
 
   const isDismissedCall = (callId?: string, grievanceId?: string, roomName?: string): boolean => {
-    // Only blacklist specific session callId with 15s TTL. NEVER blacklist grievanceId so subsequent hearing calls ring properly!
-    if (!callId) return false;
-    const ts = dismissedCallTimesRef.current.get(callId);
-    if (ts) {
-      if (Date.now() - ts < 15000) {
-        return true;
-      } else {
-        dismissedCallTimesRef.current.delete(callId);
+    // Check all keys — callId (with 15s TTL), grievanceId, and roomName — so the
+    // initiating officer never sees their own call ringing on their device.
+    const keysToCheck = [callId, grievanceId, roomName].filter(Boolean) as string[];
+    for (const key of keysToCheck) {
+      // Check the permanent dismissed set (populated when officer initiates a call)
+      if (dismissedCallIdsRef.current.has(key)) return true;
+      // Check the time-limited dismissed map (15s TTL for accepted/declined calls)
+      const ts = dismissedCallTimesRef.current.get(key);
+      if (ts) {
+        if (Date.now() - ts < 15000) return true;
+        dismissedCallTimesRef.current.delete(key);
       }
     }
     return false;
