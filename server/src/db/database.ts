@@ -380,13 +380,14 @@ function seedInitialData(): void {
       insertOfficer.run(off.id, off.name, off.phone, off.designation, off.department, off.district, off.cadre, off.posting_location, 'officer');
     }
 
-    // Clean up any accidental citizen records for admin/officer/rep numbers
+    // Clean up any accidental citizen records for admin/officer/rep/employee numbers
     try {
       db.prepare(`
         DELETE FROM citizens 
         WHERE phone IN (SELECT phone FROM officers) 
            OR phone IN (SELECT phone FROM call_center_reps)
            OR phone IN (SELECT phone FROM admins)
+           OR phone IN (SELECT phone FROM employees)
       `).run();
     } catch (err) {
       console.error('[SQLite] Error purging conflicting citizen records:', err);
@@ -398,7 +399,7 @@ function seedInitialData(): void {
 
     // Employees across distinct departments
     insertEmployee.run('emp-001', 'Chandan Kumar', '+917749852013', 'Junior Engineer (JEn)', 'Public Health Engineering (PHED) — Water Supply', 'PHED-JP-2019-0342', 'Sub-Division Sanganer, Jaipur', 'employee');
-    insertEmployee.run('emp-002', 'Mrityunjay Singh', '+919337453714', 'Patwari', 'Revenue & Sub-Divisional Administration', 'REV-BM-2015-0187', 'Patwar Circle Gudamalani, Barmer', 'employee');
+    insertEmployee.run('emp-002', 'Mrityunjay', '+919337453714', 'Patwari', 'Revenue & Sub-Divisional Administration', 'REV-BM-2015-0187', 'Patwar Circle Gudamalani, Barmer', 'employee');
     insertEmployee.run('emp-003', 'Rakesh Sharma', '+919414000021', 'Assistant Engineer (AEn)', 'Energy & Discom (JVVNL)', 'JVVNL-JP-2018-0911', 'Sanganer Discom Sub-Division, Jaipur', 'employee');
     insertEmployee.run('emp-004', 'Suresh Meena', '+919414000022', 'Station House Officer (SHO)', 'Rajasthan Police (राजस्थान पुलिस)', 'POL-JP-2014-0412', 'Sanganer Police Station, Jaipur', 'employee');
     insertEmployee.run('emp-005', 'Dr. Amit Pareek', '+919414000023', 'Medical Officer Incharge', 'Medical, Health & Family Welfare', 'MH-JP-2016-0158', 'Community Health Centre (CHC) Sanganer', 'employee');
