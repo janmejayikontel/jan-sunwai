@@ -471,6 +471,27 @@ export default function App() {
                 JanSunwaiVoIP?.stopRinging?.();
                 return;
               }
+              // Verify with server that this call is ACTUALLY active right now
+              if (currentUser?.phone) {
+                try {
+                  const base = cleanServerUrl(serverUrl || DEFAULT_SERVER_URL);
+                  const checkRes = await fetch(`${base}/api/calls/check-incoming/${encodeURIComponent(currentUser.phone)}`, {
+                    headers: { 'Bypass-Tunnel-Reminder': 'true' },
+                  });
+                  if (checkRes.ok) {
+                    const checkData = await checkRes.json();
+                    if (!checkData.hasIncomingCall) {
+                      console.log('[App] Native pending call is no longer active on server. Purging.');
+                      JanSunwaiVoIP?.stopRinging?.();
+                      JanSunwaiVoIP?.dismissCall?.(data.callId || null);
+                      setIncomingCall(null);
+                      return;
+                    }
+                  }
+                } catch (netErr) {
+                  // network check silent
+                }
+              }
             }
             if (data.autoAccept) {
               setIncomingCall(null);
@@ -679,6 +700,11 @@ export default function App() {
 
   // ─── 5. Login & Logout Session Handlers ────────────────────────
   const handleLoginSuccess = async (user: UserProfile, srv: string) => {
+    // Purge any stale ringing or leftover call states from previous user or old session
+    setIncomingCall(null);
+    JanSunwaiVoIP?.stopRinging?.();
+    JanSunwaiVoIP?.dismissCall?.(null);
+
     setCurrentUser(user);
     setServerUrl(srv);
     try {

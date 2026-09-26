@@ -805,6 +805,13 @@ export async function participantLeaveCall(
       participant.leftAt = new Date();
       participant.ringStatus = 'left';
       console.log(`[CallManager] Participant ${participant.name} (${participantPhone}) marked as 'left' in call ${call.id}`);
+
+      // If the HOST (presiding officer / collector) leaves the call, end the entire hearing session!
+      if (participant.role === 'host' || matchPhone(call.hostPhone, participantPhone)) {
+        console.log(`[CallManager] Host ${participant.name} left the hearing. Terminating call ${call.id} for all participants.`);
+        await endCall(call.id);
+        return true;
+      }
     }
 
     // Clear ring timeout for this call
@@ -812,6 +819,16 @@ export async function participantLeaveCall(
     if (timeout) {
       clearTimeout(timeout);
       ringTimeouts.delete(call.id);
+    }
+
+    // If all participants have left the call, terminate the session
+    const hasActiveMembers = call.participants.some(
+      (p) => !p.leftAt && (p.ringStatus === 'accepted' || p.role === 'host')
+    );
+    if (!hasActiveMembers) {
+      console.log(`[CallManager] No active members remain in call ${call.id}. Terminating session.`);
+      await endCall(call.id);
+      return true;
     }
 
     // Also remove from LiveKit SFU so connection is cleaned up immediately
@@ -937,8 +954,20 @@ export function getIncomingCallForPhone(phone: string): {
   participantCount: number;
   yourRole: string;
 } | null {
+  const now = Date.now();
   for (const call of activeCalls.values()) {
     if (call.status === 'completed' || call.status === 'cancelled') continue;
+
+    // Discard stale calls older than 10 minutes
+    if (call.createdAt && now - new Date(call.createdAt).getTime() > 10 * 60 * 1000) {
+      continue;
+    }
+
+    // If host has already left the hearing, do not ring citizen
+    const hostPart = call.participants.find((p) => p.role === 'host' || matchPhone(p.phone, call.hostPhone));
+    if (hostPart && hostPart.leftAt) {
+      continue;
+    }
 
     // RULE 1: If this phone is the HOST/CALLER who initiated this call, NEVER ring them!
     if (call.hostPhone && matchPhone(call.hostPhone, phone)) continue;
@@ -953,7 +982,7 @@ export function getIncomingCallForPhone(phone: string): {
     const participant = call.participants.find(
       (p) => matchPhone(p.phone, phone) && p.ringStatus === 'ringing'
     );
-    if (!participant || participant.role === 'host') continue;
+    if (!participant || participant.role === 'host' || participant.leftAt) continue;
 
     return {
       callId: call.id,
