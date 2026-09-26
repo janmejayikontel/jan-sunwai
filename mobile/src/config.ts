@@ -10,7 +10,7 @@
 
 import { Platform } from 'react-native';
 
-export const DEFAULT_SERVER_URL = 'https://savannah-met-subdivision-multiple.trycloudflare.com';
+export const DEFAULT_SERVER_URL = 'https://speaks-from-surveys-show.trycloudflare.com';
 
 
 export const CONFIG = {
