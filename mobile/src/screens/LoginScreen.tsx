@@ -107,19 +107,49 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
     try {
       const url = `${cleanServerUrl(serverBase)}/api/auth/otp/send`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Bypass-Tunnel-Reminder': 'true',
-        },
-        body: JSON.stringify({ phone: cleanPhone }),
-      });
+      let response: Response | null = null;
+      let lastErr: any = null;
 
-      const data = await response.json();
+      // Try with quick retry in case tunnel is momentarily waking up
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Bypass-Tunnel-Reminder': 'true',
+            },
+            body: JSON.stringify({ phone: cleanPhone }),
+          });
+          if (response && response.status !== 502 && response.status !== 503 && response.status !== 504) {
+            break;
+          }
+        } catch (netErr: any) {
+          lastErr = netErr;
+        }
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 800));
+        }
+      }
+
+      if (!response) {
+        throw new Error(lastErr?.message || 'Unable to connect to Sampark Lite server.');
+      }
+
+      const resText = await response.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(resText);
+      } catch (parseErr) {
+        console.warn('[LoginScreen] Non-JSON response received:', resText.slice(0, 100));
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          throw new Error('Sampark Lite server is currently waking up. Please tap "Get OTP" again in 2 seconds.');
+        }
+        throw new Error(`Server returned unexpected response (${response.status}). Please retry.`);
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to send OTP. Check server connection.');
+        throw new Error(data?.error || data?.message || 'Failed to send OTP. Check server connection.');
       }
 
       if (data.devOtp) {
@@ -141,8 +171,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     } catch (err: any) {
       console.error('OTP send error:', err);
       Alert.alert(
-        'Connection Error',
-        `Unable to reach Sampark Lite server at:\n${serverBase}\n\n${err?.message || 'Network request failed'}`
+        'Connection Notice',
+        `${err?.message || 'Network request failed'}\n\nServer: ${serverBase}`
       );
     } finally {
       setIsLoading(false);
@@ -162,22 +192,51 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     try {
       const cleanPhone = phone.trim().replace(/\D/g, '');
       const url = `${cleanServerUrl(serverBase)}/api/auth/otp/verify`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Bypass-Tunnel-Reminder': 'true',
-        },
-        body: JSON.stringify({
-          phone: cleanPhone,
-          otp: cleanOtp,
-        }),
-      });
+      let response: Response | null = null;
+      let lastErr: any = null;
 
-      const data = await response.json();
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Bypass-Tunnel-Reminder': 'true',
+            },
+            body: JSON.stringify({
+              phone: cleanPhone,
+              otp: cleanOtp,
+            }),
+          });
+          if (response && response.status !== 502 && response.status !== 503 && response.status !== 504) {
+            break;
+          }
+        } catch (netErr: any) {
+          lastErr = netErr;
+        }
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 800));
+        }
+      }
+
+      if (!response) {
+        throw new Error(lastErr?.message || 'Unable to connect to Sampark Lite server.');
+      }
+
+      const resText = await response.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(resText);
+      } catch (parseErr) {
+        console.warn('[LoginScreen] Non-JSON response received during verify:', resText.slice(0, 100));
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          throw new Error('Sampark Lite server is currently reconnecting. Please tap Verify again.');
+        }
+        throw new Error(`Server returned unexpected response (${response.status}). Please retry.`);
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Invalid OTP. Please try again.');
+        throw new Error(data?.error || data?.message || 'Invalid OTP. Please try again.');
       }
 
       if (!data.user) {
@@ -308,6 +367,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     >
                       <Text style={styles.quickChipRole}>🛡️ Super Admin</Text>
                       <Text style={styles.quickChipNum}>9999999999</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.quickChip, phone === '9337453714' && styles.quickChipActive]}
+                      onPress={() => setPhone('9337453714')}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.quickChipRole}>👮 Patwari (Mrityunjay)</Text>
+                      <Text style={styles.quickChipNum}>9337453714</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.quickChip, phone === '8888888888' && styles.quickChipActive]}

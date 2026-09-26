@@ -64,6 +64,14 @@ app.use(cors({
 
 app.use(express.json());
 
+// Guarantee JSON error response on malformed JSON body
+app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof SyntaxError && 'status' in err && (err as any).status === 400 && 'body' in err) {
+    return res.status(400).json({ error: 'Malformed JSON payload in request body' });
+  }
+  next(err);
+});
+
 // Request logging
 app.use((req, _res, next) => {
   if (req.url !== '/api/health') {
@@ -193,6 +201,17 @@ app.get('/api', (_req, res) => {
       ],
     },
   });
+});
+
+// 404 Not Found JSON Handler for API
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
+});
+
+// Global Error Handler guaranteeing JSON output
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[Express/API Error]', err);
+  res.status(err.status || 500).json({ error: err.message || 'Internal server error' });
 });
 
 // ─── HTTP + WebSocket Server ──────────────────────────────────
