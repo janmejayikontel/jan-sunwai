@@ -741,7 +741,7 @@ const RoomContent: React.FC<{
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>🏛️ Jan Sunwai Hearing</Text>
           <Text style={styles.headerSub}>
-            {isAdmin ? `Case: ${grievanceId} • ⚡ Supreme Admin Bench` : `Case: ${grievanceId} • 1,000+ Scalable Room`}
+            Case: #{grievanceId}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -766,13 +766,6 @@ const RoomContent: React.FC<{
             <Text style={styles.liveText}>LIVE</Text>
           </View>
         </View>
-      </View>
-
-      {/* High-Concurrency & E2EE Banner */}
-      <View style={styles.concurrencyBanner}>
-        <Text style={styles.concurrencyBannerText}>
-          🔒 E2EE Encrypted Stream • High-Concurrency SFU Active
-        </Text>
       </View>
 
       {/* Dynamic In-Call Notification Banner (moderation, ringing, status) */}

@@ -284,38 +284,34 @@ const FlipIcon = ({ size = 20 }: { size?: number }) => (
 );
 
 const EndCallIcon = ({ size = 22 }: { size?: number }) => (
-  <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-    {/* Phone receiver shape */}
+  <View style={{ width: size + 4, height: size * 0.7, alignItems: 'center', justifyContent: 'center' }}>
+    {/* Horizontal arched bar */}
     <View style={{
-      width: size * 0.88,
-      height: size * 0.44,
-      borderRadius: size * 0.22,
-      borderWidth: 2.5,
-      borderColor: '#ffffff',
-      transform: [{ rotate: '135deg' }],
+      width: size + 2,
+      height: size * 0.42,
+      borderTopLeftRadius: size * 0.35,
+      borderTopRightRadius: size * 0.35,
+      backgroundColor: '#ffffff',
     }} />
-    {/* Earpiece notch */}
+    {/* Left ear/mouth piece */}
     <View style={{
       position: 'absolute',
-      width: size * 0.22,
-      height: size * 0.22,
-      borderRadius: size * 0.11,
-      backgroundColor: '#dc2626',
-      borderWidth: 2,
-      borderColor: '#ffffff',
-      top: size * 0.1,
-      left: size * 0.1,
+      left: 0,
+      bottom: 0,
+      width: size * 0.32,
+      height: size * 0.34,
+      borderRadius: 4,
+      backgroundColor: '#ffffff',
     }} />
+    {/* Right ear/mouth piece */}
     <View style={{
       position: 'absolute',
-      width: size * 0.22,
-      height: size * 0.22,
-      borderRadius: size * 0.11,
-      backgroundColor: '#dc2626',
-      borderWidth: 2,
-      borderColor: '#ffffff',
-      top: size * 0.1,
-      right: size * 0.1,
+      right: 0,
+      bottom: 0,
+      width: size * 0.32,
+      height: size * 0.34,
+      borderRadius: 4,
+      backgroundColor: '#ffffff',
     }} />
   </View>
 );
