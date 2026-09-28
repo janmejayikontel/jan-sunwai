@@ -1198,22 +1198,39 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       </View>
                     </View>
 
-                    {/* Prominent Scheduled Call Banner if call has been scheduled */}
+                    {/* Prominent Executive Scheduled Hearing Card if call has been scheduled */}
                     {homeSearchedGrievance.scheduledDate && homeSearchedGrievance.scheduledTime && (
-                      <View style={styles.scheduledBanner}>
-                        <View style={styles.scheduledBannerHeader}>
-                          <Text style={styles.scheduledBannerIcon}>📅</Text>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.scheduledBannerTitle}>Hearing Scheduled (सुनवाई नियत है)</Text>
-                            <Text style={styles.scheduledBannerHighlight}>
-                              🗓️ Date: {homeSearchedGrievance.scheduledDate}   ⏰ Time: {homeSearchedGrievance.scheduledTime}
-                            </Text>
-                            {homeSearchedGrievance.scheduledOfficer && (
-                              <Text style={styles.scheduledBannerOfficer}>
-                                🏛️ Presiding Officer: {homeSearchedGrievance.scheduledOfficer}
-                              </Text>
-                            )}
+                      <View style={styles.execScheduleCardMini}>
+                        <View style={styles.execHeaderRow}>
+                          <View style={styles.execGovBadge}>
+                            <Text style={styles.execGovIcon}>🏛️</Text>
+                            <View>
+                              <Text style={styles.execGovTitle}>OFFICIAL HEARING SCHEDULED</Text>
+                              <Text style={styles.execGovSub}>Rajasthan Sampark • Jan Sunwai</Text>
+                            </View>
                           </View>
+                          <View style={styles.execStatusPill}>
+                            <Text style={styles.execStatusDot}>●</Text>
+                            <Text style={styles.execStatusPillText}>SCHEDULED</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.execGridRow}>
+                          <View style={styles.execGridBox}>
+                            <Text style={styles.execGridLabel}>HEARING DATE (दिनांक)</Text>
+                            <Text style={styles.execGridValue}>🗓️ {homeSearchedGrievance.scheduledDate}</Text>
+                          </View>
+                          <View style={styles.execGridBox}>
+                            <Text style={styles.execGridLabel}>HEARING TIME (समय)</Text>
+                            <Text style={styles.execGridValue}>⏰ {homeSearchedGrievance.scheduledTime}</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.execOfficerBox}>
+                          <Text style={styles.execOfficerLabel}>PRESIDING BENCH (अध्यक्षीय पीठ)</Text>
+                          <Text style={styles.execOfficerValue}>
+                            🏛️ {homeSearchedGrievance.scheduledOfficer || 'Vivek, IAS • District Magistrate'}
+                          </Text>
                         </View>
                       </View>
                     )}
@@ -1274,45 +1291,94 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 )}
               </View>
             ) : (
-              /* Citizen Hearing Notice Card */
-              <View style={styles.citizenNoticeCard}>
-                <View style={styles.noticeHeaderRow}>
-                  <Text style={styles.noticeEmblem}>🔔</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.noticeTitle}>Hearing Bench Active</Text>
-                    <Text style={styles.noticeDesc}>
-                      You will receive an incoming video call directly when your case is called by the District Magistrate.
-                    </Text>
+              /* Citizen Home View */
+              <View>
+                {/* 1. General Active Bench Notice Card */}
+                <View style={styles.citizenNoticeCard}>
+                  <View style={styles.noticeHeaderRow}>
+                    <Text style={styles.noticeEmblem}>🔔</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.noticeTitle}>Hearing Bench Active</Text>
+                      <Text style={styles.noticeDesc}>
+                        You will receive an incoming video call directly when your case is called by the District Magistrate.
+                      </Text>
+                    </View>
                   </View>
                 </View>
 
-                {/* Scheduled Call Alerts for Citizen */}
+                {/* 2. Standalone Official Scheduled Hearing Card (Generous Spacing, Executive Design) */}
                 {grievances.filter(g => g.scheduledDate && g.scheduledTime).map(sg => (
-                  <View key={sg.grievanceId} style={styles.scheduledBanner}>
-                    <View style={styles.scheduledBannerHeader}>
-                      <Text style={styles.scheduledBannerIcon}>📅</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.scheduledBannerTitle}>Your Call is Scheduled (सुनवाई नियत है)</Text>
-                        <Text style={styles.scheduledBannerCaseId}>Case #{sg.grievanceId}: {sg.title}</Text>
-                        <Text style={styles.scheduledBannerHighlight}>
-                          🗓️ Date: {sg.scheduledDate}   ⏰ Time: {sg.scheduledTime}
-                        </Text>
-                        {sg.scheduledOfficer && (
-                          <Text style={styles.scheduledBannerOfficer}>
-                            🏛️ Presiding Officer: {sg.scheduledOfficer}
-                          </Text>
-                        )}
+                  <View key={sg.grievanceId} style={styles.execScheduleCard}>
+                    {/* Official Top Emblem & Status Badge */}
+                    <View style={styles.execHeaderRow}>
+                      <View style={styles.execGovBadge}>
+                        <Text style={styles.execGovIcon}>🏛️</Text>
+                        <View>
+                          <Text style={styles.execGovTitle}>GOVERNMENT OF RAJASTHAN</Text>
+                          <Text style={styles.execGovSub}>Rajasthan Sampark • Jan Sunwai</Text>
+                        </View>
+                      </View>
+                      <View style={styles.execStatusPill}>
+                        <Text style={styles.execStatusDot}>●</Text>
+                        <Text style={styles.execStatusPillText}>SCHEDULED</Text>
                       </View>
                     </View>
+
+                    {/* Notice Title Banner */}
+                    <View style={styles.execBannerHeader}>
+                      <Text style={styles.execNoticeTitle}>📅 Official Video Hearing Scheduled</Text>
+                      <Text style={styles.execNoticeSub}>जनसुनवाई सुनवाई नियत आदेश</Text>
+                    </View>
+
+                    {/* Case ID & Subject */}
+                    <View style={styles.execCaseBox}>
+                      <View style={styles.execCaseIdTag}>
+                        <Text style={styles.execCaseIdTagText}>#{sg.grievanceId}</Text>
+                      </View>
+                      <Text style={styles.execCaseSubject} numberOfLines={2}>
+                        {sg.title}
+                      </Text>
+                    </View>
+
+                    {/* 2-Column Schedule Grid */}
+                    <View style={styles.execGridRow}>
+                      <View style={styles.execGridBox}>
+                        <Text style={styles.execGridLabel}>HEARING DATE (दिनांक)</Text>
+                        <Text style={styles.execGridValue}>🗓️ {sg.scheduledDate}</Text>
+                      </View>
+                      <View style={styles.execGridBox}>
+                        <Text style={styles.execGridLabel}>HEARING TIME (समय)</Text>
+                        <Text style={styles.execGridValue}>⏰ {sg.scheduledTime}</Text>
+                      </View>
+                    </View>
+
+                    {/* Presiding Magistrate / Officer */}
+                    <View style={styles.execOfficerBox}>
+                      <Text style={styles.execOfficerLabel}>PRESIDING BENCH (अध्यक्षीय पीठ)</Text>
+                      <Text style={styles.execOfficerValue}>
+                        🏛️ {sg.scheduledOfficer || 'Vivek, IAS • District Magistrate'}
+                      </Text>
+                    </View>
+
+                    {/* Alert notice strip */}
+                    <View style={styles.execNoticeStrip}>
+                      <Text style={styles.execNoticeStripText}>
+                        🔔 An automated high-priority video call will connect on this device at the scheduled time. Please keep the app open.
+                      </Text>
+                    </View>
+
+                    {/* Action Button */}
                     <TouchableOpacity
-                      style={[styles.compactViewDetailsBtn, { alignSelf: 'flex-start', marginTop: 8 }]}
+                      style={styles.execActionBtn}
                       onPress={() => setSelectedGrievanceDetails(sg)}
+                      activeOpacity={0.85}
                     >
-                      <Text style={styles.compactViewDetailsBtnText}>View Details ➔</Text>
+                      <Text style={styles.execActionBtnText}>📋 View Complete Case Details ➔</Text>
                     </TouchableOpacity>
                   </View>
                 ))}
 
+                {/* 3. Button to View Registered Grievances */}
                 <TouchableOpacity
                   style={[styles.casesBannerBtn, { marginTop: 14 }]}
                   onPress={() => setCurrentTab('cases')}
@@ -1397,7 +1463,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 filteredGrievances.map((item) => (
                   <View key={item.grievanceId} style={styles.compactCaseRow}>
                     <View style={styles.compactCaseInfo}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <View style={styles.compactCaseHeaderRow}>
                         <View style={styles.caseIdBadge}>
                           <Text style={styles.caseIdText}>{item.grievanceId}</Text>
                         </View>
@@ -1407,7 +1473,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       </View>
                       {item.scheduledDate && item.scheduledTime ? (
                         <View style={styles.compactScheduledBadge}>
-                          <Text style={styles.compactScheduledText}>
+                          <Text style={styles.compactScheduledText} numberOfLines={1}>
                             📅 Scheduled: {item.scheduledDate} • {item.scheduledTime}
                           </Text>
                         </View>
@@ -1660,29 +1726,46 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </View>
 
             <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
-              {/* Prominent Hearing Scheduled Banner */}
+              {/* Prominent Executive Hearing Scheduled Card */}
               {selectedGrievanceDetails?.scheduledDate && selectedGrievanceDetails?.scheduledTime ? (
-                <View style={styles.scheduledBanner}>
-                  <View style={styles.scheduledBannerHeader}>
-                    <Text style={styles.scheduledBannerIcon}>📅</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.scheduledBannerTitle}>Hearing Scheduled (सुनवाई नियत है)</Text>
-                      <Text style={styles.scheduledBannerText}>
-                        Your call is scheduled for:
-                      </Text>
-                      <Text style={styles.scheduledBannerHighlight}>
-                        🗓️ Date: {selectedGrievanceDetails.scheduledDate}   ⏰ Time: {selectedGrievanceDetails.scheduledTime}
-                      </Text>
-                      {selectedGrievanceDetails.scheduledOfficer && (
-                        <Text style={styles.scheduledBannerOfficer}>
-                          🏛️ Presiding Officer: {selectedGrievanceDetails.scheduledOfficer}
-                        </Text>
-                      )}
+                <View style={[styles.execScheduleCardMini, { marginBottom: 14 }]}>
+                  <View style={styles.execHeaderRow}>
+                    <View style={styles.execGovBadge}>
+                      <Text style={styles.execGovIcon}>🏛️</Text>
+                      <View>
+                        <Text style={styles.execGovTitle}>OFFICIAL HEARING SCHEDULED</Text>
+                        <Text style={styles.execGovSub}>Rajasthan Sampark • Jan Sunwai</Text>
+                      </View>
+                    </View>
+                    <View style={styles.execStatusPill}>
+                      <Text style={styles.execStatusDot}>●</Text>
+                      <Text style={styles.execStatusPillText}>SCHEDULED</Text>
                     </View>
                   </View>
-                  <Text style={styles.scheduledBannerNotice}>
-                    🔔 Citizen & Field Officer will receive an automated video call notification at this scheduled time.
-                  </Text>
+
+                  <View style={styles.execGridRow}>
+                    <View style={styles.execGridBox}>
+                      <Text style={styles.execGridLabel}>HEARING DATE (दिनांक)</Text>
+                      <Text style={styles.execGridValue}>🗓️ {selectedGrievanceDetails.scheduledDate}</Text>
+                    </View>
+                    <View style={styles.execGridBox}>
+                      <Text style={styles.execGridLabel}>HEARING TIME (समय)</Text>
+                      <Text style={styles.execGridValue}>⏰ {selectedGrievanceDetails.scheduledTime}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.execOfficerBox}>
+                    <Text style={styles.execOfficerLabel}>PRESIDING BENCH (अध्यक्षीय पीठ)</Text>
+                    <Text style={styles.execOfficerValue}>
+                      🏛️ {selectedGrievanceDetails.scheduledOfficer || 'Vivek, IAS • District Magistrate'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.execNoticeStrip}>
+                    <Text style={styles.execNoticeStripText}>
+                      🔔 Citizen & Field Officer will receive an automated video call notification at this scheduled time.
+                    </Text>
+                  </View>
                 </View>
               ) : null}
 
@@ -2457,29 +2540,36 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    marginBottom: 8,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: 'rgba(134, 150, 160, 0.15)',
   },
   compactCaseInfo: {
     flex: 1,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginRight: 10,
+  },
+  compactCaseHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginRight: 8,
+    gap: 8,
+    flexWrap: 'wrap',
   },
   compactCaseStatus: {
     fontSize: 11,
     color: '#8696a0',
-    flex: 1,
   },
   compactViewDetailsBtn: {
     backgroundColor: 'rgba(234, 179, 8, 0.18)',
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 8,
     borderWidth: 1,
     borderColor: '#EAB308',
+    flexShrink: 0,
+    alignSelf: 'center',
   },
   compactViewDetailsBtnText: {
     color: '#FACC15',
@@ -2853,7 +2943,199 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
 
-  // ─── Prominent Scheduled Call Mention Banner Styles ───
+  // ─── Executive Professional Scheduled Hearing Card Styles ───
+  execScheduleCard: {
+    backgroundColor: '#16222a',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 18,
+    marginBottom: 10,
+    borderWidth: 1.5,
+    borderColor: '#EAB308',
+    borderLeftWidth: 5,
+    borderLeftColor: '#EAB308',
+    shadowColor: '#EAB308',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  execScheduleCardMini: {
+    backgroundColor: '#16222a',
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 12,
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: '#EAB308',
+    borderLeftWidth: 4,
+    borderLeftColor: '#EAB308',
+  },
+  execHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(234, 179, 8, 0.2)',
+    marginBottom: 12,
+  },
+  execGovBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  execGovIcon: {
+    fontSize: 20,
+  },
+  execGovTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#EAB308',
+    letterSpacing: 0.6,
+  },
+  execGovSub: {
+    fontSize: 10,
+    color: '#8696a0',
+    marginTop: 1,
+  },
+  execStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(234, 179, 8, 0.18)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#EAB308',
+  },
+  execStatusDot: {
+    fontSize: 8,
+    color: '#22c55e',
+  },
+  execStatusPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FACC15',
+    letterSpacing: 0.4,
+  },
+  execBannerHeader: {
+    marginBottom: 10,
+  },
+  execNoticeTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#e9edef',
+    letterSpacing: 0.2,
+  },
+  execNoticeSub: {
+    fontSize: 11,
+    color: '#EAB308',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  execCaseBox: {
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#2a3942',
+  },
+  execCaseIdTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.35)',
+    marginBottom: 4,
+  },
+  execCaseIdTagText: {
+    color: '#EAB308',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  execCaseSubject: {
+    color: '#e9edef',
+    fontSize: 12.5,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  execGridRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  execGridBox: {
+    flex: 1,
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.3)',
+  },
+  execGridLabel: {
+    fontSize: 9.5,
+    color: '#8696a0',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  execGridValue: {
+    fontSize: 13,
+    color: '#FACC15',
+    fontWeight: '800',
+  },
+  execOfficerBox: {
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#2a3942',
+  },
+  execOfficerLabel: {
+    fontSize: 9.5,
+    color: '#8696a0',
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  execOfficerValue: {
+    fontSize: 12,
+    color: '#e9edef',
+    fontWeight: '700',
+  },
+  execNoticeStrip: {
+    backgroundColor: 'rgba(234, 179, 8, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.25)',
+  },
+  execNoticeStripText: {
+    fontSize: 10.5,
+    color: '#e9edef',
+    lineHeight: 14.5,
+  },
+  execActionBtn: {
+    backgroundColor: '#EAB308',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  execActionBtnText: {
+    color: '#111827',
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
   scheduledBanner: {
     backgroundColor: 'rgba(234, 179, 8, 0.14)',
     borderRadius: 14,
@@ -2911,14 +3193,15 @@ const styles = StyleSheet.create({
   compactScheduledBadge: {
     backgroundColor: 'rgba(234, 179, 8, 0.16)',
     borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderWidth: 1,
     borderColor: 'rgba(234, 179, 8, 0.4)',
-    marginTop: 2,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
   compactScheduledText: {
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '700',
     color: '#EAB308',
   },
