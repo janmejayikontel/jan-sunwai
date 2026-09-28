@@ -75,13 +75,24 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [currentTab, setCurrentTab] = useState<'hearings' | 'cases'>('hearings');
   const [showMenu, setShowMenu] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [directRoomInput, setDirectRoomInput] = useState('JS-RAJ-2024-88421');
+  const [directRoomInput, setDirectRoomInput] = useState('RAJ-2024-88421');
 
-  // Officer Grievance Inspector State
+  // Home Page Grievance Search & Action State
+  const [homeSearchedGrievance, setHomeSearchedGrievance] = useState<GrievanceItem | null>(null);
+  const [homeIsSearching, setHomeIsSearching] = useState(false);
+  const [homeSearchError, setHomeSearchError] = useState<string | null>(null);
+
+  // Cases Tab Search & Details Modal State
   const [inspectGrievanceId, setInspectGrievanceId] = useState('');
-  const [inspectedGrievance, setInspectedGrievance] = useState<GrievanceItem | null>(null);
-  const [isInspecting, setIsInspecting] = useState(false);
-  const [inspectError, setInspectError] = useState<string | null>(null);
+  const [selectedGrievanceDetails, setSelectedGrievanceDetails] = useState<GrievanceItem | null>(null);
+
+  // Hearing Scheduling Modal State
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [schedulingGrievance, setSchedulingGrievance] = useState<GrievanceItem | null>(null);
+  const [scheduleDate, setScheduleDate] = useState('2026-09-29');
+  const [scheduleTime, setScheduleTime] = useState('11:30 AM');
+  const [scheduleNotes, setScheduleNotes] = useState('');
+  const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
 
   // ─── Call Centre Representative State ──────────────────────────
   const [ccTab, setCcTab] = useState<'queue' | 'kyc' | 'records'>('queue');
@@ -146,39 +157,88 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     return fetch(url, init);
   };
 
-  // ─── Grievance Inspection for Officer ────────────────────────
-  const handleInspectGrievance = async (targetId?: string) => {
-    const idToLookup = (targetId || inspectGrievanceId).trim().toUpperCase();
-    if (!idToLookup) return;
-    setIsInspecting(true);
-    setInspectError(null);
+  // ─── Home Page Grievance Search Handler ───────────────────────
+  const handleHomeSearchGrievance = async (targetId?: string) => {
+    const raw = (targetId || directRoomInput).trim().toUpperCase();
+    const cleanId = raw.replace(/^JS-/, '');
+    if (!cleanId) {
+      Alert.alert('Required', 'Please enter a Grievance ID (e.g. RAJ-2024-88421)');
+      return;
+    }
+    setHomeIsSearching(true);
+    setHomeSearchError(null);
     try {
+      // 1. Check loaded grievances list first
+      const localMatch = grievances.find(
+        (g) => g.grievanceId.toUpperCase() === cleanId || g.grievanceId.toUpperCase().includes(cleanId)
+      );
+      if (localMatch) {
+        setHomeSearchedGrievance(localMatch);
+        setHomeSearchError(null);
+        setHomeIsSearching(false);
+        return;
+      }
+
+      // 2. Fetch from backend API
       const base = cleanServerUrl(serverUrl);
-      const res = await fetchWithRetry(`${base}/api/sampark/grievance/${encodeURIComponent(idToLookup)}`, {
+      const res = await fetchWithRetry(`${base}/api/sampark/grievance/${encodeURIComponent(cleanId)}`, {
         headers: {
           'Bypass-Tunnel-Reminder': 'true',
         },
       });
-      const raw = await res.text();
-      let data: any = null;
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        console.warn('Inspect grievance non-json response:', raw.slice(0, 100));
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.grievance) {
+        setHomeSearchedGrievance(data.grievance);
+        setHomeSearchError(null);
+      } else {
+        setHomeSearchedGrievance(null);
+        setHomeSearchError(data?.error || `Grievance #${cleanId} not found in database.`);
+      }
+    } catch (err: any) {
+      console.warn('Home grievance search error:', err);
+      setHomeSearchError('Unable to reach server. Please check internet connection.');
+    } finally {
+      setHomeIsSearching(false);
+    }
+  };
+
+  // ─── Hearing Scheduling Handler ────────────────────────────────
+  const handleConfirmSchedule = async () => {
+    if (!schedulingGrievance) return;
+    setIsSubmittingSchedule(true);
+    try {
+      const base = cleanServerUrl(serverUrl);
+      const res = await fetchWithRetry(`${base}/api/calls/schedule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Bypass-Tunnel-Reminder': 'true',
+        },
+        body: JSON.stringify({
+          grievanceId: schedulingGrievance.grievanceId,
+          scheduledDate: scheduleDate,
+          scheduledTime: scheduleTime,
+          officerName: user.name || 'Vivek, IAS',
+          officerPhone: user.phone,
+          notes: scheduleNotes || 'Official Jan Sunwai hearing with District Magistrate',
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to schedule hearing');
       }
 
-      if (res.ok && data?.grievance) {
-        setInspectedGrievance(data.grievance);
-        setInspectError(null);
-        return;
-      }
-      setInspectedGrievance(null);
-      setInspectError(data?.message || data?.error || `Grievance #${idToLookup} not found in database.`);
+      setShowScheduleModal(false);
+      Alert.alert(
+        '✅ Hearing Scheduled Successfully!',
+        `Case: #${schedulingGrievance.grievanceId}\nDate: ${scheduleDate}\nTime: ${scheduleTime}\n\nAutomated notifications dispatched to:\n• Citizen: ${data.citizen?.name || 'Citizen'} (${data.citizen?.phone || 'N/A'})\n• Field Officer: ${data.employee?.name || 'Officer'} (${data.employee?.phone || 'N/A'})\n\nAll participants will receive a reminder notification 15 minutes before the hearing.`,
+        [{ text: 'OK' }]
+      );
     } catch (err: any) {
-      console.warn('Inspect grievance error:', err);
-      setInspectError('Unable to reach server to fetch grievance details. Please check connection.');
+      Alert.alert('Scheduling Error', err.message || 'Unable to schedule hearing. Check network connection.');
     } finally {
-      setIsInspecting(false);
+      setIsSubmittingSchedule(false);
     }
   };
 
@@ -458,6 +518,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       fetchCallCenterQueue();
     } else if (isAdmin) {
       fetchAdminData();
+    } else if (isOfficer) {
+      handleHomeSearchGrievance('RAJ-2024-88421');
     }
   }, [serverUrl, user.phone, user.role]);
 
@@ -469,8 +531,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       await fetchAdminData();
     } else {
       await fetchGrievances();
-      if (isOfficer && inspectGrievanceId) {
-        await handleInspectGrievance(inspectGrievanceId);
+      if (isOfficer && directRoomInput) {
+        await handleHomeSearchGrievance(directRoomInput);
       }
     }
     setRefreshing(false);
@@ -506,7 +568,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
       const targetGrievance =
         preloadedGrievance ||
-        (inspectedGrievance?.grievanceId.toUpperCase() === targetCaseId ? inspectedGrievance : null) ||
+        (selectedGrievanceDetails?.grievanceId.toUpperCase() === targetCaseId ? selectedGrievanceDetails : null) ||
+        (homeSearchedGrievance?.grievanceId.toUpperCase() === targetCaseId ? homeSearchedGrievance : null) ||
         grievances.find((g) => g.grievanceId.toUpperCase() === targetCaseId);
 
       const initiateRes = await fetchWithRetry(`${base}/api/calls/initiate`, {
@@ -1041,7 +1104,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   </View>
                 </View>
                 <Text style={styles.hearingBenchDesc}>
-                  Enter a case ID or room code below to launch the video hearing bench. Citizen and field officer will be invited automatically.
+                  Enter a Grievance ID below to search details, initiate an immediate video call hearing, or schedule a future hearing.
                 </Text>
 
                 <View style={styles.directRoomRow}>
@@ -1049,49 +1112,95 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     style={styles.directRoomInput}
                     value={directRoomInput}
                     onChangeText={setDirectRoomInput}
-                    placeholder="Case or Room ID (e.g. RAJ-2024-88421)"
+                    placeholder="Grievance ID (e.g. RAJ-2024-88421)"
                     placeholderTextColor="#8696a0"
                     autoCapitalize="characters"
                   />
                   <TouchableOpacity
-                    style={[styles.directRoomBtn, isJoining && styles.btnDisabled]}
-                    onPress={() => handleConnectHearing(directRoomInput)}
-                    disabled={isJoining}
+                    style={[styles.directRoomBtn, homeIsSearching && styles.btnDisabled]}
+                    onPress={() => handleHomeSearchGrievance(directRoomInput)}
+                    disabled={homeIsSearching}
                     activeOpacity={0.8}
                   >
-                    {isJoining ? (
+                    {homeIsSearching ? (
                       <ActivityIndicator color="#111b21" size="small" />
                     ) : (
-                      <Text style={styles.directRoomBtnText}>Enter Room 📞</Text>
+                      <Text style={styles.directRoomBtnText}>Search 🔍</Text>
                     )}
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.featuresGrid}>
-                  <View style={styles.featurePill}>
-                    <Text style={styles.featurePillText}>🔒 256-Bit E2EE</Text>
+                {homeSearchError && (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorBoxText}>⚠️ {homeSearchError}</Text>
                   </View>
-                  <View style={styles.featurePill}>
-                    <Text style={styles.featurePillText}>🛡️ Host Moderation</Text>
-                  </View>
-                  <View style={styles.featurePill}>
-                    <Text style={styles.featurePillText}>⚡ 1,000+ Concurrency</Text>
-                  </View>
-                  <View style={styles.featurePill}>
-                    <Text style={styles.featurePillText}>📹 Auto-Recorded</Text>
-                  </View>
-                </View>
+                )}
 
-                <TouchableOpacity
-                  style={styles.casesBannerBtn}
-                  onPress={() => setCurrentTab('cases')}
-                  activeOpacity={0.75}
-                >
-                  <Text style={styles.casesBannerText}>
-                    📋 Search & Inspect All Grievance Cases ({grievances.length})
-                  </Text>
-                  <Text style={styles.casesBannerArrow}>→</Text>
-                </TouchableOpacity>
+                {/* Searched Grievance Details & Action Buttons */}
+                {homeSearchedGrievance && (
+                  <View style={styles.homeFoundCard}>
+                    <View style={styles.caseHeader}>
+                      <View style={styles.caseIdBadge}>
+                        <Text style={styles.caseIdText}>{homeSearchedGrievance.grievanceId}</Text>
+                      </View>
+                      <View style={styles.statusBadge}>
+                        <Text style={styles.statusText}>{homeSearchedGrievance.status}</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.caseTitle}>{homeSearchedGrievance.title}</Text>
+
+                    {homeSearchedGrievance.category && (
+                      <Text style={styles.caseCategory}>
+                        📁 {homeSearchedGrievance.category} {homeSearchedGrievance.location ? `• 📍 ${homeSearchedGrievance.location}` : ''}
+                      </Text>
+                    )}
+
+                    <View style={styles.partiesGrid}>
+                      {homeSearchedGrievance.citizen && (
+                        <View style={styles.partyBox}>
+                          <Text style={styles.partyBoxHeader}>Citizen</Text>
+                          <Text style={styles.partyName}>{homeSearchedGrievance.citizen.name}</Text>
+                          <Text style={styles.partyPhone}>📞 {homeSearchedGrievance.citizen.phone}</Text>
+                        </View>
+                      )}
+                      {homeSearchedGrievance.assignedEmployee && (
+                        <View style={[styles.partyBox, styles.partyBoxOfficer]}>
+                          <Text style={styles.partyBoxHeader}>Field Officer</Text>
+                          <Text style={styles.partyName}>{homeSearchedGrievance.assignedEmployee.name}</Text>
+                          <Text style={styles.partyDesig}>{homeSearchedGrievance.assignedEmployee.designation}</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Start Video Call & Schedule Call Buttons */}
+                    <View style={styles.homeActionsRow}>
+                      <TouchableOpacity
+                        style={[styles.homeStartCallBtn, isJoining && styles.btnDisabled]}
+                        onPress={() => handleConnectHearing(homeSearchedGrievance.grievanceId, homeSearchedGrievance)}
+                        disabled={isJoining}
+                        activeOpacity={0.85}
+                      >
+                        {isJoining ? (
+                          <ActivityIndicator color="#111b21" size="small" />
+                        ) : (
+                          <Text style={styles.homeStartCallBtnText}>📞 Start Video Call</Text>
+                        )}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.homeScheduleBtn}
+                        onPress={() => {
+                          setSchedulingGrievance(homeSearchedGrievance);
+                          setShowScheduleModal(true);
+                        }}
+                        activeOpacity={0.85}
+                      >
+                        <Text style={styles.homeScheduleBtnText}>📅 Schedule Call</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </View>
             ) : (
               /* Citizen Hearing Notice Card */
@@ -1121,152 +1230,36 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </View>
         )}
 
-        {/* ─── TAB 2: CASES (GRIEVANCES & INSPECTOR) ─── */}
+        {/* ─── TAB 2: CASES ─── */}
         {currentTab === 'cases' && (
           <View>
-            {/* Search & Inspect Card */}
-            <View style={styles.officerInspectCard}>
-              <View style={styles.officerInspectHeader}>
-                <Text style={styles.inspectHeading}>🔍 Inspect & Search Grievance</Text>
-              </View>
-
+            {/* Search Input Bar (No quick chips, no preview card below!) */}
+            <View style={styles.casesSearchContainer}>
               <View style={styles.inspectInputRow}>
                 <TextInput
                   style={styles.inspectInput}
                   value={inspectGrievanceId}
                   onChangeText={setInspectGrievanceId}
-                  placeholder="Grievance ID (e.g. RAJ-2024-88421)"
+                  placeholder="Search Grievance ID (e.g. RAJ-2024-88421)"
                   placeholderTextColor="#8696a0"
                   autoCapitalize="characters"
                 />
-                <TouchableOpacity
-                  style={[styles.inspectBtn, isInspecting && styles.btnDisabled]}
-                  onPress={() => handleInspectGrievance(inspectGrievanceId)}
-                  disabled={isInspecting}
-                  activeOpacity={0.8}
-                >
-                  {isInspecting ? (
-                    <ActivityIndicator color="#111b21" size="small" />
-                  ) : (
+                {inspectGrievanceId.length > 0 ? (
+                  <TouchableOpacity
+                    style={styles.searchClearBtn}
+                    onPress={() => setInspectGrievanceId('')}
+                  >
+                    <Text style={styles.searchClearText}>✕</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.inspectBtn}>
                     <Text style={styles.inspectBtnText}>Search</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-              {/* Quick Grievance Select Chips */}
-              <View style={styles.quickChipsRow}>
-                <TouchableOpacity
-                  style={[styles.chipBtn, !inspectGrievanceId && { backgroundColor: '#00a884' }]}
-                  onPress={() => {
-                    setInspectGrievanceId('');
-                    setInspectedGrievance(null);
-                    setInspectError(null);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipBtnText, !inspectGrievanceId && { color: '#ffffff', fontWeight: '700' }]}>
-                    🌐 All ({grievances.length})
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.chipBtn, inspectGrievanceId === 'RAJ-2024-88421' && { backgroundColor: '#00a884' }]}
-                  onPress={() => {
-                    setInspectGrievanceId('RAJ-2024-88421');
-                    handleInspectGrievance('RAJ-2024-88421');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipBtnText, inspectGrievanceId === 'RAJ-2024-88421' && { color: '#ffffff', fontWeight: '700' }]}>
-                    💧 RAJ-2024-88421
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.chipBtn, inspectGrievanceId === 'RAJ-2024-71205' && { backgroundColor: '#00a884' }]}
-                  onPress={() => {
-                    setInspectGrievanceId('RAJ-2024-71205');
-                    handleInspectGrievance('RAJ-2024-71205');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.chipBtnText, inspectGrievanceId === 'RAJ-2024-71205' && { color: '#ffffff', fontWeight: '700' }]}>
-                    📜 RAJ-2024-71205
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {inspectError && (
-                <View style={styles.errorBox}>
-                  <Text style={styles.errorBoxText}>⚠️ {inspectError}</Text>
-                </View>
-              )}
-
-              {/* Inspected Grievance Preview Card */}
-              {inspectedGrievance && (
-                <View style={styles.previewBox}>
-                  <View style={styles.previewHeaderRow}>
-                    <View style={styles.previewIdBadge}>
-                      <Text style={styles.previewIdText}>#{inspectedGrievance.grievanceId}</Text>
-                    </View>
-                    <View style={styles.previewStatusBadge}>
-                      <Text style={styles.previewStatusText}>{inspectedGrievance.status}</Text>
-                    </View>
                   </View>
-
-                  <Text style={styles.previewTitle}>{inspectedGrievance.title}</Text>
-
-                  {inspectedGrievance.category && (
-                    <Text style={styles.previewCategory}>
-                      📁 {inspectedGrievance.category}{' '}
-                      {inspectedGrievance.location ? `• 📍 ${inspectedGrievance.location}` : ''}
-                    </Text>
-                  )}
-
-                  {/* Participant Details */}
-                  <View style={styles.partiesGrid}>
-                    {inspectedGrievance.citizen && (
-                      <View style={styles.partyBox}>
-                        <Text style={styles.partyBoxHeader}>Citizen</Text>
-                        <Text style={styles.partyName}>{inspectedGrievance.citizen.name}</Text>
-                        <Text style={styles.partyPhone}>📞 {inspectedGrievance.citizen.phone}</Text>
-                      </View>
-                    )}
-
-                    {inspectedGrievance.assignedEmployee && (
-                      <View style={[styles.partyBox, styles.partyBoxOfficer]}>
-                        <Text style={styles.partyBoxHeader}>Official</Text>
-                        <Text style={styles.partyName}>{inspectedGrievance.assignedEmployee.name}</Text>
-                        <Text style={styles.partyDesig}>{inspectedGrievance.assignedEmployee.designation}</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Direct 1-Tap Video Call Button */}
-                  {isOfficer ? (
-                    <TouchableOpacity
-                      style={[styles.primaryCallBtn, isJoining && styles.btnDisabled]}
-                      onPress={() => handleConnectHearing(inspectedGrievance.grievanceId, inspectedGrievance)}
-                      disabled={isJoining}
-                      activeOpacity={0.85}
-                    >
-                      {isJoining ? (
-                        <ActivityIndicator color="#111b21" size="small" />
-                      ) : (
-                        <View style={styles.primaryCallBtnContent}>
-                          <Text style={styles.primaryCallIcon}>📞</Text>
-                          <Text style={styles.primaryCallTitle}>Start Video Hearing</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.awaitingCallBadge}>
-                      <Text style={styles.awaitingCallTitle}>⏳ Waiting for Magistrate Call</Text>
-                    </View>
-                  )}
-                </View>
-              )}
+                )}
+              </View>
             </View>
 
-            {/* Grievances List */}
+            {/* Cases Compact List */}
             <View style={styles.listSection}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionHeading}>
@@ -1286,21 +1279,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <View style={styles.emptyCard}>
                   <Text style={styles.emptyIcon}>📂</Text>
                   <Text style={styles.emptyTitle}>
-                    {inspectGrievanceId ? 'No Matching Cases' : 'No Active Cases'}
+                    {inspectGrievanceId ? 'No Matching Grievance' : 'No Active Cases'}
                   </Text>
                   <Text style={styles.emptyDesc}>
                     {inspectGrievanceId
-                      ? `No grievance found matching "${inspectGrievanceId}".`
-                      : 'No cases currently registered in the database.'}
+                      ? `No grievance matches "${inspectGrievanceId}".`
+                      : 'No cases found in database.'}
                   </Text>
                   {inspectGrievanceId ? (
                     <TouchableOpacity
                       style={[styles.chipBtn, { alignSelf: 'center', marginTop: 12, backgroundColor: '#00a884' }]}
-                      onPress={() => {
-                        setInspectGrievanceId('');
-                        setInspectedGrievance(null);
-                        setInspectError(null);
-                      }}
+                      onPress={() => setInspectGrievanceId('')}
                     >
                       <Text style={{ color: '#fff', fontWeight: '700' }}>Show All Cases</Text>
                     </TouchableOpacity>
@@ -1308,75 +1297,24 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </View>
               ) : (
                 filteredGrievances.map((item) => (
-                  <TouchableOpacity
-                    key={item.grievanceId}
-                    style={styles.caseCard}
-                    activeOpacity={0.9}
-                    onPress={() => {
-                      setInspectGrievanceId(item.grievanceId);
-                      handleInspectGrievance(item.grievanceId);
-                    }}
-                  >
-                    <View style={styles.caseHeader}>
+                  <View key={item.grievanceId} style={styles.compactCaseRow}>
+                    <View style={styles.compactCaseInfo}>
                       <View style={styles.caseIdBadge}>
                         <Text style={styles.caseIdText}>{item.grievanceId}</Text>
                       </View>
-                      <View style={styles.statusBadge}>
-                        <Text style={styles.statusText}>{item.status}</Text>
-                      </View>
+                      <Text style={styles.compactCaseStatus} numberOfLines={1}>
+                        {item.status}
+                      </Text>
                     </View>
 
-                    <Text style={styles.caseTitle}>{item.title}</Text>
-
-                    {item.category && (
-                      <Text style={styles.caseCategory}>
-                        📁 {item.category} {item.location ? `• 📍 ${item.location}` : ''}
-                      </Text>
-                    )}
-
-                    {item.citizen && (
-                      <Text style={[styles.officerName, { color: '#8696a0', marginTop: 3 }]}>
-                        👤 Citizen: {item.citizen.name} ({item.citizen.phone})
-                      </Text>
-                    )}
-
-                    {item.assignedEmployee && (
-                      <Text style={[styles.officerName, { marginTop: 2 }]}>
-                        👮 Officer: {item.assignedEmployee.name} ({item.assignedEmployee.designation})
-                      </Text>
-                    )}
-
-                    {/* Action buttons */}
-                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-                      <TouchableOpacity
-                        style={[styles.inspectBtn, { flex: 1, height: 42 }]}
-                        onPress={() => {
-                          setInspectGrievanceId(item.grievanceId);
-                          handleInspectGrievance(item.grievanceId);
-                        }}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.inspectBtnText}>🔍 View Details</Text>
-                      </TouchableOpacity>
-
-                      {isOfficer ? (
-                        <TouchableOpacity
-                          style={[styles.startHearingBtn, { flex: 1.2, marginTop: 0, height: 42 }, isJoining && styles.btnDisabled]}
-                          onPress={() => handleConnectHearing(item.grievanceId, item)}
-                          disabled={isJoining}
-                          activeOpacity={0.8}
-                        >
-                          {isJoining ? (
-                            <ActivityIndicator color="#111b21" size="small" />
-                          ) : (
-                            <Text style={styles.startHearingBtnText}>
-                              📞 Start Video Call
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                  </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.compactViewDetailsBtn}
+                      onPress={() => setSelectedGrievanceDetails(item)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={styles.compactViewDetailsBtnText}>View Details ➔</Text>
+                    </TouchableOpacity>
+                  </View>
                 ))
               )}
             </View>
@@ -1506,7 +1444,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </TouchableOpacity>
       </Modal>
 
-      {/* ─── Profile Details Modal ─── */}
+      {/* ─── Profile Details Modal (Responsive & Polished) ─── */}
       <Modal
         visible={showProfileModal}
         transparent={true}
@@ -1525,46 +1463,55 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </TouchableOpacity>
             </View>
 
-            <View style={styles.profileModalAvatarCircle}>
-              <Text style={styles.profileModalAvatarText}>
-                {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
-              </Text>
-            </View>
-
-            <Text style={styles.profileModalName}>{user.name || 'User'}</Text>
-            <View style={styles.profileModalRoleBadge}>
-              <Text style={styles.profileModalRoleText}>
-                {getRoleLabel(user.role).toUpperCase()}
-              </Text>
-            </View>
-
-            <View style={styles.profileModalDetailsBox}>
-              <View style={styles.profileDetailItem}>
-                <Text style={styles.profileDetailLabel}>Designation</Text>
-                <Text style={styles.profileDetailValue}>
-                  {user.designation || getRoleLabel(user.role)}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center' }}>
+              <View style={styles.profileModalAvatarCircle}>
+                <Text style={styles.profileModalAvatarText}>
+                  {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
                 </Text>
               </View>
 
-              {user.department && (
+              <Text style={styles.profileModalName}>{user.name || 'User'}</Text>
+              <View style={styles.profileModalRoleBadge}>
+                <Text style={styles.profileModalRoleText}>
+                  {getRoleLabel(user.role).toUpperCase()}
+                </Text>
+              </View>
+
+              <View style={styles.profileModalDetailsBox}>
                 <View style={styles.profileDetailItem}>
-                  <Text style={styles.profileDetailLabel}>Department</Text>
-                  <Text style={styles.profileDetailValue}>{user.department}</Text>
+                  <Text style={styles.profileDetailLabel}>Designation</Text>
+                  <Text style={styles.profileDetailValue}>
+                    {user.designation || getRoleLabel(user.role)}
+                  </Text>
                 </View>
-              )}
 
-              <View style={styles.profileDetailItem}>
-                <Text style={styles.profileDetailLabel}>Mobile Number</Text>
-                <Text style={styles.profileDetailValue}>
-                  +91 {user.phone.replace(/\D/g, '').slice(-10)}
-                </Text>
-              </View>
+                {user.department && (
+                  <View style={styles.profileDetailItem}>
+                    <Text style={styles.profileDetailLabel}>Department</Text>
+                    <Text style={styles.profileDetailValue}>{user.department}</Text>
+                  </View>
+                )}
 
-              <View style={styles.profileDetailItem}>
-                <Text style={styles.profileDetailLabel}>Portal Role</Text>
-                <Text style={styles.profileDetailValue}>{user.role}</Text>
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Mobile Number</Text>
+                  <Text style={styles.profileDetailValue}>
+                    +91 {user.phone.replace(/\D/g, '').slice(-10)}
+                  </Text>
+                </View>
+
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Portal Role</Text>
+                  <Text style={styles.profileDetailValue}>{user.role}</Text>
+                </View>
+
+                {user.district && (
+                  <View style={styles.profileDetailItem}>
+                    <Text style={styles.profileDetailLabel}>District</Text>
+                    <Text style={styles.profileDetailValue}>{user.district}</Text>
+                  </View>
+                )}
               </View>
-            </View>
+            </ScrollView>
 
             <TouchableOpacity
               style={styles.profileCloseBtn}
@@ -1573,6 +1520,239 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             >
               <Text style={styles.profileCloseBtnText}>Close</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── MODAL: GRIEVANCE FULL DETAILS ─── */}
+      <Modal
+        visible={!!selectedGrievanceDetails}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setSelectedGrievanceDetails(null)}
+      >
+        <View style={styles.detailsModalOverlay}>
+          <View style={styles.detailsModalCard}>
+            <View style={styles.detailsModalHeader}>
+              <View style={{ flex: 1 }}>
+                <View style={styles.previewHeaderRow}>
+                  <View style={styles.caseIdBadge}>
+                    <Text style={styles.caseIdText}>#{selectedGrievanceDetails?.grievanceId}</Text>
+                  </View>
+                  <View style={styles.statusBadge}>
+                    <Text style={styles.statusText}>{selectedGrievanceDetails?.status}</Text>
+                  </View>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.profileModalCloseBtn}
+                onPress={() => setSelectedGrievanceDetails(null)}
+              >
+                <Text style={styles.profileModalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+              <Text style={styles.detailsModalTitle}>{selectedGrievanceDetails?.title}</Text>
+
+              {selectedGrievanceDetails?.category && (
+                <Text style={styles.detailsModalCategory}>
+                  📁 {selectedGrievanceDetails.category}{' '}
+                  {selectedGrievanceDetails.location ? `• 📍 ${selectedGrievanceDetails.location}` : ''}
+                </Text>
+              )}
+
+              {selectedGrievanceDetails?.description && (
+                <View style={styles.descriptionBox}>
+                  <Text style={styles.descriptionLabel}>Grievance Summary / Problem Statement</Text>
+                  <Text style={styles.descriptionText}>{selectedGrievanceDetails.description}</Text>
+                </View>
+              )}
+
+              {/* Parties Grid */}
+              <View style={styles.partiesGrid}>
+                {selectedGrievanceDetails?.citizen && (
+                  <View style={styles.partyBox}>
+                    <Text style={styles.partyBoxHeader}>Citizen Complainant</Text>
+                    <Text style={styles.partyName}>{selectedGrievanceDetails.citizen.name}</Text>
+                    <Text style={styles.partyPhone}>📞 {selectedGrievanceDetails.citizen.phone}</Text>
+                    {selectedGrievanceDetails.citizen.village && (
+                      <Text style={styles.partyMeta}>
+                        📍 {selectedGrievanceDetails.citizen.village}, {selectedGrievanceDetails.citizen.district}
+                      </Text>
+                    )}
+                  </View>
+                )}
+
+                {selectedGrievanceDetails?.assignedEmployee && (
+                  <View style={[styles.partyBox, styles.partyBoxOfficer]}>
+                    <Text style={styles.partyBoxHeader}>Assigned Field Official</Text>
+                    <Text style={styles.partyName}>{selectedGrievanceDetails.assignedEmployee.name}</Text>
+                    <Text style={styles.partyDesig}>{selectedGrievanceDetails.assignedEmployee.designation}</Text>
+                    <Text style={styles.partyPhone}>📞 {selectedGrievanceDetails.assignedEmployee.phone}</Text>
+                    {selectedGrievanceDetails.assignedEmployee.department && (
+                      <Text style={styles.partyMeta} numberOfLines={2}>
+                        🏢 {selectedGrievanceDetails.assignedEmployee.department}
+                      </Text>
+                    )}
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+
+            {/* Officer Action Buttons or Citizen Notice */}
+            {isOfficer ? (
+              <View style={styles.detailsActionsRow}>
+                <TouchableOpacity
+                  style={[styles.homeStartCallBtn, isJoining && styles.btnDisabled]}
+                  onPress={() => {
+                    const g = selectedGrievanceDetails;
+                    setSelectedGrievanceDetails(null);
+                    if (g) handleConnectHearing(g.grievanceId, g);
+                  }}
+                  disabled={isJoining}
+                  activeOpacity={0.85}
+                >
+                  {isJoining ? (
+                    <ActivityIndicator color="#111b21" size="small" />
+                  ) : (
+                    <Text style={styles.homeStartCallBtnText}>📞 Start Video Call</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.homeScheduleBtn}
+                  onPress={() => {
+                    const g = selectedGrievanceDetails;
+                    setSelectedGrievanceDetails(null);
+                    if (g) {
+                      setSchedulingGrievance(g);
+                      setShowScheduleModal(true);
+                    }
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.homeScheduleBtnText}>📅 Schedule Call</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.awaitingCallBadge}>
+                <Text style={styles.awaitingCallTitle}>⏳ Hearing Call Pending</Text>
+                <Text style={styles.awaitingCallDesc}>
+                  You will receive an automated video call directly when your case is called by the District Magistrate.
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── MODAL: SCHEDULE HEARING CALL ─── */}
+      <Modal
+        visible={showScheduleModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowScheduleModal(false)}
+      >
+        <View style={styles.scheduleModalOverlay}>
+          <View style={styles.scheduleModalCard}>
+            <View style={styles.scheduleModalHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.scheduleModalTitle}>📅 Schedule Hearing</Text>
+                <Text style={styles.scheduleModalSubtitle}>
+                  Case #{schedulingGrievance?.grievanceId}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.scheduleModalCloseBtn}
+                onPress={() => setShowScheduleModal(false)}
+              >
+                <Text style={styles.scheduleModalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+              <Text style={styles.scheduleSectionLabel}>Case Title</Text>
+              <Text style={styles.scheduleCaseTitle} numberOfLines={2}>
+                {schedulingGrievance?.title}
+              </Text>
+
+              {/* Date Selection */}
+              <Text style={styles.scheduleSectionLabel}>Select Hearing Date (दिनांक चुनें)</Text>
+              <View style={styles.dateChipsRow}>
+                {[
+                  { label: 'Today (आज)', val: '2026-09-28' },
+                  { label: 'Tomorrow (कल)', val: '2026-09-29' },
+                  { label: 'Wed, Sep 30', val: '2026-09-30' },
+                  { label: 'Thu, Oct 01', val: '2026-10-01' },
+                ].map((d) => (
+                  <TouchableOpacity
+                    key={d.val}
+                    style={[styles.dateChip, scheduleDate === d.val && styles.dateChipActive]}
+                    onPress={() => setScheduleDate(d.val)}
+                  >
+                    <Text style={[styles.dateChipText, scheduleDate === d.val && styles.dateChipTextActive]}>
+                      {d.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Time Slot Selection */}
+              <Text style={styles.scheduleSectionLabel}>Select Time Slot (समय चुनें)</Text>
+              <View style={styles.timeChipsRow}>
+                {['10:30 AM', '11:30 AM', '02:30 PM', '03:30 PM', '04:30 PM', '05:00 PM'].map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.timeChip, scheduleTime === t && styles.timeChipActive]}
+                    onPress={() => setScheduleTime(t)}
+                  >
+                    <Text style={[styles.timeChipText, scheduleTime === t && styles.timeChipTextActive]}>
+                      {t}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Automated Notification Alert Box */}
+              <View style={styles.notificationNoticeBox}>
+                <Text style={styles.notificationNoticeTitle}>🔔 Automated Notification Alerts</Text>
+                <Text style={styles.notificationNoticeDesc}>
+                  Citizen and assigned Field Officer will immediately receive SMS & App notifications upon scheduling:
+                </Text>
+                <Text style={styles.notificationRecipient}>
+                  • Citizen: {schedulingGrievance?.citizen?.name || 'Citizen'} ({schedulingGrievance?.citizen?.phone || 'N/A'})
+                </Text>
+                <Text style={styles.notificationRecipient}>
+                  • Field Officer: {schedulingGrievance?.assignedEmployee?.name || 'Officer'} ({schedulingGrievance?.assignedEmployee?.phone || 'N/A'})
+                </Text>
+                <Text style={styles.notificationReminder}>
+                  ⏰ Reminder alert sent automatically 15 minutes before scheduled hearing.
+                </Text>
+              </View>
+            </ScrollView>
+
+            {/* Confirm & Cancel Buttons */}
+            <View style={styles.scheduleActionsRow}>
+              <TouchableOpacity
+                style={styles.scheduleCancelBtn}
+                onPress={() => setShowScheduleModal(false)}
+              >
+                <Text style={styles.scheduleCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.scheduleConfirmBtn, isSubmittingSchedule && styles.btnDisabled]}
+                onPress={handleConfirmSchedule}
+                disabled={isSubmittingSchedule}
+              >
+                {isSubmittingSchedule ? (
+                  <ActivityIndicator color="#111b21" size="small" />
+                ) : (
+                  <Text style={styles.scheduleConfirmText}>Confirm Schedule ➔</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1882,16 +2062,25 @@ const styles = StyleSheet.create({
   profileDetailItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
   profileDetailLabel: {
     fontSize: 12,
     color: '#8696a0',
+    width: 105,
+    flexShrink: 0,
+    fontWeight: '500',
   },
   profileDetailValue: {
     fontSize: 13,
     fontWeight: '600',
     color: '#e9edef',
+    flex: 1,
+    textAlign: 'right',
+    flexWrap: 'wrap',
   },
   profileCloseBtn: {
     width: '100%',
@@ -1906,6 +2095,340 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#e9edef',
+  },
+
+  // ─── Home Page Search & Actions Styles ───
+  homeFoundCard: {
+    backgroundColor: '#111b21',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#2a3942',
+  },
+  homeActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  homeStartCallBtn: {
+    flex: 1.2,
+    backgroundColor: '#00a884',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  homeStartCallBtnText: {
+    color: '#111b21',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  homeScheduleBtn: {
+    flex: 1,
+    backgroundColor: '#202c33',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#00a884',
+  },
+  homeScheduleBtnText: {
+    color: '#00a884',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // ─── Cases Tab Compact Row Styles ───
+  casesSearchContainer: {
+    backgroundColor: '#202c33',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.15)',
+  },
+  searchClearBtn: {
+    backgroundColor: '#111b21',
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#2a3942',
+  },
+  searchClearText: {
+    color: '#8696a0',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  compactCaseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#202c33',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.15)',
+  },
+  compactCaseInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginRight: 8,
+  },
+  compactCaseStatus: {
+    fontSize: 11,
+    color: '#8696a0',
+    flex: 1,
+  },
+  compactViewDetailsBtn: {
+    backgroundColor: '#103629',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: '#00a884',
+  },
+  compactViewDetailsBtnText: {
+    color: '#00a884',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  // ─── Details Modal Styles ───
+  detailsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  detailsModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#1f2c34',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+  },
+  detailsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  detailsModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#e9edef',
+    marginBottom: 6,
+  },
+  detailsModalCategory: {
+    fontSize: 12,
+    color: '#8696a0',
+    marginBottom: 10,
+  },
+  detailsActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+  },
+
+  // ─── Hearing Schedule Modal Styles ───
+  scheduleModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  scheduleModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#1f2c34',
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+  },
+  scheduleModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  scheduleModalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#e9edef',
+  },
+  scheduleModalSubtitle: {
+    fontSize: 12,
+    color: '#00a884',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  scheduleModalCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scheduleModalCloseText: {
+    color: '#8696a0',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  scheduleSectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8696a0',
+    marginTop: 10,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  scheduleCaseTitle: {
+    fontSize: 13,
+    color: '#e9edef',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  dateChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 6,
+  },
+  dateChip: {
+    backgroundColor: '#111b21',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#2a3942',
+  },
+  dateChipActive: {
+    backgroundColor: '#00a884',
+    borderColor: '#00a884',
+  },
+  dateChipText: {
+    color: '#8696a0',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  dateChipTextActive: {
+    color: '#111b21',
+    fontWeight: '800',
+  },
+  timeChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  timeChip: {
+    backgroundColor: '#111b21',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: '#2a3942',
+  },
+  timeChipActive: {
+    backgroundColor: '#00a884',
+    borderColor: '#00a884',
+  },
+  timeChipText: {
+    color: '#8696a0',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  timeChipTextActive: {
+    color: '#111b21',
+    fontWeight: '800',
+  },
+  notificationNoticeBox: {
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    padding: 12,
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 168, 132, 0.25)',
+  },
+  notificationNoticeTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#00a884',
+    marginBottom: 4,
+  },
+  notificationNoticeDesc: {
+    fontSize: 11,
+    color: '#8696a0',
+    marginBottom: 6,
+    lineHeight: 15,
+  },
+  notificationRecipient: {
+    fontSize: 11,
+    color: '#e9edef',
+    marginBottom: 3,
+  },
+  notificationReminder: {
+    fontSize: 11,
+    color: '#fbbf24',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  scheduleActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  scheduleCancelBtn: {
+    flex: 1,
+    backgroundColor: '#202c33',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+  },
+  scheduleCancelText: {
+    color: '#8696a0',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  scheduleConfirmBtn: {
+    flex: 1.5,
+    backgroundColor: '#00a884',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scheduleConfirmText: {
+    color: '#111b21',
+    fontSize: 13,
+    fontWeight: '800',
   },
   // Bottom Tab Bar
   bottomTabBar: {
