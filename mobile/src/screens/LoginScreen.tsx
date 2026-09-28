@@ -37,7 +37,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [isLoading, setIsLoading] = useState(false);
-  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
   const [detectedUser, setDetectedUser] = useState<{
     name: string;
     role: string;
@@ -109,7 +108,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     }
 
     setIsLoading(true);
-    setDevOtpHint(null);
     setDetectedUser(null);
 
     try {
@@ -170,10 +168,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           throw new Error('Too many requests. Please wait a few seconds before trying again.');
         }
         throw new Error(data?.error || data?.message || 'Failed to send OTP. Check server connection.');
-      }
-
-      if (data.devOtp) {
-        setDevOtpHint(data.devOtp);
       }
 
       // Automatically store detected designation & identity from database
@@ -462,21 +456,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   maxLength={6}
                   autoFocus
                 />
-
-                {devOtpHint && (
-                  <View style={styles.hintBox}>
-                    <Text style={styles.hintText}>
-                      Demo Code: <Text style={styles.hintBold}>{devOtpHint}</Text>
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => setOtp(devOtpHint)}
-                      style={styles.hintFillBtn}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.hintFillText}>Auto-Fill</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
 
                 <TouchableOpacity
                   style={[styles.primaryButton, (isLoading || otp.length < 4) && styles.buttonDisabled]}

@@ -465,6 +465,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     }
 
     setIsJoining(true);
+    // Tell native service caller is in a call immediately so caller device never rings
+    try {
+      const JanSunwaiVoIP = require('react-native').NativeModules?.JanSunwaiVoIP;
+      JanSunwaiVoIP?.setInCall?.(true);
+      JanSunwaiVoIP?.stopRinging?.();
+    } catch {}
+
     try {
       const base = cleanServerUrl(serverUrl);
 

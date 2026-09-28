@@ -468,6 +468,10 @@ export default function App() {
   // ─── 1b. Check if Native VoIP Service has a pending incoming call (woken from closed/bg) ─
   useEffect(() => {
     const checkPendingNativeCall = async () => {
+      if (currentUser?.role === 'officer' || currentUser?.role === 'collector') {
+        JanSunwaiVoIP?.stopRinging?.();
+        return;
+      }
       try {
         const pendingJson = await JanSunwaiVoIP?.getPendingCall?.();
         if (pendingJson) {
@@ -521,8 +525,11 @@ export default function App() {
 
     checkPendingNativeCall();
 
-    // Listen for real-time incoming call events dispatched by native JanSunwaiVoIPModule
     const nativeCallSub = DeviceEventEmitter.addListener('onIncomingCall', (callJson: string) => {
+      if (currentUser?.role === 'officer' || currentUser?.role === 'collector') {
+        JanSunwaiVoIP?.stopRinging?.();
+        return;
+      }
       try {
         console.log('[App] Received onIncomingCall event from native VoIP module:', callJson);
         const data = typeof callJson === 'string' ? JSON.parse(callJson) : callJson;
@@ -606,6 +613,9 @@ export default function App() {
             console.log('[Mobile/WS] Received:', msg.type);
 
             if (msg.type === 'incoming_call' && msg.data) {
+              if (currentUser?.role === 'officer' || currentUser?.role === 'collector') {
+                return;
+              }
               const incoming = msg.data;
               if (isDismissedCall(incoming.callId, incoming.grievanceId, incoming.roomName)) {
                 console.log('[Mobile/WS] Ignoring incoming call for dismissed callId:', incoming.callId || incoming.grievanceId);
@@ -655,6 +665,7 @@ export default function App() {
     const pollInterval = setInterval(async () => {
       // Use refs so this closure always sees the current value even after state changes
       if (!isSubscribed || activeHearingRef.current || isConnectingHearingRef.current) return;
+      if (currentUser?.role === 'officer' || currentUser?.role === 'collector') return;
 
       const isWsOpen = wsRef.current && wsRef.current.readyState === 1; // 1 = OPEN
       const now = Date.now();
@@ -734,6 +745,10 @@ export default function App() {
     JanSunwaiVoIP?.stopRinging?.();
     JanSunwaiVoIP?.setInCall?.(false);
     JanSunwaiVoIP?.stopService?.();
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch {}
+      wsRef.current = null;
+    }
     setActiveHearingAndRef(null);
     setCurrentUser(null);
     setIncomingCall(null);

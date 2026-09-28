@@ -159,8 +159,6 @@ router.post('/otp/send', (req: Request, res: Response) => {
     designation: existingUser?.designation || (existingUser ? 'Citizen' : 'New Citizen'),
     department: existingUser?.department || null,
     district: existingUser?.district || 'Rajasthan',
-    // In dev mode, include OTP in response for easy testing
-    ...(process.env.NODE_ENV !== 'production' && { devOtp: otp }),
   });
 });
 

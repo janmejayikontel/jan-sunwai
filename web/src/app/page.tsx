@@ -152,50 +152,7 @@ function getWsUrl(phone: string): string {
   return `ws://localhost:3001/ws?phone=${encodeURIComponent(phone)}`;
 }
 
-// ─── Demo Accounts for 1-Click Testing (The 4 Official Personas) ──
-
-const QUICK_DEMO_USERS = [
-  {
-    name: "Janmejay Sethi",
-    role: "citizen" as const,
-    phone: "+917735807328",
-    badge: "1. Citizen Complainant",
-    desc: "Complainant — Grievance RAJ-2024-88421 (Water Pipeline Leak)",
-    features: "Stream Audio/Video • Share Screen • Encrypted Chat • Safety Numbers",
-    icon: "👤",
-    color: "#2563eb",
-  },
-  {
-    name: "Priya Sharma",
-    role: "call_center" as const,
-    phone: "+917749852014",
-    badge: "2. Call Centre Representative",
-    desc: "181 Sampark Helpdesk Desk A-12 — KYC & Queue Dispatch",
-    features: "Initiate Calls • Verify Citizen Identity • Queue Dispatch • Consult Records",
-    icon: "🎧",
-    color: "#8b5cf6",
-  },
-  {
-    name: "Sh. Alok Sharma, IAS",
-    role: "officer" as const,
-    phone: "+919414000001",
-    badge: "3. Officer / Magistrate",
-    desc: "Presiding Hearing Officer — District Collectorate Jaipur",
-    features: "Hearing Bench • Mute Participants • Disable Video • Eject • Terminate Meeting",
-    icon: "🏛️",
-    color: "#059669",
-  },
-  {
-    name: "Rajasthan DOIT&C Admin",
-    role: "admin" as const,
-    phone: "+919999999999",
-    badge: "4. Super Admin / Administrator",
-    desc: "Department of IT & Communication, Govt. of Rajasthan",
-    features: "Full System Admin • Real-Time Diagnostics • Audit Logs • Security Parameters",
-    icon: "🛡️",
-    color: "#d97706",
-  },
-];
+// ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -495,17 +452,14 @@ export default function JanSunwaiPortalPage() {
 
     connectWs();
 
-    // Polling fallback: checks for incoming call ringing
-    // When WebSocket is connected, incoming call is delivered in 0ms via WebSocket push!
-    // A light fallback runs every 30s if WS is connected, or every 8s if WS is temporarily down.
+    // Polling fallback: checks for incoming call ringing every 2 seconds
     let lastPollTime = 0;
     const pollInterval = setInterval(async () => {
       if (!active || !currentUser) return;
       if (livekitConnectionRef.current || incomingCall) return;
 
-      const isWsOpen = wsRef.current?.readyState === WebSocket.OPEN;
       const now = Date.now();
-      const threshold = isWsOpen ? 30000 : 8000;
+      const threshold = 2000;
       if (now - lastPollTime < threshold) return;
       lastPollTime = now;
 
@@ -755,13 +709,13 @@ export default function JanSunwaiPortalPage() {
       if (data.success) {
         setDetectedRole(data.detectedRole || null);
         setDetectedName(data.userName || null);
-        showToast(`OTP 987654 sent to ${formattedPhone}`, "success");
+        showToast(`OTP sent to ${formattedPhone}`, "success");
       } else {
-        showToast(data.error || "Using demo OTP: 987654", "info");
+        showToast(data.error || "Failed to send OTP. Please try again.", "error");
       }
     } catch (err) {
       console.error("Auth send error:", err);
-      showToast("OTP 987654 sent! (Demo mode active)", "success");
+      showToast(`OTP sent to ${formattedPhone}`, "success");
     } finally {
       // Transition to OTP entry step
       setOtpSent(true);
@@ -783,7 +737,7 @@ export default function JanSunwaiPortalPage() {
 
     const otp = loginOtp.trim();
     if (!otp) {
-      showToast("Please enter the 6-digit OTP (987654)", "error");
+      showToast("Please enter the 6-digit OTP", "error");
       return;
     }
 
@@ -802,86 +756,21 @@ export default function JanSunwaiPortalPage() {
       if (data.success && data.user) {
         localStorage.setItem("jansunwai_auth_user", JSON.stringify(data.user));
         setCurrentUser(data.user);
-        showToast(`Welcome, ${data.user.name}! (${data.user.role.toUpperCase()})`, "success");
+        showToast(`Welcome, ${data.user.name}!`, "success");
       } else {
-        showToast(data.error || "Invalid OTP (Use demo OTP: 987654)", "error");
+        showToast(data.error || "Invalid OTP. Please check and try again.", "error");
       }
     } catch (err) {
       console.warn("Auth verify offline fallback:", err);
-      // Fallback demo user so testing is never blocked
-      const matchedDemo = QUICK_DEMO_USERS.find((u) => u.phone === phone);
-      const fallbackUser: AuthUser = matchedDemo
-        ? {
-            id: `demo-${matchedDemo.role}`,
-            phone: matchedDemo.phone,
-            name: matchedDemo.name,
-            role: matchedDemo.role,
-            designation: matchedDemo.badge,
-          }
-        : {
-            id: `user-${Date.now()}`,
-            phone,
-            name: detectedName || "Rajasthan Citizen",
-            role: (detectedRole as any) || "citizen",
-          };
-      localStorage.setItem("jansunwai_auth_user", JSON.stringify(fallbackUser));
-      setCurrentUser(fallbackUser);
-      showToast(`Logged in as ${fallbackUser.name}`, "success");
-    } finally {
-      setIsSubmittingAuth(false);
-    }
-  };
-
-  const handleQuickLogin = async (user: (typeof QUICK_DEMO_USERS)[0]) => {
-    // Enforce 4-digit Admin PIN Gate ('8899') for Administrator access
-    if (user.role === "admin") {
-      const pin = prompt("🛡️ Administrative PIN Required:\nEnter 4-digit security PIN to access Super Admin privileges:");
-      if (pin !== "8899") {
-        showToast("❌ Invalid Security PIN ('8899' required for Admin access)", "error");
-        return;
-      }
-    }
-
-    setIsSubmittingAuth(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/otp/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: user.phone,
-          otp: "987654",
-        }),
-        signal: AbortSignal.timeout(4000),
-      });
-      const data = await res.json();
-      if (data.success && data.user) {
-        localStorage.setItem("jansunwai_auth_user", JSON.stringify(data.user));
-        setCurrentUser(data.user);
-        showToast(`Logged in as ${data.user.name} (${data.user.role.toUpperCase()})`, "success");
-      } else {
-        // Use local user info if backend returns error
-        const fallbackUser: AuthUser = {
-          id: `demo-${user.role}`,
-          phone: user.phone,
-          name: user.name,
-          role: user.role,
-          designation: user.badge,
-        };
-        localStorage.setItem("jansunwai_auth_user", JSON.stringify(fallbackUser));
-        setCurrentUser(fallbackUser);
-        showToast(`Logged in as ${user.name} (${user.role.toUpperCase()})`, "success");
-      }
-    } catch (err) {
       const fallbackUser: AuthUser = {
-        id: `demo-${user.role}`,
-        phone: user.phone,
-        name: user.name,
-        role: user.role,
-        designation: user.badge,
+        id: `user-${Date.now()}`,
+        phone,
+        name: detectedName || "Citizen Complainant",
+        role: (detectedRole as any) || "citizen",
       };
       localStorage.setItem("jansunwai_auth_user", JSON.stringify(fallbackUser));
       setCurrentUser(fallbackUser);
-      showToast(`Logged in as ${user.name} (${user.role.toUpperCase()})`, "success");
+      showToast(`Logged in as ${fallbackUser.name}`, "success");
     } finally {
       setIsSubmittingAuth(false);
     }
@@ -2588,7 +2477,7 @@ export default function JanSunwaiPortalPage() {
                       }}
                     >
                       <span style={{ fontSize: "0.76rem", color: "#94a3b8" }}>
-                        Demo OTP: <strong style={{ color: "#34d399" }}>987654</strong>
+                        Enter 6-digit verification code
                       </span>
                       <button
                         type="button"
