@@ -76,6 +76,7 @@ const RoomContent: React.FC<{
   const [showAddParticipant, setShowAddParticipant] = useState(false);
   const [showSafetyNumbers, setShowSafetyNumbers] = useState(false);
   const [showModeration, setShowModeration] = useState(false);
+  const [showEndCallModal, setShowEndCallModal] = useState(false);
   const [sasVerified, setSasVerified] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const showChatRef = React.useRef(showChat);
@@ -703,52 +704,7 @@ const RoomContent: React.FC<{
   };
 
   const handlePressEndButton = () => {
-    if (isOfficer) {
-      Alert.alert(
-        'Hearing Bench Controls',
-        'Do you want to terminate this hearing for everyone or leave the call?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Leave Hearing (केवल मैं निकलूँ)',
-            onPress: () => {
-              isExitingRef.current = true;
-              handleExitCall();
-            },
-          },
-          {
-            text: 'Terminate Hearing (सभी के लिए समाप्त)',
-            style: 'destructive',
-            onPress: async () => {
-              isExitingRef.current = true;
-              try {
-                await sendModerationPacket({ type: 'moderation', action: 'eject' });
-                await fetch(`${cleanServerUrl(serverUrl)}/api/calls/${effectiveCallId}/end`, {
-                  method: 'POST',
-                });
-              } catch (e) {}
-              handleExitCall();
-            },
-          },
-        ]
-      );
-    } else {
-      Alert.alert(
-        'Leave Hearing',
-        'Are you sure you want to leave this Jan Sunwai video hearing?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Leave (बाहर निकलें)',
-            style: 'destructive',
-            onPress: () => {
-              isExitingRef.current = true;
-              handleExitCall();
-            },
-          },
-        ]
-      );
-    }
+    setShowEndCallModal(true);
   };
 
   return (
@@ -932,6 +888,71 @@ const RoomContent: React.FC<{
               onPress={() => setShowSafetyNumbers(false)}
             >
               <Text style={styles.closeModalBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Modern Attractive Dark End Call Confirmation Modal */}
+      {showEndCallModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.endCallModalCard}>
+            <View style={styles.endCallIconBadge}>
+              <Text style={{ fontSize: 26 }}>📞</Text>
+            </View>
+            <Text style={styles.endCallTitle}>
+              {isOfficer ? 'Hearing Bench Controls' : 'Leave Hearing'}
+            </Text>
+            <Text style={styles.endCallSubtitle}>
+              {isOfficer
+                ? 'Do you want to terminate this hearing for everyone or leave the call?'
+                : 'Are you sure you want to leave this Jan Sunwai video hearing?'}
+            </Text>
+
+            {isOfficer && (
+              <TouchableOpacity
+                style={styles.endCallTerminateBtn}
+                activeOpacity={0.8}
+                onPress={async () => {
+                  setShowEndCallModal(false);
+                  isExitingRef.current = true;
+                  try {
+                    await sendModerationPacket({ type: 'moderation', action: 'eject' });
+                    await fetch(`${cleanServerUrl(serverUrl)}/api/calls/${effectiveCallId}/end`, {
+                      method: 'POST',
+                    });
+                  } catch (e) {}
+                  handleExitCall();
+                }}
+              >
+                <Text style={styles.endCallTerminateText}>TERMINATE HEARING</Text>
+                <Text style={styles.endCallSubText}>सभी के लिए समाप्त (Ends call for all)</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={isOfficer ? styles.endCallLeaveBtn : styles.endCallTerminateBtn}
+              activeOpacity={0.8}
+              onPress={() => {
+                setShowEndCallModal(false);
+                isExitingRef.current = true;
+                handleExitCall();
+              }}
+            >
+              <Text style={isOfficer ? styles.endCallLeaveText : styles.endCallTerminateText}>
+                LEAVE HEARING
+              </Text>
+              <Text style={styles.endCallSubText}>
+                {isOfficer ? 'केवल मैं निकलूँ (Keep hearing running)' : 'केवल बाहर निकलें'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.endCallCancelBtn}
+              activeOpacity={0.7}
+              onPress={() => setShowEndCallModal(false)}
+            >
+              <Text style={styles.endCallCancelText}>CANCEL (रद्द करें)</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1595,5 +1616,101 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  // Modern End Call Modal
+  endCallModalCard: {
+    backgroundColor: '#1f2c34',
+    borderRadius: 22,
+    padding: 24,
+    width: '90%',
+    maxWidth: 360,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.25)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  endCallIconBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(234, 0, 56, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(234, 0, 56, 0.3)',
+  },
+  endCallTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#e9edef',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  endCallSubtitle: {
+    fontSize: 13,
+    color: '#8696a0',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  endCallTerminateBtn: {
+    width: '100%',
+    backgroundColor: '#ea0038',
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#ea0038',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  endCallTerminateText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  endCallLeaveBtn: {
+    width: '100%',
+    backgroundColor: '#2a3942',
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+  },
+  endCallLeaveText: {
+    color: '#e9edef',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  endCallSubText: {
+    color: 'rgba(255, 255, 255, 0.75)',
+    fontSize: 11,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  endCallCancelBtn: {
+    width: '100%',
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  endCallCancelText: {
+    color: '#8696a0',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });

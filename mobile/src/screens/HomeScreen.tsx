@@ -12,6 +12,7 @@ import {
   Alert,
   RefreshControl,
   Modal,
+  Platform,
 } from 'react-native';
 import { UserProfile } from './LoginScreen';
 
@@ -69,6 +70,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const isOfficer = user.role === 'officer' || user.role === 'collector';
   const isCallCenter = user.role === 'call_center';
   const isAdmin = user.role === 'admin';
+
+  // Navigation & 3-Dot Menu State
+  const [currentTab, setCurrentTab] = useState<'hearings' | 'cases'>('hearings');
+  const [showMenu, setShowMenu] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [directRoomInput, setDirectRoomInput] = useState('JS-RAJ-2024-88421');
 
   // Officer Grievance Inspector State
   const [inspectGrievanceId, setInspectGrievanceId] = useState('RAJ-2024-88421');
@@ -587,40 +594,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </View>
           </View>
           <View style={styles.topHeaderRight}>
-            <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh} activeOpacity={0.7}>
-              <Text style={styles.refreshBtnIcon}>↻</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutBtn} onPress={onLogout} activeOpacity={0.7}>
-              <Text style={styles.logoutBtnText}>Logout</Text>
+            <TouchableOpacity
+              style={styles.menuDotsBtn}
+              onPress={() => setShowMenu(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.menuDotsText}>⋮</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* WhatsApp-Style Clean Profile Strip */}
-        <View style={styles.profileCard}>
-          <View style={styles.profileRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
-              </Text>
-            </View>
-            <View style={styles.profileInfo}>
-              <Text style={styles.userNameText}>{user.name}</Text>
-              <Text style={styles.userDesigText}>
-                {user.designation || getRoleLabel(user.role)} {user.department ? `• ${user.department}` : ''}
-              </Text>
-              <Text style={styles.userPhoneText}>+91 {user.phone.replace(/\D/g, '').slice(-10)}</Text>
-            </View>
-            <View style={styles.roleBadge}>
-              <Text style={styles.roleBadgeText}>
-                {getRoleLabel(user.role).toUpperCase()}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ─── ROLE VIEW 1: CALL CENTRE REPRESENTATIVE PORTAL ─── */}
-        {isCallCenter ? (
+        {/* ─── TAB 1: HEARINGS ─── */}
+        {currentTab === 'hearings' && (
+          <View>
+            {isCallCenter ? (
           <View style={styles.roleContainer}>
             {/* Tabs */}
             <View style={styles.tabBar}>
@@ -1023,205 +1010,212 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             )}
           </View>
         ) : isOfficer ? (
-          /* ─── ROLE VIEW 3: OFFICER / DISTRICT MAGISTRATE VIEW ─── */
-          <View style={styles.officerInspectCard}>
-            <View style={styles.officerInspectHeader}>
-              <Text style={styles.inspectHeading}>🔍 Inspect & Call Case</Text>
-            </View>
-
-            <View style={styles.inspectInputRow}>
-              <TextInput
-                style={styles.inspectInput}
-                value={inspectGrievanceId}
-                onChangeText={setInspectGrievanceId}
-                placeholder="Case ID (e.g. RAJ-2024-88421)"
-                placeholderTextColor="#8696a0"
-                autoCapitalize="characters"
-              />
-              <TouchableOpacity
-                style={[styles.inspectBtn, isInspecting && styles.btnDisabled]}
-                onPress={() => handleInspectGrievance(inspectGrievanceId)}
-                disabled={isInspecting}
-                activeOpacity={0.8}
-              >
-                {isInspecting ? (
-                  <ActivityIndicator color="#111b21" size="small" />
-                ) : (
-                  <Text style={styles.inspectBtnText}>Search</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-
-            {/* Quick Grievance Select Chips */}
-            <View style={styles.quickChipsRow}>
-              <TouchableOpacity
-                style={styles.chipBtn}
-                onPress={() => {
-                  setInspectGrievanceId('RAJ-2024-88421');
-                  handleInspectGrievance('RAJ-2024-88421');
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.chipBtnText}>💧 RAJ-2024-88421 (Water)</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.chipBtn}
-                onPress={() => {
-                  setInspectGrievanceId('RAJ-2024-71205');
-                  handleInspectGrievance('RAJ-2024-71205');
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.chipBtnText}>📜 RAJ-2024-71205 (Pension)</Text>
-              </TouchableOpacity>
-            </View>
-
-            {inspectError && (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorBoxText}>⚠️ {inspectError}</Text>
-              </View>
-            )}
-
-            {/* Inspected Grievance Preview Card */}
-            {inspectedGrievance && (
-              <View style={styles.previewBox}>
-                <View style={styles.previewHeaderRow}>
-                  <View style={styles.previewIdBadge}>
-                    <Text style={styles.previewIdText}>#{inspectedGrievance.grievanceId}</Text>
+              /* Officer Hearing Bench Card */
+              <View style={styles.hearingBenchCard}>
+                <View style={styles.hearingBenchHeader}>
+                  <Text style={styles.hearingBenchTitle}>🏛️ Hearing Bench Room</Text>
+                  <View style={styles.hearingBenchLiveBadge}>
+                    <Text style={styles.hearingBenchLiveText}>● SFU ONLINE</Text>
                   </View>
-                  <View style={styles.previewStatusBadge}>
-                    <Text style={styles.previewStatusText}>{inspectedGrievance.status}</Text>
+                </View>
+                <Text style={styles.hearingBenchDesc}>
+                  Enter a case ID or room code below to launch the video hearing bench. Citizen and field officer will be invited automatically.
+                </Text>
+
+                <View style={styles.directRoomRow}>
+                  <TextInput
+                    style={styles.directRoomInput}
+                    value={directRoomInput}
+                    onChangeText={setDirectRoomInput}
+                    placeholder="Case or Room ID (e.g. RAJ-2024-88421)"
+                    placeholderTextColor="#8696a0"
+                    autoCapitalize="characters"
+                  />
+                  <TouchableOpacity
+                    style={[styles.directRoomBtn, isJoining && styles.btnDisabled]}
+                    onPress={() => handleConnectHearing(directRoomInput)}
+                    disabled={isJoining}
+                    activeOpacity={0.8}
+                  >
+                    {isJoining ? (
+                      <ActivityIndicator color="#111b21" size="small" />
+                    ) : (
+                      <Text style={styles.directRoomBtnText}>Enter Room 📞</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.featuresGrid}>
+                  <View style={styles.featurePill}>
+                    <Text style={styles.featurePillText}>🔒 256-Bit E2EE</Text>
+                  </View>
+                  <View style={styles.featurePill}>
+                    <Text style={styles.featurePillText}>🛡️ Host Moderation</Text>
+                  </View>
+                  <View style={styles.featurePill}>
+                    <Text style={styles.featurePillText}>⚡ 1,000+ Concurrency</Text>
+                  </View>
+                  <View style={styles.featurePill}>
+                    <Text style={styles.featurePillText}>📹 Auto-Recorded</Text>
                   </View>
                 </View>
 
-                <Text style={styles.previewTitle}>{inspectedGrievance.title}</Text>
-
-                {inspectedGrievance.category && (
-                  <Text style={styles.previewCategory}>📁 {inspectedGrievance.category} {inspectedGrievance.location ? `• 📍 ${inspectedGrievance.location}` : ''}</Text>
-                )}
-
-                {/* Participant Details */}
-                <View style={styles.partiesGrid}>
-                  {inspectedGrievance.citizen && (
-                    <View style={styles.partyBox}>
-                      <Text style={styles.partyBoxHeader}>Citizen</Text>
-                      <Text style={styles.partyName}>{inspectedGrievance.citizen.name}</Text>
-                      <Text style={styles.partyPhone}>📞 {inspectedGrievance.citizen.phone}</Text>
-                    </View>
-                  )}
-
-                  {inspectedGrievance.assignedEmployee && (
-                    <View style={[styles.partyBox, styles.partyBoxOfficer]}>
-                      <Text style={styles.partyBoxHeader}>Official</Text>
-                      <Text style={styles.partyName}>{inspectedGrievance.assignedEmployee.name}</Text>
-                      <Text style={styles.partyDesig}>{inspectedGrievance.assignedEmployee.designation}</Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Direct 1-Tap Video Call Button */}
                 <TouchableOpacity
-                  style={[styles.primaryCallBtn, isJoining && styles.btnDisabled]}
-                  onPress={() => handleConnectHearing(inspectedGrievance.grievanceId, inspectedGrievance)}
-                  disabled={isJoining}
-                  activeOpacity={0.85}
+                  style={styles.casesBannerBtn}
+                  onPress={() => setCurrentTab('cases')}
+                  activeOpacity={0.75}
                 >
-                  {isJoining ? (
-                    <ActivityIndicator color="#111b21" size="small" />
-                  ) : (
-                    <View style={styles.primaryCallBtnContent}>
-                      <Text style={styles.primaryCallIcon}>📞</Text>
-                      <Text style={styles.primaryCallTitle}>Start Video Hearing</Text>
-                    </View>
-                  )}
+                  <Text style={styles.casesBannerText}>
+                    📋 Search & Inspect All Grievance Cases ({grievances.length})
+                  </Text>
+                  <Text style={styles.casesBannerArrow}>→</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              /* Citizen Hearing Notice Card */
+              <View style={styles.citizenNoticeCard}>
+                <View style={styles.noticeHeaderRow}>
+                  <Text style={styles.noticeEmblem}>🔔</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.noticeTitle}>Hearing Bench Active</Text>
+                    <Text style={styles.noticeDesc}>
+                      You will receive an incoming video call directly when your case is called by the District Magistrate.
+                    </Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.casesBannerBtn, { marginTop: 14 }]}
+                  onPress={() => setCurrentTab('cases')}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.casesBannerText}>
+                    📋 View Your Registered Grievances ({grievances.length})
+                  </Text>
+                  <Text style={styles.casesBannerArrow}>→</Text>
                 </TouchableOpacity>
               </View>
             )}
           </View>
-        ) : (
-          /* ─── ROLE VIEW 4: CITIZEN / EMPLOYEE NOTICE CARD ─── */
-          <View style={styles.citizenNoticeCard}>
-            <View style={styles.noticeHeaderRow}>
-              <Text style={styles.noticeEmblem}>🔔</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.noticeTitle}>Hearing Bench Active</Text>
-                <Text style={styles.noticeDesc}>
-                  You will receive an incoming video call directly when your case is called.
-                </Text>
-              </View>
-            </View>
-          </View>
         )}
 
-        {/* Grievances List (Citizen, Field Official & Officer) */}
-        {!isCallCenter && !isAdmin && (
-          <View style={styles.listSection}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionHeading}>
-                Cases ({grievances.length})
-              </Text>
-              <TouchableOpacity onPress={fetchGrievances} activeOpacity={0.7}>
-                <Text style={styles.refreshLink}>Refresh ↻</Text>
-              </TouchableOpacity>
-            </View>
+        {/* ─── TAB 2: CASES (GRIEVANCES & INSPECTOR) ─── */}
+        {currentTab === 'cases' && (
+          <View>
+            {/* Search & Inspect Card */}
+            <View style={styles.officerInspectCard}>
+              <View style={styles.officerInspectHeader}>
+                <Text style={styles.inspectHeading}>🔍 Inspect & Search Grievance</Text>
+              </View>
 
-            {isLoading && grievances.length === 0 ? (
-              <View style={styles.loadingBox}>
-                <ActivityIndicator color="#00a884" size="small" />
-                <Text style={styles.loadingText}>Loading cases...</Text>
+              <View style={styles.inspectInputRow}>
+                <TextInput
+                  style={styles.inspectInput}
+                  value={inspectGrievanceId}
+                  onChangeText={setInspectGrievanceId}
+                  placeholder="Grievance ID (e.g. RAJ-2024-88421)"
+                  placeholderTextColor="#8696a0"
+                  autoCapitalize="characters"
+                />
+                <TouchableOpacity
+                  style={[styles.inspectBtn, isInspecting && styles.btnDisabled]}
+                  onPress={() => handleInspectGrievance(inspectGrievanceId)}
+                  disabled={isInspecting}
+                  activeOpacity={0.8}
+                >
+                  {isInspecting ? (
+                    <ActivityIndicator color="#111b21" size="small" />
+                  ) : (
+                    <Text style={styles.inspectBtnText}>Search</Text>
+                  )}
+                </TouchableOpacity>
               </View>
-            ) : grievances.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>📂</Text>
-                <Text style={styles.emptyTitle}>
-                  {user.role === 'citizen' ? 'No Cases Found' : 'No Active Cases'}
-                </Text>
-                <Text style={styles.emptyDesc}>
-                  {user.role === 'citizen'
-                    ? `No grievances registered for +91 ${user.phone.slice(-10)}`
-                    : 'No active cases in this jurisdiction.'}
-                </Text>
+
+              {/* Quick Grievance Select Chips */}
+              <View style={styles.quickChipsRow}>
+                <TouchableOpacity
+                  style={styles.chipBtn}
+                  onPress={() => {
+                    setInspectGrievanceId('RAJ-2024-88421');
+                    handleInspectGrievance('RAJ-2024-88421');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.chipBtnText}>💧 RAJ-2024-88421 (Water)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.chipBtn}
+                  onPress={() => {
+                    setInspectGrievanceId('RAJ-2024-71205');
+                    handleInspectGrievance('RAJ-2024-71205');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.chipBtnText}>📜 RAJ-2024-71205 (Pension)</Text>
+                </TouchableOpacity>
               </View>
-            ) : (
-              grievances.map((item) => (
-                <View key={item.grievanceId} style={styles.caseCard}>
-                  <View style={styles.caseHeader}>
-                    <View style={styles.caseIdBadge}>
-                      <Text style={styles.caseIdText}>{item.grievanceId}</Text>
+
+              {inspectError && (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorBoxText}>⚠️ {inspectError}</Text>
+                </View>
+              )}
+
+              {/* Inspected Grievance Preview Card */}
+              {inspectedGrievance && (
+                <View style={styles.previewBox}>
+                  <View style={styles.previewHeaderRow}>
+                    <View style={styles.previewIdBadge}>
+                      <Text style={styles.previewIdText}>#{inspectedGrievance.grievanceId}</Text>
                     </View>
-                    <View style={styles.statusBadge}>
-                      <Text style={styles.statusText}>{item.status}</Text>
+                    <View style={styles.previewStatusBadge}>
+                      <Text style={styles.previewStatusText}>{inspectedGrievance.status}</Text>
                     </View>
                   </View>
 
-                  <Text style={styles.caseTitle}>{item.title}</Text>
+                  <Text style={styles.previewTitle}>{inspectedGrievance.title}</Text>
 
-                  {item.category && (
-                    <Text style={styles.caseCategory}>
-                      📁 {item.category} {item.location ? `• 📍 ${item.location}` : ''}
+                  {inspectedGrievance.category && (
+                    <Text style={styles.previewCategory}>
+                      📁 {inspectedGrievance.category}{' '}
+                      {inspectedGrievance.location ? `• 📍 ${inspectedGrievance.location}` : ''}
                     </Text>
                   )}
 
-                  {item.assignedEmployee && (
-                    <Text style={styles.officerName}>
-                      👮 {item.assignedEmployee.name} ({item.assignedEmployee.designation})
-                    </Text>
-                  )}
+                  {/* Participant Details */}
+                  <View style={styles.partiesGrid}>
+                    {inspectedGrievance.citizen && (
+                      <View style={styles.partyBox}>
+                        <Text style={styles.partyBoxHeader}>Citizen</Text>
+                        <Text style={styles.partyName}>{inspectedGrievance.citizen.name}</Text>
+                        <Text style={styles.partyPhone}>📞 {inspectedGrievance.citizen.phone}</Text>
+                      </View>
+                    )}
 
-                  {/* Call facility strictly for officers */}
+                    {inspectedGrievance.assignedEmployee && (
+                      <View style={[styles.partyBox, styles.partyBoxOfficer]}>
+                        <Text style={styles.partyBoxHeader}>Official</Text>
+                        <Text style={styles.partyName}>{inspectedGrievance.assignedEmployee.name}</Text>
+                        <Text style={styles.partyDesig}>{inspectedGrievance.assignedEmployee.designation}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Direct 1-Tap Video Call Button */}
                   {isOfficer ? (
                     <TouchableOpacity
-                      style={[styles.startHearingBtn, isJoining && styles.btnDisabled]}
-                      onPress={() => handleConnectHearing(item.grievanceId, item)}
+                      style={[styles.primaryCallBtn, isJoining && styles.btnDisabled]}
+                      onPress={() => handleConnectHearing(inspectedGrievance.grievanceId, inspectedGrievance)}
                       disabled={isJoining}
-                      activeOpacity={0.8}
+                      activeOpacity={0.85}
                     >
                       {isJoining ? (
                         <ActivityIndicator color="#111b21" size="small" />
                       ) : (
-                        <Text style={styles.startHearingBtnText}>
-                          📞 Start Video Call
-                        </Text>
+                        <View style={styles.primaryCallBtnContent}>
+                          <Text style={styles.primaryCallIcon}>📞</Text>
+                          <Text style={styles.primaryCallTitle}>Start Video Hearing</Text>
+                        </View>
                       )}
                     </TouchableOpacity>
                   ) : (
@@ -1230,8 +1224,88 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     </View>
                   )}
                 </View>
-              ))
-            )}
+              )}
+            </View>
+
+            {/* Grievances List */}
+            <View style={styles.listSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionHeading}>
+                  Cases ({grievances.length})
+                </Text>
+                <TouchableOpacity onPress={fetchGrievances} activeOpacity={0.7}>
+                  <Text style={styles.refreshLink}>Refresh ↻</Text>
+                </TouchableOpacity>
+              </View>
+
+              {isLoading && grievances.length === 0 ? (
+                <View style={styles.loadingBox}>
+                  <ActivityIndicator color="#00a884" size="small" />
+                  <Text style={styles.loadingText}>Loading cases...</Text>
+                </View>
+              ) : grievances.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyIcon}>📂</Text>
+                  <Text style={styles.emptyTitle}>
+                    {user.role === 'citizen' ? 'No Cases Found' : 'No Active Cases'}
+                  </Text>
+                  <Text style={styles.emptyDesc}>
+                    {user.role === 'citizen'
+                      ? `No grievances registered for +91 ${user.phone.slice(-10)}`
+                      : 'No active cases in this jurisdiction.'}
+                  </Text>
+                </View>
+              ) : (
+                grievances.map((item) => (
+                  <View key={item.grievanceId} style={styles.caseCard}>
+                    <View style={styles.caseHeader}>
+                      <View style={styles.caseIdBadge}>
+                        <Text style={styles.caseIdText}>{item.grievanceId}</Text>
+                      </View>
+                      <View style={styles.statusBadge}>
+                        <Text style={styles.statusText}>{item.status}</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.caseTitle}>{item.title}</Text>
+
+                    {item.category && (
+                      <Text style={styles.caseCategory}>
+                        📁 {item.category} {item.location ? `• 📍 ${item.location}` : ''}
+                      </Text>
+                    )}
+
+                    {item.assignedEmployee && (
+                      <Text style={styles.officerName}>
+                        👮 {item.assignedEmployee.name} ({item.assignedEmployee.designation})
+                      </Text>
+                    )}
+
+                    {/* Call facility strictly for officers */}
+                    {isOfficer ? (
+                      <TouchableOpacity
+                        style={[styles.startHearingBtn, isJoining && styles.btnDisabled]}
+                        onPress={() => handleConnectHearing(item.grievanceId, item)}
+                        disabled={isJoining}
+                        activeOpacity={0.8}
+                      >
+                        {isJoining ? (
+                          <ActivityIndicator color="#111b21" size="small" />
+                        ) : (
+                          <Text style={styles.startHearingBtnText}>
+                            📞 Start Video Call
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.awaitingCallBadge}>
+                        <Text style={styles.awaitingCallTitle}>⏳ Waiting for Magistrate Call</Text>
+                      </View>
+                    )}
+                  </View>
+                ))
+              )}
+            </View>
           </View>
         )}
 
@@ -1242,6 +1316,187 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </Text>
         </View>
       </ScrollView>
+
+      {/* ─── WhatsApp-Style Bottom Tab Bar ─── */}
+      <View style={styles.bottomTabBar}>
+        <TouchableOpacity
+          style={styles.bottomTabItem}
+          onPress={() => setCurrentTab('hearings')}
+          activeOpacity={0.7}
+        >
+          <View
+            style={[
+              styles.bottomTabPill,
+              currentTab === 'hearings' && styles.bottomTabPillActive,
+            ]}
+          >
+            <Text style={styles.bottomTabIcon}>🏛️</Text>
+          </View>
+          <Text
+            style={[
+              styles.bottomTabLabel,
+              currentTab === 'hearings' && styles.bottomTabLabelActive,
+            ]}
+          >
+            Hearings
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.bottomTabItem}
+          onPress={() => setCurrentTab('cases')}
+          activeOpacity={0.7}
+        >
+          <View
+            style={[
+              styles.bottomTabPill,
+              currentTab === 'cases' && styles.bottomTabPillActive,
+            ]}
+          >
+            <Text style={styles.bottomTabIcon}>📋</Text>
+            {grievances.length > 0 && (
+              <View style={styles.bottomTabBadge}>
+                <Text style={styles.bottomTabBadgeText}>{grievances.length}</Text>
+              </View>
+            )}
+          </View>
+          <Text
+            style={[
+              styles.bottomTabLabel,
+              currentTab === 'cases' && styles.bottomTabLabelActive,
+            ]}
+          >
+            Cases
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ─── Top Right 3-Dot Popup Menu ─── */}
+      <Modal
+        visible={showMenu}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.menuOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMenu(false)}
+        >
+          <View style={styles.menuDropdownCard}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                setShowMenu(false);
+                setShowProfileModal(true);
+              }}
+            >
+              <Text style={styles.menuItemIcon}>👤</Text>
+              <Text style={styles.menuItemText}>Profile (प्रोफाइल)</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                setShowMenu(false);
+                onRefresh();
+              }}
+            >
+              <Text style={styles.menuItemIcon}>↻</Text>
+              <Text style={styles.menuItemText}>Refresh (रिफ्रेश)</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                setShowMenu(false);
+                onLogout();
+              }}
+            >
+              <Text style={[styles.menuItemIcon, { color: '#ea0038' }]}>🚪</Text>
+              <Text style={[styles.menuItemText, { color: '#ea0038' }]}>Logout (लॉगआउट)</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ─── Profile Details Modal ─── */}
+      <Modal
+        visible={showProfileModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowProfileModal(false)}
+      >
+        <View style={styles.profileModalOverlay}>
+          <View style={styles.profileModalCard}>
+            <View style={styles.profileModalHeader}>
+              <Text style={styles.profileModalHeaderTitle}>User Profile</Text>
+              <TouchableOpacity
+                style={styles.profileModalCloseBtn}
+                onPress={() => setShowProfileModal(false)}
+              >
+                <Text style={styles.profileModalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.profileModalAvatarCircle}>
+              <Text style={styles.profileModalAvatarText}>
+                {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+              </Text>
+            </View>
+
+            <Text style={styles.profileModalName}>{user.name || 'User'}</Text>
+            <View style={styles.profileModalRoleBadge}>
+              <Text style={styles.profileModalRoleText}>
+                {getRoleLabel(user.role).toUpperCase()}
+              </Text>
+            </View>
+
+            <View style={styles.profileModalDetailsBox}>
+              <View style={styles.profileDetailItem}>
+                <Text style={styles.profileDetailLabel}>Designation</Text>
+                <Text style={styles.profileDetailValue}>
+                  {user.designation || getRoleLabel(user.role)}
+                </Text>
+              </View>
+
+              {user.department && (
+                <View style={styles.profileDetailItem}>
+                  <Text style={styles.profileDetailLabel}>Department</Text>
+                  <Text style={styles.profileDetailValue}>{user.department}</Text>
+                </View>
+              )}
+
+              <View style={styles.profileDetailItem}>
+                <Text style={styles.profileDetailLabel}>Mobile Number</Text>
+                <Text style={styles.profileDetailValue}>
+                  +91 {user.phone.replace(/\D/g, '').slice(-10)}
+                </Text>
+              </View>
+
+              <View style={styles.profileDetailItem}>
+                <Text style={styles.profileDetailLabel}>Portal Role</Text>
+                <Text style={styles.profileDetailValue}>{user.role}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.profileCloseBtn}
+              onPress={() => setShowProfileModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.profileCloseBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* ─── MODAL: SUPER ADMIN ACTIVE MEETINGS LIST ─── */}
       <Modal
@@ -1356,7 +1611,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: 14,
-    paddingBottom: 40,
+    paddingBottom: 85,
   },
   topHeader: {
     flexDirection: 'row',
@@ -1399,30 +1654,341 @@ const styles = StyleSheet.create({
   topHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
   },
-  refreshBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  menuDotsBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  menuDotsText: {
+    fontSize: 22,
+    color: '#e9edef',
+    fontWeight: '900',
+    marginTop: -2,
+  },
+  // 3-Dot Dropdown Menu Modal
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  menuDropdownCard: {
+    position: 'absolute',
+    top: 52,
+    right: 14,
+    backgroundColor: '#202c33',
+    borderRadius: 14,
+    paddingVertical: 4,
+    width: 190,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  menuItemIcon: {
+    fontSize: 16,
+    color: '#8696a0',
+  },
+  menuItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#e9edef',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: 'rgba(134, 150, 160, 0.12)',
+    marginHorizontal: 12,
+  },
+  // Profile Details Modal
+  profileModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  profileModalCard: {
+    backgroundColor: '#1f2c34',
+    borderRadius: 20,
+    padding: 22,
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+  },
+  profileModalHeader: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  profileModalHeaderTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#e9edef',
+  },
+  profileModalCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  refreshBtnIcon: {
-    fontSize: 16,
+  profileModalCloseText: {
+    fontSize: 13,
+    color: '#8696a0',
+    fontWeight: '700',
+  },
+  profileModalAvatarCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#00a884',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  profileModalAvatarText: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#111b21',
+  },
+  profileModalName: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#e9edef',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  profileModalRoleBadge: {
+    backgroundColor: 'rgba(0, 168, 132, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 168, 132, 0.4)',
+    marginBottom: 16,
+  },
+  profileModalRoleText: {
+    color: '#00a884',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  profileModalDetailsBox: {
+    width: '100%',
+    backgroundColor: '#111b21',
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.1)',
+  },
+  profileDetailItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  profileDetailLabel: {
+    fontSize: 12,
+    color: '#8696a0',
+  },
+  profileDetailValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#e9edef',
+  },
+  profileCloseBtn: {
+    width: '100%',
+    backgroundColor: '#202c33',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+  },
+  profileCloseBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#e9edef',
+  },
+  // Bottom Tab Bar
+  bottomTabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#1f2c34',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(134, 150, 160, 0.15)',
+    paddingVertical: 6,
+    paddingBottom: Platform.OS === 'android' ? 10 : 20,
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  bottomTabItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  bottomTabPill: {
+    width: 56,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 3,
+  },
+  bottomTabPillActive: {
+    backgroundColor: '#103629',
+  },
+  bottomTabIcon: {
+    fontSize: 18,
+  },
+  bottomTabLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8696a0',
+  },
+  bottomTabLabelActive: {
     color: '#00a884',
     fontWeight: '700',
   },
-  logoutBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+  bottomTabBadge: {
+    position: 'absolute',
+    top: -3,
+    right: 4,
+    backgroundColor: '#00a884',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
   },
-  logoutBtnText: {
-    color: '#f87171',
+  bottomTabBadgeText: {
+    color: '#111b21',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  // Hearing Bench Card
+  hearingBenchCard: {
+    backgroundColor: '#1f2c34',
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.15)',
+  },
+  hearingBenchHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  hearingBenchTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#e9edef',
+  },
+  hearingBenchLiveBadge: {
+    backgroundColor: 'rgba(0, 168, 132, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 168, 132, 0.3)',
+  },
+  hearingBenchLiveText: {
+    fontSize: 10,
+    color: '#00a884',
+    fontWeight: '800',
+  },
+  hearingBenchDesc: {
+    fontSize: 12,
+    color: '#8696a0',
+    marginBottom: 16,
+    lineHeight: 17,
+  },
+  directRoomRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  directRoomInput: {
+    flex: 1,
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#e9edef',
+    fontSize: 13,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+  },
+  directRoomBtn: {
+    backgroundColor: '#00a884',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  directRoomBtnText: {
+    color: '#111b21',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  featuresGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  featurePill: {
+    backgroundColor: '#111b21',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.1)',
+  },
+  featurePillText: {
+    color: '#8696a0',
     fontSize: 11,
+    fontWeight: '600',
+  },
+  casesBannerBtn: {
+    backgroundColor: 'rgba(0, 168, 132, 0.12)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 168, 132, 0.25)',
+  },
+  casesBannerText: {
+    color: '#00a884',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  casesBannerArrow: {
+    color: '#00a884',
+    fontSize: 16,
     fontWeight: '700',
   },
   profileCard: {
