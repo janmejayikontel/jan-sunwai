@@ -40,6 +40,20 @@ interface GrievanceItem {
   };
 }
 
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+const DAYS_OF_WEEK = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+const TIME_OPTIONS = [
+  '09:00 AM', '09:30 AM', '10:00 AM', '10:15 AM', '10:30 AM', '10:45 AM',
+  '11:00 AM', '11:15 AM', '11:30 AM', '11:45 AM', '12:00 PM', '12:30 PM',
+  '01:00 PM', '01:30 PM', '02:00 PM', '02:15 PM', '02:30 PM', '02:45 PM',
+  '03:00 PM', '03:15 PM', '03:30 PM', '03:45 PM', '04:00 PM', '04:15 PM',
+  '04:30 PM', '04:45 PM', '05:00 PM', '05:30 PM', '06:00 PM',
+];
+
 interface HomeScreenProps {
   user: UserProfile;
   serverUrl: string;
@@ -86,13 +100,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [inspectGrievanceId, setInspectGrievanceId] = useState('');
   const [selectedGrievanceDetails, setSelectedGrievanceDetails] = useState<GrievanceItem | null>(null);
 
-  // Hearing Scheduling Modal State
+  // Hearing Scheduling Modal State with Interactive Calendar & Dropdown
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [schedulingGrievance, setSchedulingGrievance] = useState<GrievanceItem | null>(null);
   const [scheduleDate, setScheduleDate] = useState('2026-09-29');
   const [scheduleTime, setScheduleTime] = useState('11:30 AM');
   const [scheduleNotes, setScheduleNotes] = useState('');
   const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
+  const [calendarYear, setCalendarYear] = useState(2026);
+  const [calendarMonth, setCalendarMonth] = useState(8); // September = 8
+  const [showTimeDropdown, setShowTimeDropdown] = useState(false);
+  const [customTimeInput, setCustomTimeInput] = useState('');
+  const [showCustomTimeField, setShowCustomTimeField] = useState(false);
 
   // ─── Call Centre Representative State ──────────────────────────
   const [ccTab, setCcTab] = useState<'queue' | 'kyc' | 'records'>('queue');
@@ -205,6 +224,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   // ─── Hearing Scheduling Handler ────────────────────────────────
   const handleConfirmSchedule = async () => {
     if (!schedulingGrievance) return;
+    const finalTime = showCustomTimeField && customTimeInput.trim() ? customTimeInput.trim() : scheduleTime;
     setIsSubmittingSchedule(true);
     try {
       const base = cleanServerUrl(serverUrl);
@@ -217,7 +237,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         body: JSON.stringify({
           grievanceId: schedulingGrievance.grievanceId,
           scheduledDate: scheduleDate,
-          scheduledTime: scheduleTime,
+          scheduledTime: finalTime,
           officerName: user.name || 'Vivek, IAS',
           officerPhone: user.phone,
           notes: scheduleNotes || 'Official Jan Sunwai hearing with District Magistrate',
@@ -232,7 +252,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       setShowScheduleModal(false);
       Alert.alert(
         '✅ Hearing Scheduled Successfully!',
-        `Case: #${schedulingGrievance.grievanceId}\nDate: ${scheduleDate}\nTime: ${scheduleTime}\n\nAutomated notifications dispatched to:\n• Citizen: ${data.citizen?.name || 'Citizen'} (${data.citizen?.phone || 'N/A'})\n• Field Officer: ${data.employee?.name || 'Officer'} (${data.employee?.phone || 'N/A'})\n\nAll participants will receive a reminder notification 15 minutes before the hearing.`,
+        `Case: #${schedulingGrievance.grievanceId}\nDate: ${scheduleDate}\nTime: ${finalTime}\n\nAutomated notifications dispatched to:\n• Citizen: ${data.citizen?.name || 'Citizen'} (${data.citizen?.phone || 'N/A'})\n• Field Officer: ${data.employee?.name || 'Officer'} (${data.employee?.phone || 'N/A'})\n\nAll participants will receive a reminder notification 15 minutes before the hearing.`,
         [{ text: 'OK' }]
       );
     } catch (err: any) {
@@ -638,7 +658,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       case 'employee':
         return '#3b82f6';
       default:
-        return '#10b981';
+        return '#EAB308';
     }
   };
 
@@ -664,7 +684,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       <ScrollView
         contentContainerStyle={styles.scroll}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00a884" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#EAB308" />
         }
       >
         {/* WhatsApp-Style Clean Top App Bar */}
@@ -1272,7 +1292,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
               {isLoading && grievances.length === 0 ? (
                 <View style={styles.loadingBox}>
-                  <ActivityIndicator color="#00a884" size="small" />
+                  <ActivityIndicator color="#EAB308" size="small" />
                   <Text style={styles.loadingText}>Loading cases...</Text>
                 </View>
               ) : filteredGrievances.length === 0 ? (
@@ -1288,10 +1308,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   </Text>
                   {inspectGrievanceId ? (
                     <TouchableOpacity
-                      style={[styles.chipBtn, { alignSelf: 'center', marginTop: 12, backgroundColor: '#00a884' }]}
+                      style={[styles.chipBtn, { alignSelf: 'center', marginTop: 12, backgroundColor: '#EAB308', borderColor: '#EAB308' }]}
                       onPress={() => setInspectGrievanceId('')}
                     >
-                      <Text style={{ color: '#fff', fontWeight: '700' }}>Show All Cases</Text>
+                      <Text style={{ color: '#111827', fontWeight: '800' }}>Show All Cases</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -1677,42 +1697,188 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 {schedulingGrievance?.title}
               </Text>
 
-              {/* Date Selection */}
-              <Text style={styles.scheduleSectionLabel}>Select Hearing Date (दिनांक चुनें)</Text>
-              <View style={styles.dateChipsRow}>
-                {[
-                  { label: 'Today (आज)', val: '2026-09-28' },
-                  { label: 'Tomorrow (कल)', val: '2026-09-29' },
-                  { label: 'Wed, Sep 30', val: '2026-09-30' },
-                  { label: 'Thu, Oct 01', val: '2026-10-01' },
-                ].map((d) => (
+              {/* Interactive Calendar Date Picker */}
+              <Text style={styles.scheduleSectionLabel}>Select Hearing Date (दिनांक चुनें — कैलेंडर से चुनें)</Text>
+              <View style={styles.calendarCard}>
+                {/* Month & Year Navigation Header */}
+                <View style={styles.calendarNavHeader}>
                   <TouchableOpacity
-                    key={d.val}
-                    style={[styles.dateChip, scheduleDate === d.val && styles.dateChipActive]}
-                    onPress={() => setScheduleDate(d.val)}
+                    style={styles.calendarNavBtn}
+                    onPress={() => {
+                      if (calendarMonth === 0) {
+                        setCalendarMonth(11);
+                        setCalendarYear((y) => y - 1);
+                      } else {
+                        setCalendarMonth((m) => m - 1);
+                      }
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Text style={[styles.dateChipText, scheduleDate === d.val && styles.dateChipTextActive]}>
-                      {d.label}
-                    </Text>
+                    <Text style={styles.calendarNavArrow}>◀</Text>
                   </TouchableOpacity>
-                ))}
+
+                  <Text style={styles.calendarMonthTitle}>
+                    {MONTH_NAMES[calendarMonth]} {calendarYear}
+                  </Text>
+
+                  <TouchableOpacity
+                    style={styles.calendarNavBtn}
+                    onPress={() => {
+                      if (calendarMonth === 11) {
+                        setCalendarMonth(0);
+                        setCalendarYear((y) => y + 1);
+                      } else {
+                        setCalendarMonth((m) => m + 1);
+                      }
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Text style={styles.calendarNavArrow}>▶</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Weekday Names Header */}
+                <View style={styles.calendarWeekRow}>
+                  {DAYS_OF_WEEK.map((d, idx) => (
+                    <Text key={idx} style={[styles.calendarWeekDay, (idx === 0 || idx === 6) && styles.calendarWeekendDay]}>
+                      {d}
+                    </Text>
+                  ))}
+                </View>
+
+                {/* Day Grid */}
+                <View style={styles.calendarGrid}>
+                  {Array.from({ length: new Date(calendarYear, calendarMonth, 1).getDay() }).map((_, i) => (
+                    <View key={`empty-${i}`} style={styles.calendarDayCellEmpty} />
+                  ))}
+                  {Array.from({ length: new Date(calendarYear, calendarMonth + 1, 0).getDate() }).map((_, i) => {
+                    const dayNum = i + 1;
+                    const mm = String(calendarMonth + 1).padStart(2, '0');
+                    const dd = String(dayNum).padStart(2, '0');
+                    const cellDate = `${calendarYear}-${mm}-${dd}`;
+                    const isSelected = scheduleDate === cellDate;
+                    return (
+                      <TouchableOpacity
+                        key={`day-${dayNum}`}
+                        style={[styles.calendarDayCell, isSelected && styles.calendarDayCellSelected]}
+                        onPress={() => setScheduleDate(cellDate)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.calendarDayCellText, isSelected && styles.calendarDayCellTextSelected]}>
+                          {dayNum}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Selected Date Summary & Quick Presets */}
+                <View style={styles.calendarFooter}>
+                  <View style={styles.selectedDatePill}>
+                    <Text style={styles.selectedDatePillText}>
+                      📅 {scheduleDate}
+                    </Text>
+                  </View>
+                  <View style={styles.quickPresetsRow}>
+                    <TouchableOpacity
+                      style={styles.quickPresetBtn}
+                      onPress={() => {
+                        const now = new Date();
+                        const mm = String(now.getMonth() + 1).padStart(2, '0');
+                        const dd = String(now.getDate()).padStart(2, '0');
+                        setScheduleDate(`${now.getFullYear()}-${mm}-${dd}`);
+                        setCalendarMonth(now.getMonth());
+                        setCalendarYear(now.getFullYear());
+                      }}
+                    >
+                      <Text style={styles.quickPresetText}>Today</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.quickPresetBtn}
+                      onPress={() => {
+                        const tm = new Date();
+                        tm.setDate(tm.getDate() + 1);
+                        const mm = String(tm.getMonth() + 1).padStart(2, '0');
+                        const dd = String(tm.getDate()).padStart(2, '0');
+                        setScheduleDate(`${tm.getFullYear()}-${mm}-${dd}`);
+                        setCalendarMonth(tm.getMonth());
+                        setCalendarYear(tm.getFullYear());
+                      }}
+                    >
+                      <Text style={styles.quickPresetText}>Tomorrow</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
 
-              {/* Time Slot Selection */}
-              <Text style={styles.scheduleSectionLabel}>Select Time Slot (समय चुनें)</Text>
-              <View style={styles.timeChipsRow}>
-                {['10:30 AM', '11:30 AM', '02:30 PM', '03:30 PM', '04:30 PM', '05:00 PM'].map((t) => (
-                  <TouchableOpacity
-                    key={t}
-                    style={[styles.timeChip, scheduleTime === t && styles.timeChipActive]}
-                    onPress={() => setScheduleTime(t)}
-                  >
-                    <Text style={[styles.timeChipText, scheduleTime === t && styles.timeChipTextActive]}>
-                      {t}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+              {/* Flexible Time Slot Selection from Dropdown */}
+              <Text style={styles.scheduleSectionLabel}>Select Hearing Time (समय चुनें — ड्रॉपडाउन)</Text>
+              
+              <TouchableOpacity
+                style={styles.timeDropdownTrigger}
+                onPress={() => setShowTimeDropdown(!showTimeDropdown)}
+                activeOpacity={0.8}
+              >
+                <View style={styles.timeDropdownTriggerLeft}>
+                  <Text style={styles.timeClockIcon}>🕒</Text>
+                  <Text style={styles.timeDropdownCurrentText}>
+                    {showCustomTimeField && customTimeInput.trim() ? customTimeInput.trim() : scheduleTime}
+                  </Text>
+                </View>
+                <Text style={styles.timeDropdownChevron}>
+                  {showTimeDropdown ? '▲ Close' : '▼ Choose from Dropdown'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Dropdown Options */}
+              {showTimeDropdown && (
+                <View style={styles.timeDropdownMenu}>
+                  <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
+                    <View style={styles.timeDropdownGrid}>
+                      {TIME_OPTIONS.map((t) => {
+                        const isSelected = !showCustomTimeField && scheduleTime === t;
+                        return (
+                          <TouchableOpacity
+                            key={t}
+                            style={[styles.timeDropdownOption, isSelected && styles.timeDropdownOptionSelected]}
+                            onPress={() => {
+                              setScheduleTime(t);
+                              setShowCustomTimeField(false);
+                              setShowTimeDropdown(false);
+                            }}
+                          >
+                            <Text style={[styles.timeDropdownOptionText, isSelected && styles.timeDropdownOptionTextSelected]}>
+                              {t}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Custom Time Manual Entry Toggle */}
+              <View style={styles.customTimeToggleRow}>
+                <TouchableOpacity
+                  style={styles.customTimeToggleBtn}
+                  onPress={() => setShowCustomTimeField(!showCustomTimeField)}
+                >
+                  <Text style={styles.customTimeToggleText}>
+                    {showCustomTimeField ? '✕ Back to Preset Dropdown' : '✏️ Or Enter Custom Time (e.g. 11:45 AM)'}
+                  </Text>
+                </TouchableOpacity>
               </View>
+
+              {showCustomTimeField && (
+                <TextInput
+                  style={styles.customTimeTextInput}
+                  value={customTimeInput}
+                  onChangeText={setCustomTimeInput}
+                  placeholder="e.g. 11:45 AM or 04:15 PM"
+                  placeholderTextColor="#8696a0"
+                />
+              )}
 
               {/* Automated Notification Alert Box */}
               <View style={styles.notificationNoticeBox}>
@@ -2017,7 +2183,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
@@ -2025,7 +2191,7 @@ const styles = StyleSheet.create({
   profileModalAvatarText: {
     fontSize: 28,
     fontWeight: '800',
-    color: '#111b21',
+    color: '#111827',
   },
   profileModalName: {
     fontSize: 19,
@@ -2035,16 +2201,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   profileModalRoleBadge: {
-    backgroundColor: 'rgba(0, 168, 132, 0.15)',
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(0, 168, 132, 0.4)',
+    borderColor: 'rgba(234, 179, 8, 0.4)',
     marginBottom: 16,
   },
   profileModalRoleText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -2089,12 +2255,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(134, 150, 160, 0.2)',
+    borderColor: 'rgba(234, 179, 8, 0.3)',
   },
   profileCloseBtnText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#e9edef',
+    fontWeight: '700',
+    color: '#FACC15',
   },
 
   // ─── Home Page Search & Actions Styles ───
@@ -2113,14 +2279,14 @@ const styles = StyleSheet.create({
   },
   homeStartCallBtn: {
     flex: 1.2,
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   homeStartCallBtnText: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 13,
     fontWeight: '800',
   },
@@ -2132,10 +2298,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#00a884',
+    borderColor: '#EAB308',
   },
   homeScheduleBtnText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -2189,15 +2355,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   compactViewDetailsBtn: {
-    backgroundColor: '#103629',
+    backgroundColor: 'rgba(234, 179, 8, 0.18)',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderWidth: 1,
-    borderColor: '#00a884',
+    borderColor: '#EAB308',
   },
   compactViewDetailsBtnText: {
-    color: '#00a884',
+    color: '#FACC15',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -2278,7 +2444,7 @@ const styles = StyleSheet.create({
   },
   scheduleModalSubtitle: {
     fontSize: 12,
-    color: '#00a884',
+    color: '#EAB308',
     fontWeight: '700',
     marginTop: 2,
   },
@@ -2310,72 +2476,237 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
   },
-  dateChipsRow: {
+
+  // Interactive Calendar Styles
+  calendarCard: {
+    backgroundColor: '#111b21',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#2a3942',
+    marginBottom: 12,
+  },
+  calendarNavHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  calendarNavBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#202c33',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+  },
+  calendarNavArrow: {
+    fontSize: 14,
+    color: '#EAB308',
+    fontWeight: '700',
+  },
+  calendarMonthTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#e9edef',
+    letterSpacing: 0.3,
+  },
+  calendarWeekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+    paddingBottom: 6,
+  },
+  calendarWeekDay: {
+    width: 34,
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#8696a0',
+  },
+  calendarWeekendDay: {
+    color: '#f87171',
+  },
+  calendarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 6,
+    gap: 4,
   },
-  dateChip: {
+  calendarDayCellEmpty: {
+    width: 34,
+    height: 34,
+  },
+  calendarDayCell: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarDayCellSelected: {
+    backgroundColor: '#EAB308',
+    shadowColor: '#EAB308',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  calendarDayCellText: {
+    fontSize: 12,
+    color: '#e9edef',
+    fontWeight: '600',
+  },
+  calendarDayCellTextSelected: {
+    color: '#111827',
+    fontWeight: '900',
+  },
+  calendarFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  selectedDatePill: {
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.3)',
+  },
+  selectedDatePillText: {
+    color: '#EAB308',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  quickPresetsRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  quickPresetBtn: {
+    backgroundColor: '#202c33',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+  },
+  quickPresetText: {
+    color: '#8696a0',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  // Time Dropdown Styles
+  timeDropdownTrigger: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: '#EAB308',
+    marginBottom: 8,
+  },
+  timeDropdownTriggerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timeClockIcon: {
+    fontSize: 16,
+  },
+  timeDropdownCurrentText: {
+    color: '#e9edef',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  timeDropdownChevron: {
+    color: '#EAB308',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  timeDropdownMenu: {
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#2a3942',
+    marginBottom: 8,
+  },
+  timeDropdownGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  timeDropdownOption: {
+    width: '31%',
+    backgroundColor: '#202c33',
+    borderRadius: 6,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a3942',
+  },
+  timeDropdownOptionSelected: {
+    backgroundColor: '#EAB308',
+    borderColor: '#EAB308',
+  },
+  timeDropdownOptionText: {
+    color: '#8696a0',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  timeDropdownOptionTextSelected: {
+    color: '#111827',
+    fontWeight: '800',
+  },
+  customTimeToggleRow: {
+    marginBottom: 8,
+  },
+  customTimeToggleBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+  },
+  customTimeToggleText: {
+    color: '#EAB308',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  customTimeTextInput: {
     backgroundColor: '#111b21',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    color: '#e9edef',
+    fontSize: 13,
     borderWidth: 1,
-    borderColor: '#2a3942',
+    borderColor: '#EAB308',
+    marginBottom: 10,
   },
-  dateChipActive: {
-    backgroundColor: '#00a884',
-    borderColor: '#00a884',
-  },
-  dateChipText: {
-    color: '#8696a0',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  dateChipTextActive: {
-    color: '#111b21',
-    fontWeight: '800',
-  },
-  timeChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 8,
-  },
-  timeChip: {
-    backgroundColor: '#111b21',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderWidth: 1,
-    borderColor: '#2a3942',
-  },
-  timeChipActive: {
-    backgroundColor: '#00a884',
-    borderColor: '#00a884',
-  },
-  timeChipText: {
-    color: '#8696a0',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  timeChipTextActive: {
-    color: '#111b21',
-    fontWeight: '800',
-  },
+
   notificationNoticeBox: {
     backgroundColor: '#111b21',
     borderRadius: 10,
     padding: 12,
     marginVertical: 10,
     borderWidth: 1,
-    borderColor: 'rgba(0, 168, 132, 0.25)',
+    borderColor: 'rgba(234, 179, 8, 0.3)',
   },
   notificationNoticeTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#00a884',
+    color: '#EAB308',
     marginBottom: 4,
   },
   notificationNoticeDesc: {
@@ -2419,14 +2750,14 @@ const styles = StyleSheet.create({
   },
   scheduleConfirmBtn: {
     flex: 1.5,
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   scheduleConfirmText: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 13,
     fontWeight: '800',
   },
@@ -2455,7 +2786,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   bottomTabPillActive: {
-    backgroundColor: '#103629',
+    backgroundColor: 'rgba(234, 179, 8, 0.18)',
   },
   bottomTabIcon: {
     fontSize: 18,
@@ -2466,14 +2797,14 @@ const styles = StyleSheet.create({
     color: '#8696a0',
   },
   bottomTabLabelActive: {
-    color: '#00a884',
+    color: '#FACC15',
     fontWeight: '700',
   },
   bottomTabBadge: {
     position: 'absolute',
     top: -3,
     right: 4,
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     borderRadius: 8,
     minWidth: 16,
     height: 16,
@@ -2482,7 +2813,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   bottomTabBadgeText: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 9,
     fontWeight: '800',
   },
@@ -2507,16 +2838,16 @@ const styles = StyleSheet.create({
     color: '#e9edef',
   },
   hearingBenchLiveBadge: {
-    backgroundColor: 'rgba(0, 168, 132, 0.15)',
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(0, 168, 132, 0.3)',
+    borderColor: 'rgba(234, 179, 8, 0.35)',
   },
   hearingBenchLiveText: {
     fontSize: 10,
-    color: '#00a884',
+    color: '#EAB308',
     fontWeight: '800',
   },
   hearingBenchDesc: {
@@ -2542,16 +2873,16 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(134, 150, 160, 0.2)',
   },
   directRoomBtn: {
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     borderRadius: 10,
     paddingHorizontal: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
   directRoomBtnText: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   featuresGrid: {
     flexDirection: 'row',
@@ -2573,7 +2904,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   casesBannerBtn: {
-    backgroundColor: 'rgba(0, 168, 132, 0.12)',
+    backgroundColor: 'rgba(234, 179, 8, 0.12)',
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -2581,15 +2912,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(0, 168, 132, 0.25)',
+    borderColor: 'rgba(234, 179, 8, 0.25)',
   },
   casesBannerText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 13,
     fontWeight: '700',
   },
   casesBannerArrow: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 16,
     fontWeight: '700',
   },
@@ -2609,7 +2940,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -2617,7 +2948,7 @@ const styles = StyleSheet.create({
   avatarText: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111b21',
+    color: '#111827',
   },
   profileInfo: {
     flex: 1,
@@ -2634,18 +2965,18 @@ const styles = StyleSheet.create({
   },
   userPhoneText: {
     fontSize: 11,
-    color: '#00a884',
+    color: '#EAB308',
     marginTop: 2,
     fontWeight: '500',
   },
   roleBadge: {
-    backgroundColor: 'rgba(0, 168, 132, 0.12)',
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
   },
   roleBadgeText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 10,
     fontWeight: '700',
   },
@@ -2689,16 +3020,16 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   inspectBtn: {
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     borderRadius: 8,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   inspectBtnText: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   quickChipsRow: {
     flexDirection: 'row',
@@ -2715,7 +3046,7 @@ const styles = StyleSheet.create({
   },
   chipBtnText: {
     fontSize: 11,
-    color: '#00a884',
+    color: '#EAB308',
     fontWeight: '600',
   },
   errorBox: {
@@ -2751,18 +3082,18 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   previewIdText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 11,
     fontWeight: '700',
   },
   previewStatusBadge: {
-    backgroundColor: 'rgba(0, 168, 132, 0.12)',
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   previewStatusText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 10,
     fontWeight: '700',
   },
@@ -2796,7 +3127,7 @@ const styles = StyleSheet.create({
     borderColor: '#2a3942',
   },
   partyBoxOfficer: {
-    borderColor: 'rgba(0, 168, 132, 0.3)',
+    borderColor: 'rgba(234, 179, 8, 0.35)',
   },
   partyBoxHeader: {
     fontSize: 10,
@@ -2817,7 +3148,7 @@ const styles = StyleSheet.create({
   },
   partyPhone: {
     fontSize: 11,
-    color: '#00a884',
+    color: '#EAB308',
     fontWeight: '500',
     marginTop: 1,
   },
@@ -2844,7 +3175,7 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   primaryCallBtn: {
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     borderRadius: 20,
     paddingVertical: 10,
     paddingHorizontal: 16,
@@ -2860,12 +3191,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   primaryCallTitle: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   primaryCallSub: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 11,
     marginTop: 1,
   },
@@ -2918,7 +3249,7 @@ const styles = StyleSheet.create({
   },
   refreshLink: {
     fontSize: 12,
-    color: '#00a884',
+    color: '#EAB308',
     fontWeight: '600',
   },
   loadingBox: {
@@ -2974,20 +3305,20 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   caseIdText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 11,
     fontWeight: '700',
   },
   statusBadge: {
-    backgroundColor: 'rgba(0, 168, 132, 0.12)',
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   statusText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   caseTitle: {
     fontSize: 14,
@@ -3022,16 +3353,16 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   startHearingBtn: {
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     borderRadius: 18,
     paddingVertical: 9,
     alignItems: 'center',
     marginTop: 6,
   },
   startHearingBtnText: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   awaitingCallBadge: {
     backgroundColor: '#111b21',
@@ -3077,8 +3408,8 @@ const styles = StyleSheet.create({
   },
   helplineHighlight: {
     fontSize: 11,
-    color: '#00a884',
-    fontWeight: '600',
+    color: '#EAB308',
+    fontWeight: '700',
   },
 
   // Role Container & Tabs
@@ -3100,12 +3431,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(134, 150, 160, 0.15)',
   },
   tabBtnActiveOrange: {
-    backgroundColor: '#00a884',
-    borderColor: '#00a884',
+    backgroundColor: '#EAB308',
+    borderColor: '#EAB308',
   },
   tabBtnActiveRed: {
-    backgroundColor: '#00a884',
-    borderColor: '#00a884',
+    backgroundColor: '#EAB308',
+    borderColor: '#EAB308',
   },
   tabBtnText: {
     color: '#8696a0',
@@ -3113,7 +3444,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tabBtnTextActive: {
-    color: '#111b21',
+    color: '#111827',
   },
   panelCard: {
     backgroundColor: '#202c33',
@@ -3141,7 +3472,7 @@ const styles = StyleSheet.create({
   },
   refreshSmall: {
     fontSize: 11,
-    color: '#00a884',
+    color: '#EAB308',
     fontWeight: '600',
   },
   queueCard: {
@@ -3179,7 +3510,7 @@ const styles = StyleSheet.create({
   },
   queuePhone: {
     fontSize: 11,
-    color: '#00a884',
+    color: '#EAB308',
     marginTop: 2,
   },
   queueTitle: {
@@ -3189,15 +3520,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   dispatchBtn: {
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     borderRadius: 16,
     paddingVertical: 8,
     alignItems: 'center',
   },
   dispatchBtnText: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   emptyCardSmall: {
     padding: 16,
@@ -3221,16 +3552,16 @@ const styles = StyleSheet.create({
     borderColor: '#2a3942',
   },
   primaryActionBtn: {
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     borderRadius: 18,
     paddingVertical: 10,
     alignItems: 'center',
     marginTop: 12,
   },
   primaryActionBtnText: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   consultCard: {
     backgroundColor: '#111b21',
@@ -3270,7 +3601,7 @@ const styles = StyleSheet.create({
   },
   consultGrievanceStatus: {
     fontSize: 11,
-    color: '#10b981',
+    color: '#EAB308',
     marginTop: 2,
   },
   metricsGrid: {
@@ -3367,7 +3698,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   capacityBadge: {
-    backgroundColor: '#10b981',
+    backgroundColor: '#EAB308',
     borderRadius: 6,
     paddingHorizontal: 10,
     paddingVertical: 4,

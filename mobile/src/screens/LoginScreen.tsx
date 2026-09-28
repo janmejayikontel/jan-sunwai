@@ -358,53 +358,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     <Text style={styles.primaryButtonText}>Next ➔</Text>
                   )}
                 </TouchableOpacity>
-
-                {/* Sleek Demo Role Chips */}
-                <View style={styles.quickSection}>
-                  <Text style={styles.quickSectionTitle}>QUICK DEMO ACCOUNTS</Text>
-                  <View style={styles.quickGrid}>
-                    <TouchableOpacity
-                      style={[styles.quickChip, phone === '9829012345' && styles.quickChipActive]}
-                      onPress={() => setPhone('9829012345')}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.quickChipRole}>🏛️ Collector</Text>
-                      <Text style={styles.quickChipNum}>9829012345</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.quickChip, phone === '7735807328' && styles.quickChipActive]}
-                      onPress={() => setPhone('7735807328')}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.quickChipRole}>👤 Citizen</Text>
-                      <Text style={styles.quickChipNum}>7735807328</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.quickChip, phone === '9999999999' && styles.quickChipActive]}
-                      onPress={() => setPhone('9999999999')}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.quickChipRole}>🛡️ Admin</Text>
-                      <Text style={styles.quickChipNum}>9999999999</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.quickChip, phone === '9337453714' && styles.quickChipActive]}
-                      onPress={() => setPhone('9337453714')}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.quickChipRole}>👮 Patwari</Text>
-                      <Text style={styles.quickChipNum}>9337453714</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.quickChip, phone === '8888888888' && styles.quickChipActive]}
-                      onPress={() => setPhone('8888888888')}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.quickChipRole}>🎧 181 Support</Text>
-                      <Text style={styles.quickChipNum}>8888888888</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
               </View>
             ) : (
               // Step 2: Clean WhatsApp-Style OTP Screen
@@ -678,7 +631,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   primaryButton: {
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     borderRadius: 22,
     paddingVertical: 13,
     alignItems: 'center',
@@ -688,57 +641,10 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   primaryButtonText: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 0.3,
-  },
-  quickSection: {
-    marginTop: 18,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#2a3942',
-  },
-  quickSectionTitle: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#8696a0',
-    letterSpacing: 0.8,
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  quickGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    justifyContent: 'space-between',
-  },
-  quickChip: {
-    width: '48%',
-    backgroundColor: '#111b21',
-    borderWidth: 1,
-    borderColor: '#2a3942',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  quickChipActive: {
-    borderColor: '#00a884',
-    backgroundColor: 'rgba(0, 168, 132, 0.1)',
-  },
-  quickChipRole: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#e9edef',
-    marginBottom: 2,
-    textAlign: 'center',
-  },
-  quickChipNum: {
-    fontSize: 11,
-    color: '#00a884',
-    fontWeight: '500',
   },
   detectedUserCard: {
     flexDirection: 'row',
@@ -773,13 +679,13 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   rolePill: {
-    backgroundColor: 'rgba(0, 168, 132, 0.15)',
+    backgroundColor: 'rgba(234, 179, 8, 0.15)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 4,
   },
   rolePillText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 10,
     fontWeight: '700',
   },
@@ -795,14 +701,14 @@ const styles = StyleSheet.create({
     color: '#8696a0',
   },
   changePhoneText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 13,
     fontWeight: '600',
   },
   otpInput: {
     backgroundColor: '#111b21',
     borderWidth: 1.5,
-    borderColor: '#00a884',
+    borderColor: '#EAB308',
     borderRadius: 10,
     paddingVertical: 12,
     textAlign: 'center',
@@ -816,9 +722,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(0, 168, 132, 0.1)',
+    backgroundColor: 'rgba(234, 179, 8, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(0, 168, 132, 0.25)',
+    borderColor: 'rgba(234, 179, 8, 0.3)',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -830,16 +736,16 @@ const styles = StyleSheet.create({
   },
   hintBold: {
     fontWeight: '700',
-    color: '#00a884',
+    color: '#EAB308',
   },
   hintFillBtn: {
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 4,
   },
   hintFillText: {
-    color: '#111b21',
+    color: '#111827',
     fontSize: 11,
     fontWeight: '700',
   },
@@ -849,7 +755,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   resendText: {
-    color: '#00a884',
+    color: '#EAB308',
     fontSize: 13,
     fontWeight: '500',
   },
@@ -882,7 +788,7 @@ const styles = StyleSheet.create({
   },
   securityText: {
     fontSize: 12,
-    color: '#00a884',
+    color: '#EAB308',
     fontWeight: '500',
   },
   footerText: {
@@ -928,7 +834,7 @@ const styles = StyleSheet.create({
   modalPinInput: {
     backgroundColor: '#111b21',
     borderWidth: 1.5,
-    borderColor: '#00a884',
+    borderColor: '#EAB308',
     borderRadius: 8,
     fontSize: 22,
     fontWeight: '700',
@@ -970,13 +876,13 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: '#00a884',
+    backgroundColor: '#EAB308',
     alignItems: 'center',
   },
   modalConfirmText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#111b21',
+    color: '#111827',
   },
 });
 
