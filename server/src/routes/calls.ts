@@ -111,6 +111,17 @@ router.post('/schedule', async (req: Request, res: Response) => {
       `).run(newId, grievanceId, fullScheduledDateTime, officerPhone || officerName || 'Officer');
     }
 
+    // Update grievance record with scheduled date & time
+    try {
+      db.prepare(`
+        UPDATE grievances
+        SET scheduled_date = ?, scheduled_time = ?, scheduled_officer = ?
+        WHERE id = ? OR id = ?
+      `).run(scheduledDate, scheduledTime, officerName || 'Vivek, IAS', grievanceId, grievanceId.replace(/^JS-/, ''));
+    } catch (e) {
+      console.warn('[Calls] Failed to update grievance scheduled info:', e);
+    }
+
     // Insert audit log
     insertAuditLog({
       eventType: 'HEARING_SCHEDULED',

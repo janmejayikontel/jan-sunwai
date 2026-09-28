@@ -24,6 +24,9 @@ interface GrievanceItem {
   location?: string;
   district?: string;
   status: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
+  scheduledOfficer?: string;
   citizen?: {
     name: string;
     phone: string;
@@ -100,8 +103,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [inspectGrievanceId, setInspectGrievanceId] = useState('');
   const [selectedGrievanceDetails, setSelectedGrievanceDetails] = useState<GrievanceItem | null>(null);
 
-  // Hearing Scheduling Modal State with Interactive Calendar & Dropdown
+  // Hearing Scheduling Modal State (2-Step: Date Calendar -> Time Picker)
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleStep, setScheduleStep] = useState<'date' | 'time'>('date');
   const [schedulingGrievance, setSchedulingGrievance] = useState<GrievanceItem | null>(null);
   const [scheduleDate, setScheduleDate] = useState('2026-09-29');
   const [scheduleTime, setScheduleTime] = useState('11:30 AM');
@@ -109,9 +113,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
   const [calendarYear, setCalendarYear] = useState(2026);
   const [calendarMonth, setCalendarMonth] = useState(8); // September = 8
-  const [showTimeDropdown, setShowTimeDropdown] = useState(false);
   const [customTimeInput, setCustomTimeInput] = useState('');
-  const [showCustomTimeField, setShowCustomTimeField] = useState(false);
 
   // ─── Call Centre Representative State ──────────────────────────
   const [ccTab, setCcTab] = useState<'queue' | 'kyc' | 'records'>('queue');
@@ -224,7 +226,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   // ─── Hearing Scheduling Handler ────────────────────────────────
   const handleConfirmSchedule = async () => {
     if (!schedulingGrievance) return;
-    const finalTime = showCustomTimeField && customTimeInput.trim() ? customTimeInput.trim() : scheduleTime;
+    const finalTime = customTimeInput.trim() ? customTimeInput.trim() : scheduleTime;
     setIsSubmittingSchedule(true);
     try {
       const base = cleanServerUrl(serverUrl);
@@ -249,10 +251,38 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         throw new Error(data?.error || 'Failed to schedule hearing');
       }
 
+      const assignedOfficerName = user.name || 'Vivek, IAS';
+
+      // Update in-memory state so the scheduled banner appears immediately!
+      const updatedItem: GrievanceItem = {
+        ...schedulingGrievance,
+        scheduledDate: scheduleDate,
+        scheduledTime: finalTime,
+        scheduledOfficer: assignedOfficerName,
+      };
+
+      setGrievances((prev) =>
+        prev.map((g) =>
+          g.grievanceId === schedulingGrievance.grievanceId
+            ? { ...g, scheduledDate: scheduleDate, scheduledTime: finalTime, scheduledOfficer: assignedOfficerName }
+            : g
+        )
+      );
+
+      if (homeSearchedGrievance?.grievanceId === schedulingGrievance.grievanceId) {
+        setHomeSearchedGrievance(updatedItem);
+      }
+      if (selectedGrievanceDetails?.grievanceId === schedulingGrievance.grievanceId) {
+        setSelectedGrievanceDetails(updatedItem);
+      }
+
       setShowScheduleModal(false);
+      setScheduleStep('date');
+      setCustomTimeInput('');
+
       Alert.alert(
         '✅ Hearing Scheduled Successfully!',
-        `Case: #${schedulingGrievance.grievanceId}\nDate: ${scheduleDate}\nTime: ${finalTime}\n\nAutomated notifications dispatched to:\n• Citizen: ${data.citizen?.name || 'Citizen'} (${data.citizen?.phone || 'N/A'})\n• Field Officer: ${data.employee?.name || 'Officer'} (${data.employee?.phone || 'N/A'})\n\nAll participants will receive a reminder notification 15 minutes before the hearing.`,
+        `Case: #${schedulingGrievance.grievanceId}\nDate: ${scheduleDate}\nTime: ${finalTime}\n\nAutomated notifications dispatched to:\n• Citizen: ${data.citizen?.name || 'Citizen'} (${data.citizen?.phone || 'N/A'})\n• Field Officer: ${data.employee?.name || 'Officer'} (${data.employee?.phone || 'N/A'})\n\nWhenever citizen or officer opens this grievance, this scheduled date and time will be prominently shown.`,
         [{ text: 'OK' }]
       );
     } catch (err: any) {
@@ -1168,6 +1198,26 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       </View>
                     </View>
 
+                    {/* Prominent Scheduled Call Banner if call has been scheduled */}
+                    {homeSearchedGrievance.scheduledDate && homeSearchedGrievance.scheduledTime && (
+                      <View style={styles.scheduledBanner}>
+                        <View style={styles.scheduledBannerHeader}>
+                          <Text style={styles.scheduledBannerIcon}>📅</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.scheduledBannerTitle}>Hearing Scheduled (सुनवाई नियत है)</Text>
+                            <Text style={styles.scheduledBannerHighlight}>
+                              🗓️ Date: {homeSearchedGrievance.scheduledDate}   ⏰ Time: {homeSearchedGrievance.scheduledTime}
+                            </Text>
+                            {homeSearchedGrievance.scheduledOfficer && (
+                              <Text style={styles.scheduledBannerOfficer}>
+                                🏛️ Presiding Officer: {homeSearchedGrievance.scheduledOfficer}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                      </View>
+                    )}
+
                     <Text style={styles.caseTitle}>{homeSearchedGrievance.title}</Text>
 
                     {homeSearchedGrievance.category && (
@@ -1212,6 +1262,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         style={styles.homeScheduleBtn}
                         onPress={() => {
                           setSchedulingGrievance(homeSearchedGrievance);
+                          setScheduleStep('date');
                           setShowScheduleModal(true);
                         }}
                         activeOpacity={0.85}
@@ -1234,6 +1285,33 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     </Text>
                   </View>
                 </View>
+
+                {/* Scheduled Call Alerts for Citizen */}
+                {grievances.filter(g => g.scheduledDate && g.scheduledTime).map(sg => (
+                  <View key={sg.grievanceId} style={styles.scheduledBanner}>
+                    <View style={styles.scheduledBannerHeader}>
+                      <Text style={styles.scheduledBannerIcon}>📅</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.scheduledBannerTitle}>Your Call is Scheduled (सुनवाई नियत है)</Text>
+                        <Text style={styles.scheduledBannerCaseId}>Case #{sg.grievanceId}: {sg.title}</Text>
+                        <Text style={styles.scheduledBannerHighlight}>
+                          🗓️ Date: {sg.scheduledDate}   ⏰ Time: {sg.scheduledTime}
+                        </Text>
+                        {sg.scheduledOfficer && (
+                          <Text style={styles.scheduledBannerOfficer}>
+                            🏛️ Presiding Officer: {sg.scheduledOfficer}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.compactViewDetailsBtn, { alignSelf: 'flex-start', marginTop: 8 }]}
+                      onPress={() => setSelectedGrievanceDetails(sg)}
+                    >
+                      <Text style={styles.compactViewDetailsBtnText}>View Details ➔</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
 
                 <TouchableOpacity
                   style={[styles.casesBannerBtn, { marginTop: 14 }]}
@@ -1319,12 +1397,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 filteredGrievances.map((item) => (
                   <View key={item.grievanceId} style={styles.compactCaseRow}>
                     <View style={styles.compactCaseInfo}>
-                      <View style={styles.caseIdBadge}>
-                        <Text style={styles.caseIdText}>{item.grievanceId}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <View style={styles.caseIdBadge}>
+                          <Text style={styles.caseIdText}>{item.grievanceId}</Text>
+                        </View>
+                        <Text style={styles.compactCaseStatus} numberOfLines={1}>
+                          {item.status}
+                        </Text>
                       </View>
-                      <Text style={styles.compactCaseStatus} numberOfLines={1}>
-                        {item.status}
-                      </Text>
+                      {item.scheduledDate && item.scheduledTime ? (
+                        <View style={styles.compactScheduledBadge}>
+                          <Text style={styles.compactScheduledText}>
+                            📅 Scheduled: {item.scheduledDate} • {item.scheduledTime}
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
 
                     <TouchableOpacity
@@ -1573,6 +1660,32 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </View>
 
             <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+              {/* Prominent Hearing Scheduled Banner */}
+              {selectedGrievanceDetails?.scheduledDate && selectedGrievanceDetails?.scheduledTime ? (
+                <View style={styles.scheduledBanner}>
+                  <View style={styles.scheduledBannerHeader}>
+                    <Text style={styles.scheduledBannerIcon}>📅</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.scheduledBannerTitle}>Hearing Scheduled (सुनवाई नियत है)</Text>
+                      <Text style={styles.scheduledBannerText}>
+                        Your call is scheduled for:
+                      </Text>
+                      <Text style={styles.scheduledBannerHighlight}>
+                        🗓️ Date: {selectedGrievanceDetails.scheduledDate}   ⏰ Time: {selectedGrievanceDetails.scheduledTime}
+                      </Text>
+                      {selectedGrievanceDetails.scheduledOfficer && (
+                        <Text style={styles.scheduledBannerOfficer}>
+                          🏛️ Presiding Officer: {selectedGrievanceDetails.scheduledOfficer}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  <Text style={styles.scheduledBannerNotice}>
+                    🔔 Citizen & Field Officer will receive an automated video call notification at this scheduled time.
+                  </Text>
+                </View>
+              ) : null}
+
               <Text style={styles.detailsModalTitle}>{selectedGrievanceDetails?.title}</Text>
 
               {selectedGrievanceDetails?.category && (
@@ -1647,6 +1760,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     setSelectedGrievanceDetails(null);
                     if (g) {
                       setSchedulingGrievance(g);
+                      setScheduleStep('date');
                       setShowScheduleModal(true);
                     }
                   }}
@@ -1667,7 +1781,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </View>
       </Modal>
 
-      {/* ─── MODAL: SCHEDULE HEARING CALL ─── */}
+      {/* ─── MODAL: SCHEDULE HEARING CALL (2-Step Flow) ─── */}
       <Modal
         visible={showScheduleModal}
         transparent={true}
@@ -1676,9 +1790,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       >
         <View style={styles.scheduleModalOverlay}>
           <View style={styles.scheduleModalCard}>
+            {/* Header */}
             <View style={styles.scheduleModalHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.scheduleModalTitle}>📅 Schedule Hearing</Text>
+                <Text style={styles.scheduleModalTitle}>
+                  {scheduleStep === 'date' ? '📅 Step 1/2: Choose Hearing Date' : '⏰ Step 2/2: Choose Hearing Time'}
+                </Text>
                 <Text style={styles.scheduleModalSubtitle}>
                   Case #{schedulingGrievance?.grievanceId}
                 </Text>
@@ -1691,234 +1808,236 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
-              <Text style={styles.scheduleSectionLabel}>Case Title</Text>
-              <Text style={styles.scheduleCaseTitle} numberOfLines={2}>
-                {schedulingGrievance?.title}
-              </Text>
+            <Text style={styles.scheduleCaseTitle} numberOfLines={1}>
+              {schedulingGrievance?.title}
+            </Text>
 
-              {/* Interactive Calendar Date Picker */}
-              <Text style={styles.scheduleSectionLabel}>Select Hearing Date (दिनांक चुनें — कैलेंडर से चुनें)</Text>
-              <View style={styles.calendarCard}>
-                {/* Month & Year Navigation Header */}
-                <View style={styles.calendarNavHeader}>
-                  <TouchableOpacity
-                    style={styles.calendarNavBtn}
-                    onPress={() => {
-                      if (calendarMonth === 0) {
-                        setCalendarMonth(11);
-                        setCalendarYear((y) => y - 1);
-                      } else {
-                        setCalendarMonth((m) => m - 1);
-                      }
-                    }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={styles.calendarNavArrow}>◀</Text>
-                  </TouchableOpacity>
+            {/* ─── STEP 1: INTERACTIVE CALENDAR (Select date to proceed) ─── */}
+            {scheduleStep === 'date' && (
+              <View>
+                <Text style={styles.scheduleStepPrompt}>
+                  Tap any date on the calendar. Time options will appear automatically:
+                </Text>
 
-                  <Text style={styles.calendarMonthTitle}>
-                    {MONTH_NAMES[calendarMonth]} {calendarYear}
-                  </Text>
+                <View style={styles.calendarCard}>
+                  {/* Month & Year Navigation Header */}
+                  <View style={styles.calendarNavHeader}>
+                    <TouchableOpacity
+                      style={styles.calendarNavBtn}
+                      onPress={() => {
+                        if (calendarMonth === 0) {
+                          setCalendarMonth(11);
+                          setCalendarYear((y) => y - 1);
+                        } else {
+                          setCalendarMonth((m) => m - 1);
+                        }
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.calendarNavArrow}>◀</Text>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={styles.calendarNavBtn}
-                    onPress={() => {
-                      if (calendarMonth === 11) {
-                        setCalendarMonth(0);
-                        setCalendarYear((y) => y + 1);
-                      } else {
-                        setCalendarMonth((m) => m + 1);
-                      }
-                    }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Text style={styles.calendarNavArrow}>▶</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Weekday Names Header */}
-                <View style={styles.calendarWeekRow}>
-                  {DAYS_OF_WEEK.map((d, idx) => (
-                    <Text key={idx} style={[styles.calendarWeekDay, (idx === 0 || idx === 6) && styles.calendarWeekendDay]}>
-                      {d}
+                    <Text style={styles.calendarMonthTitle}>
+                      {MONTH_NAMES[calendarMonth]} {calendarYear}
                     </Text>
-                  ))}
+
+                    <TouchableOpacity
+                      style={styles.calendarNavBtn}
+                      onPress={() => {
+                        if (calendarMonth === 11) {
+                          setCalendarMonth(0);
+                          setCalendarYear((y) => y + 1);
+                        } else {
+                          setCalendarMonth((m) => m + 1);
+                        }
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={styles.calendarNavArrow}>▶</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Weekday Names Header */}
+                  <View style={styles.calendarWeekRow}>
+                    {DAYS_OF_WEEK.map((d, idx) => (
+                      <Text key={idx} style={[styles.calendarWeekDay, (idx === 0 || idx === 6) && styles.calendarWeekendDay]}>
+                        {d}
+                      </Text>
+                    ))}
+                  </View>
+
+                  {/* Day Grid: Clicking any day automatically advances to Time */}
+                  <View style={styles.calendarGrid}>
+                    {Array.from({ length: new Date(calendarYear, calendarMonth, 1).getDay() }).map((_, i) => (
+                      <View key={`empty-${i}`} style={styles.calendarDayCellEmpty} />
+                    ))}
+                    {Array.from({ length: new Date(calendarYear, calendarMonth + 1, 0).getDate() }).map((_, i) => {
+                      const dayNum = i + 1;
+                      const mm = String(calendarMonth + 1).padStart(2, '0');
+                      const dd = String(dayNum).padStart(2, '0');
+                      const cellDate = `${calendarYear}-${mm}-${dd}`;
+                      const isSelected = scheduleDate === cellDate;
+                      return (
+                        <TouchableOpacity
+                          key={`day-${dayNum}`}
+                          style={[styles.calendarDayCell, isSelected && styles.calendarDayCellSelected]}
+                          onPress={() => {
+                            setScheduleDate(cellDate);
+                            setScheduleStep('time'); // Automatic transition to time!
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.calendarDayCellText, isSelected && styles.calendarDayCellTextSelected]}>
+                            {dayNum}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {/* Quick Presets: Clicking either automatically advances to Time */}
+                  <View style={styles.calendarFooter}>
+                    <Text style={styles.quickPresetHeading}>Quick Select:</Text>
+                    <View style={styles.quickPresetsRow}>
+                      <TouchableOpacity
+                        style={styles.quickPresetBtn}
+                        onPress={() => {
+                          const now = new Date();
+                          const mm = String(now.getMonth() + 1).padStart(2, '0');
+                          const dd = String(now.getDate()).padStart(2, '0');
+                          const cellDate = `${now.getFullYear()}-${mm}-${dd}`;
+                          setScheduleDate(cellDate);
+                          setCalendarMonth(now.getMonth());
+                          setCalendarYear(now.getFullYear());
+                          setScheduleStep('time'); // Automatic transition
+                        }}
+                      >
+                        <Text style={styles.quickPresetText}>⚡ Today</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.quickPresetBtn}
+                        onPress={() => {
+                          const tm = new Date();
+                          tm.setDate(tm.getDate() + 1);
+                          const mm = String(tm.getMonth() + 1).padStart(2, '0');
+                          const dd = String(tm.getDate()).padStart(2, '0');
+                          const cellDate = `${tm.getFullYear()}-${mm}-${dd}`;
+                          setScheduleDate(cellDate);
+                          setCalendarMonth(tm.getMonth());
+                          setCalendarYear(tm.getFullYear());
+                          setScheduleStep('time'); // Automatic transition
+                        }}
+                      >
+                        <Text style={styles.quickPresetText}>⚡ Tomorrow</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
 
-                {/* Day Grid */}
-                <View style={styles.calendarGrid}>
-                  {Array.from({ length: new Date(calendarYear, calendarMonth, 1).getDay() }).map((_, i) => (
-                    <View key={`empty-${i}`} style={styles.calendarDayCellEmpty} />
-                  ))}
-                  {Array.from({ length: new Date(calendarYear, calendarMonth + 1, 0).getDate() }).map((_, i) => {
-                    const dayNum = i + 1;
-                    const mm = String(calendarMonth + 1).padStart(2, '0');
-                    const dd = String(dayNum).padStart(2, '0');
-                    const cellDate = `${calendarYear}-${mm}-${dd}`;
-                    const isSelected = scheduleDate === cellDate;
+                <TouchableOpacity
+                  style={styles.scheduleCancelBtn}
+                  onPress={() => setShowScheduleModal(false)}
+                >
+                  <Text style={styles.scheduleCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* ─── STEP 2: TIME SELECTION (NO SCROLLING - Full flexibility with slots & custom input) ─── */}
+            {scheduleStep === 'time' && (
+              <View>
+                {/* Selected Date Indicator with Change Date action */}
+                <View style={styles.chosenDateBanner}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.chosenDateLabel}>Selected Date</Text>
+                    <Text style={styles.chosenDateValue}>🗓️ {scheduleDate}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.changeDateBtn}
+                    onPress={() => setScheduleStep('date')}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.changeDateBtnText}>◀ Change Date</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.scheduleStepPrompt}>
+                  Choose hearing slot or type any custom time below:
+                </Text>
+
+                {/* Non-scrollable flexible slots grid (16 popular hearing slots) */}
+                <View style={styles.flexibleTimeGrid}>
+                  {[
+                    '09:30 AM', '10:00 AM', '10:30 AM', '11:00 AM',
+                    '11:30 AM', '12:00 PM', '12:30 PM', '01:00 PM',
+                    '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM',
+                    '04:30 PM', '05:00 PM', '05:30 PM', '06:00 PM',
+                  ].map((t) => {
+                    const isSelected = !customTimeInput.trim() && scheduleTime === t;
                     return (
                       <TouchableOpacity
-                        key={`day-${dayNum}`}
-                        style={[styles.calendarDayCell, isSelected && styles.calendarDayCellSelected]}
-                        onPress={() => setScheduleDate(cellDate)}
+                        key={t}
+                        style={[styles.flexibleTimeChip, isSelected && styles.flexibleTimeChipSelected]}
+                        onPress={() => {
+                          setScheduleTime(t);
+                          setCustomTimeInput('');
+                        }}
                         activeOpacity={0.7}
                       >
-                        <Text style={[styles.calendarDayCellText, isSelected && styles.calendarDayCellTextSelected]}>
-                          {dayNum}
+                        <Text style={[styles.flexibleTimeChipText, isSelected && styles.flexibleTimeChipTextSelected]}>
+                          {t}
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
 
-                {/* Selected Date Summary & Quick Presets */}
-                <View style={styles.calendarFooter}>
-                  <View style={styles.selectedDatePill}>
-                    <Text style={styles.selectedDatePillText}>
-                      📅 {scheduleDate}
-                    </Text>
-                  </View>
-                  <View style={styles.quickPresetsRow}>
-                    <TouchableOpacity
-                      style={styles.quickPresetBtn}
-                      onPress={() => {
-                        const now = new Date();
-                        const mm = String(now.getMonth() + 1).padStart(2, '0');
-                        const dd = String(now.getDate()).padStart(2, '0');
-                        setScheduleDate(`${now.getFullYear()}-${mm}-${dd}`);
-                        setCalendarMonth(now.getMonth());
-                        setCalendarYear(now.getFullYear());
-                      }}
-                    >
-                      <Text style={styles.quickPresetText}>Today</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.quickPresetBtn}
-                      onPress={() => {
-                        const tm = new Date();
-                        tm.setDate(tm.getDate() + 1);
-                        const mm = String(tm.getMonth() + 1).padStart(2, '0');
-                        const dd = String(tm.getDate()).padStart(2, '0');
-                        setScheduleDate(`${tm.getFullYear()}-${mm}-${dd}`);
-                        setCalendarMonth(tm.getMonth());
-                        setCalendarYear(tm.getFullYear());
-                      }}
-                    >
-                      <Text style={styles.quickPresetText}>Tomorrow</Text>
-                    </TouchableOpacity>
-                  </View>
+                {/* Custom Time Field for complete flexibility */}
+                <View style={styles.flexibleCustomRow}>
+                  <Text style={styles.flexibleCustomLabel}>✏️ Or Enter Custom Time:</Text>
+                  <TextInput
+                    style={styles.flexibleCustomInput}
+                    value={customTimeInput}
+                    onChangeText={setCustomTimeInput}
+                    placeholder="e.g. 10:45 AM or 03:15 PM"
+                    placeholderTextColor="#8696a0"
+                  />
                 </View>
-              </View>
 
-              {/* Flexible Time Slot Selection from Dropdown */}
-              <Text style={styles.scheduleSectionLabel}>Select Hearing Time (समय चुनें — ड्रॉपडाउन)</Text>
-              
-              <TouchableOpacity
-                style={styles.timeDropdownTrigger}
-                onPress={() => setShowTimeDropdown(!showTimeDropdown)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.timeDropdownTriggerLeft}>
-                  <Text style={styles.timeClockIcon}>🕒</Text>
-                  <Text style={styles.timeDropdownCurrentText}>
-                    {showCustomTimeField && customTimeInput.trim() ? customTimeInput.trim() : scheduleTime}
+                {/* Notification Alert Info Box */}
+                <View style={styles.notificationNoticeBoxCompact}>
+                  <Text style={styles.notificationNoticeTitleCompact}>🔔 Automated Notification Alerts</Text>
+                  <Text style={styles.notificationNoticeDescCompact} numberOfLines={2}>
+                    Citizen ({schedulingGrievance?.citizen?.name || 'Citizen'}) & Officer ({schedulingGrievance?.assignedEmployee?.name || 'Officer'}) will receive immediate notification with this date and time.
                   </Text>
                 </View>
-                <Text style={styles.timeDropdownChevron}>
-                  {showTimeDropdown ? '▲ Close' : '▼ Choose from Dropdown'}
-                </Text>
-              </TouchableOpacity>
 
-              {/* Dropdown Options */}
-              {showTimeDropdown && (
-                <View style={styles.timeDropdownMenu}>
-                  <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
-                    <View style={styles.timeDropdownGrid}>
-                      {TIME_OPTIONS.map((t) => {
-                        const isSelected = !showCustomTimeField && scheduleTime === t;
-                        return (
-                          <TouchableOpacity
-                            key={t}
-                            style={[styles.timeDropdownOption, isSelected && styles.timeDropdownOptionSelected]}
-                            onPress={() => {
-                              setScheduleTime(t);
-                              setShowCustomTimeField(false);
-                              setShowTimeDropdown(false);
-                            }}
-                          >
-                            <Text style={[styles.timeDropdownOptionText, isSelected && styles.timeDropdownOptionTextSelected]}>
-                              {t}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </ScrollView>
+                {/* Action Buttons */}
+                <View style={styles.scheduleActionsRow}>
+                  <TouchableOpacity
+                    style={styles.scheduleCancelBtn}
+                    onPress={() => setScheduleStep('date')}
+                  >
+                    <Text style={styles.scheduleCancelText}>◀ Back</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.scheduleConfirmBtn, isSubmittingSchedule && styles.btnDisabled]}
+                    onPress={handleConfirmSchedule}
+                    disabled={isSubmittingSchedule}
+                    activeOpacity={0.85}
+                  >
+                    {isSubmittingSchedule ? (
+                      <ActivityIndicator color="#111827" size="small" />
+                    ) : (
+                      <Text style={styles.scheduleConfirmText}>
+                        Confirm ({customTimeInput.trim() || scheduleTime}) ➔
+                      </Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
-              )}
-
-              {/* Custom Time Manual Entry Toggle */}
-              <View style={styles.customTimeToggleRow}>
-                <TouchableOpacity
-                  style={styles.customTimeToggleBtn}
-                  onPress={() => setShowCustomTimeField(!showCustomTimeField)}
-                >
-                  <Text style={styles.customTimeToggleText}>
-                    {showCustomTimeField ? '✕ Back to Preset Dropdown' : '✏️ Or Enter Custom Time (e.g. 11:45 AM)'}
-                  </Text>
-                </TouchableOpacity>
               </View>
-
-              {showCustomTimeField && (
-                <TextInput
-                  style={styles.customTimeTextInput}
-                  value={customTimeInput}
-                  onChangeText={setCustomTimeInput}
-                  placeholder="e.g. 11:45 AM or 04:15 PM"
-                  placeholderTextColor="#8696a0"
-                />
-              )}
-
-              {/* Automated Notification Alert Box */}
-              <View style={styles.notificationNoticeBox}>
-                <Text style={styles.notificationNoticeTitle}>🔔 Automated Notification Alerts</Text>
-                <Text style={styles.notificationNoticeDesc}>
-                  Citizen and assigned Field Officer will immediately receive SMS & App notifications upon scheduling:
-                </Text>
-                <Text style={styles.notificationRecipient}>
-                  • Citizen: {schedulingGrievance?.citizen?.name || 'Citizen'} ({schedulingGrievance?.citizen?.phone || 'N/A'})
-                </Text>
-                <Text style={styles.notificationRecipient}>
-                  • Field Officer: {schedulingGrievance?.assignedEmployee?.name || 'Officer'} ({schedulingGrievance?.assignedEmployee?.phone || 'N/A'})
-                </Text>
-                <Text style={styles.notificationReminder}>
-                  ⏰ Reminder alert sent automatically 15 minutes before scheduled hearing.
-                </Text>
-              </View>
-            </ScrollView>
-
-            {/* Confirm & Cancel Buttons */}
-            <View style={styles.scheduleActionsRow}>
-              <TouchableOpacity
-                style={styles.scheduleCancelBtn}
-                onPress={() => setShowScheduleModal(false)}
-              >
-                <Text style={styles.scheduleCancelText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.scheduleConfirmBtn, isSubmittingSchedule && styles.btnDisabled]}
-                onPress={handleConfirmSchedule}
-                disabled={isSubmittingSchedule}
-              >
-                {isSubmittingSchedule ? (
-                  <ActivityIndicator color="#111b21" size="small" />
-                ) : (
-                  <Text style={styles.scheduleConfirmText}>Confirm Schedule ➔</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -2605,126 +2724,203 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Time Dropdown Styles
-  timeDropdownTrigger: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#111b21',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderWidth: 1.5,
-    borderColor: '#EAB308',
+  scheduleStepPrompt: {
+    fontSize: 12,
+    color: '#8696a0',
     marginBottom: 8,
+    lineHeight: 16,
   },
-  timeDropdownTriggerLeft: {
+  quickPresetHeading: {
+    fontSize: 11,
+    color: '#8696a0',
+    fontWeight: '600',
+  },
+
+  // ─── Step 2: Time Selection Styles (No Scrolling, Full Flexibility) ───
+  chosenDateBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    backgroundColor: '#111b21',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#EAB308',
   },
-  timeClockIcon: {
-    fontSize: 16,
+  chosenDateLabel: {
+    fontSize: 11,
+    color: '#8696a0',
+    fontWeight: '600',
   },
-  timeDropdownCurrentText: {
-    color: '#e9edef',
+  chosenDateValue: {
     fontSize: 14,
-    fontWeight: '700',
+    color: '#EAB308',
+    fontWeight: '800',
+    marginTop: 2,
   },
-  timeDropdownChevron: {
+  changeDateBtn: {
+    backgroundColor: '#202c33',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.4)',
+  },
+  changeDateBtnText: {
     color: '#EAB308',
     fontSize: 11,
     fontWeight: '700',
   },
-  timeDropdownMenu: {
-    backgroundColor: '#111b21',
-    borderRadius: 10,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: '#2a3942',
-    marginBottom: 8,
-  },
-  timeDropdownGrid: {
+  flexibleTimeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
+    marginBottom: 10,
+    justifyContent: 'space-between',
   },
-  timeDropdownOption: {
-    width: '31%',
-    backgroundColor: '#202c33',
-    borderRadius: 6,
+  flexibleTimeChip: {
+    width: '23%',
+    backgroundColor: '#111b21',
+    borderRadius: 8,
     paddingVertical: 8,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#2a3942',
   },
-  timeDropdownOptionSelected: {
+  flexibleTimeChipSelected: {
     backgroundColor: '#EAB308',
     borderColor: '#EAB308',
+    shadowColor: '#EAB308',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 2,
   },
-  timeDropdownOptionText: {
+  flexibleTimeChipText: {
     color: '#8696a0',
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10.5,
+    fontWeight: '700',
   },
-  timeDropdownOptionTextSelected: {
+  flexibleTimeChipTextSelected: {
     color: '#111827',
-    fontWeight: '800',
+    fontWeight: '900',
   },
-  customTimeToggleRow: {
-    marginBottom: 8,
-  },
-  customTimeToggleBtn: {
-    alignSelf: 'flex-start',
-    paddingVertical: 4,
-  },
-  customTimeToggleText: {
-    color: '#EAB308',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  customTimeTextInput: {
-    backgroundColor: '#111b21',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    color: '#e9edef',
-    fontSize: 13,
-    borderWidth: 1,
-    borderColor: '#EAB308',
-    marginBottom: 10,
-  },
-
-  notificationNoticeBox: {
+  flexibleCustomRow: {
     backgroundColor: '#111b21',
     borderRadius: 10,
-    padding: 12,
-    marginVertical: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: 'rgba(234, 179, 8, 0.3)',
+    borderColor: 'rgba(134, 150, 160, 0.25)',
   },
-  notificationNoticeTitle: {
-    fontSize: 12,
-    fontWeight: '700',
+  flexibleCustomLabel: {
     color: '#EAB308',
+    fontSize: 11,
+    fontWeight: '700',
     marginBottom: 4,
   },
-  notificationNoticeDesc: {
+  flexibleCustomInput: {
+    backgroundColor: '#202c33',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    color: '#e9edef',
+    fontSize: 12,
+    borderWidth: 1,
+    borderColor: '#2a3942',
+  },
+  notificationNoticeBoxCompact: {
+    backgroundColor: 'rgba(234, 179, 8, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.25)',
+  },
+  notificationNoticeTitleCompact: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#EAB308',
+    marginBottom: 2,
+  },
+  notificationNoticeDescCompact: {
+    fontSize: 10,
+    color: '#8696a0',
+    lineHeight: 14,
+  },
+
+  // ─── Prominent Scheduled Call Mention Banner Styles ───
+  scheduledBanner: {
+    backgroundColor: 'rgba(234, 179, 8, 0.14)',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: '#EAB308',
+  },
+  scheduledBannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  scheduledBannerIcon: {
+    fontSize: 22,
+  },
+  scheduledBannerTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#EAB308',
+    letterSpacing: 0.3,
+  },
+  scheduledBannerCaseId: {
+    fontSize: 12,
+    color: '#e9edef',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  scheduledBannerText: {
     fontSize: 11,
     color: '#8696a0',
-    marginBottom: 6,
-    lineHeight: 15,
+    marginTop: 2,
   },
-  notificationRecipient: {
-    fontSize: 11,
-    color: '#e9edef',
-    marginBottom: 3,
-  },
-  notificationReminder: {
-    fontSize: 11,
-    color: '#fbbf24',
-    fontWeight: '600',
+  scheduledBannerHighlight: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FACC15',
     marginTop: 4,
+  },
+  scheduledBannerOfficer: {
+    fontSize: 11.5,
+    color: '#e9edef',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  scheduledBannerNotice: {
+    fontSize: 10.5,
+    color: '#8696a0',
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(234, 179, 8, 0.2)',
+    lineHeight: 14,
+  },
+  compactScheduledBadge: {
+    backgroundColor: 'rgba(234, 179, 8, 0.16)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(234, 179, 8, 0.4)',
+    marginTop: 2,
+  },
+  compactScheduledText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#EAB308',
   },
   scheduleActionsRow: {
     flexDirection: 'row',

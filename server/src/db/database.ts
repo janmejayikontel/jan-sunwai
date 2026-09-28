@@ -280,6 +280,9 @@ export async function initializeDatabase(): Promise<void> {
   try { db.exec("ALTER TABLE officers ADD COLUMN role TEXT DEFAULT 'officer';"); } catch (_) {}
   try { db.exec("ALTER TABLE call_center_reps ADD COLUMN role TEXT DEFAULT 'call_center';"); } catch (_) {}
   try { db.exec("ALTER TABLE admins ADD COLUMN role TEXT DEFAULT 'admin';"); } catch (_) {}
+  try { db.exec("ALTER TABLE grievances ADD COLUMN scheduled_date TEXT;"); } catch (_) {}
+  try { db.exec("ALTER TABLE grievances ADD COLUMN scheduled_time TEXT;"); } catch (_) {}
+  try { db.exec("ALTER TABLE grievances ADD COLUMN scheduled_officer TEXT;"); } catch (_) {}
 
   // Seed initial records if database is empty
   seedInitialData();

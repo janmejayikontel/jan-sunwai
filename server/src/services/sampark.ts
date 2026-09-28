@@ -42,6 +42,9 @@ export interface GrievanceDetails {
   status: string;
   filedDate: string;
   lastUpdated: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
+  scheduledOfficer?: string;
   citizen: CitizenInfo;
   assignedEmployee: EmployeeInfo;
 }
@@ -93,6 +96,9 @@ export async function fetchGrievance(grievanceId: string): Promise<GrievanceDeta
       g.status,
       g.filed_date as filedDate,
       g.last_updated as lastUpdated,
+      g.scheduled_date as scheduledDate,
+      g.scheduled_time as scheduledTime,
+      g.scheduled_officer as scheduledOfficer,
       c.name as citizenName,
       c.phone as citizenPhone,
       c.village as citizenVillage,
@@ -125,6 +131,9 @@ export async function fetchGrievance(grievanceId: string): Promise<GrievanceDeta
     status: row.status,
     filedDate: row.filedDate,
     lastUpdated: row.lastUpdated,
+    scheduledDate: row.scheduledDate || undefined,
+    scheduledTime: row.scheduledTime || undefined,
+    scheduledOfficer: row.scheduledOfficer || undefined,
     citizen: {
       name: row.citizenName,
       phone: row.citizenPhone,
@@ -158,6 +167,9 @@ export async function listGrievances(): Promise<GrievanceDetails[]> {
       g.status,
       g.filed_date as filedDate,
       g.last_updated as lastUpdated,
+      g.scheduled_date as scheduledDate,
+      g.scheduled_time as scheduledTime,
+      g.scheduled_officer as scheduledOfficer,
       c.name as citizenName,
       c.phone as citizenPhone,
       c.village as citizenVillage,
@@ -185,6 +197,9 @@ export async function listGrievances(): Promise<GrievanceDetails[]> {
     status: row.status,
     filedDate: row.filedDate,
     lastUpdated: row.lastUpdated,
+    scheduledDate: row.scheduledDate || undefined,
+    scheduledTime: row.scheduledTime || undefined,
+    scheduledOfficer: row.scheduledOfficer || undefined,
     citizen: {
       name: row.citizenName,
       phone: row.citizenPhone,
