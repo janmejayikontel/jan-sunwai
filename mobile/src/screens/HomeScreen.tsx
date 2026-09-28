@@ -78,7 +78,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [directRoomInput, setDirectRoomInput] = useState('JS-RAJ-2024-88421');
 
   // Officer Grievance Inspector State
-  const [inspectGrievanceId, setInspectGrievanceId] = useState('RAJ-2024-88421');
+  const [inspectGrievanceId, setInspectGrievanceId] = useState('');
   const [inspectedGrievance, setInspectedGrievance] = useState<GrievanceItem | null>(null);
   const [isInspecting, setIsInspecting] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
@@ -111,6 +111,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [isJoiningMeeting, setIsJoiningMeeting] = useState<string | null>(null);
 
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
+
+  const filteredGrievances = inspectGrievanceId.trim()
+    ? grievances.filter(
+        (g) =>
+          g.grievanceId.toLowerCase().includes(inspectGrievanceId.trim().toLowerCase()) ||
+          g.title.toLowerCase().includes(inspectGrievanceId.trim().toLowerCase()) ||
+          (g.category && g.category.toLowerCase().includes(inspectGrievanceId.trim().toLowerCase())) ||
+          (g.district && g.district.toLowerCase().includes(inspectGrievanceId.trim().toLowerCase())) ||
+          (g.citizen?.name && g.citizen.name.toLowerCase().includes(inspectGrievanceId.trim().toLowerCase())) ||
+          (g.citizen?.phone && g.citizen.phone.includes(inspectGrievanceId.trim()))
+      )
+    : grievances;
 
   const fetchWithRetry = async (url: string, init?: any, retries = 2): Promise<Response> => {
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -170,11 +182,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     }
   };
 
-  // Fetch grievances for the logged in user
+  // Fetch all grievances so all cases are displayed in the Cases tab
   const fetchGrievances = async () => {
     setIsLoading(true);
     try {
-      const url = `${cleanServerUrl(serverUrl)}/api/sampark/by-phone/${encodeURIComponent(user.phone)}`;
+      const base = cleanServerUrl(serverUrl);
+      const url = `${base}/api/sampark/grievances`;
       const res = await fetchWithRetry(url, {
         headers: {
           'Bypass-Tunnel-Reminder': 'true',
@@ -192,9 +205,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         setGrievances(data.grievances);
         return;
       }
+
+      // Fallback by phone if /grievances fails
+      if (user.phone) {
+        const phoneUrl = `${base}/api/sampark/by-phone/${encodeURIComponent(user.phone)}`;
+        const pRes = await fetchWithRetry(phoneUrl, {
+          headers: { 'Bypass-Tunnel-Reminder': 'true' },
+        });
+        const pData = await pRes.json().catch(() => null);
+        if (pRes.ok && pData?.grievances && Array.isArray(pData.grievances)) {
+          setGrievances(pData.grievances);
+          return;
+        }
+      }
       setGrievances([]);
     } catch (e) {
-      console.log('Error fetching user grievances:', e);
+      console.log('Error fetching grievances:', e);
       setGrievances([]);
     } finally {
       setIsLoading(false);
@@ -427,15 +453,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   };
 
   useEffect(() => {
+    fetchGrievances();
     if (isCallCenter) {
       fetchCallCenterQueue();
     } else if (isAdmin) {
       fetchAdminData();
-    } else if (isOfficer) {
-      fetchGrievances();
-      handleInspectGrievance('RAJ-2024-88421');
-    } else {
-      fetchGrievances();
     }
   }, [serverUrl, user.phone, user.role]);
 
@@ -1134,24 +1156,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               {/* Quick Grievance Select Chips */}
               <View style={styles.quickChipsRow}>
                 <TouchableOpacity
-                  style={styles.chipBtn}
+                  style={[styles.chipBtn, !inspectGrievanceId && { backgroundColor: '#00a884' }]}
+                  onPress={() => {
+                    setInspectGrievanceId('');
+                    setInspectedGrievance(null);
+                    setInspectError(null);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.chipBtnText, !inspectGrievanceId && { color: '#ffffff', fontWeight: '700' }]}>
+                    🌐 All ({grievances.length})
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.chipBtn, inspectGrievanceId === 'RAJ-2024-88421' && { backgroundColor: '#00a884' }]}
                   onPress={() => {
                     setInspectGrievanceId('RAJ-2024-88421');
                     handleInspectGrievance('RAJ-2024-88421');
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.chipBtnText}>💧 RAJ-2024-88421 (Water)</Text>
+                  <Text style={[styles.chipBtnText, inspectGrievanceId === 'RAJ-2024-88421' && { color: '#ffffff', fontWeight: '700' }]}>
+                    💧 RAJ-2024-88421
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.chipBtn}
+                  style={[styles.chipBtn, inspectGrievanceId === 'RAJ-2024-71205' && { backgroundColor: '#00a884' }]}
                   onPress={() => {
                     setInspectGrievanceId('RAJ-2024-71205');
                     handleInspectGrievance('RAJ-2024-71205');
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.chipBtnText}>📜 RAJ-2024-71205 (Pension)</Text>
+                  <Text style={[styles.chipBtnText, inspectGrievanceId === 'RAJ-2024-71205' && { color: '#ffffff', fontWeight: '700' }]}>
+                    📜 RAJ-2024-71205
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -1231,7 +1270,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <View style={styles.listSection}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionHeading}>
-                  Cases ({grievances.length})
+                  Cases ({filteredGrievances.length})
                 </Text>
                 <TouchableOpacity onPress={fetchGrievances} activeOpacity={0.7}>
                   <Text style={styles.refreshLink}>Refresh ↻</Text>
@@ -1243,21 +1282,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   <ActivityIndicator color="#00a884" size="small" />
                   <Text style={styles.loadingText}>Loading cases...</Text>
                 </View>
-              ) : grievances.length === 0 ? (
+              ) : filteredGrievances.length === 0 ? (
                 <View style={styles.emptyCard}>
                   <Text style={styles.emptyIcon}>📂</Text>
                   <Text style={styles.emptyTitle}>
-                    {user.role === 'citizen' ? 'No Cases Found' : 'No Active Cases'}
+                    {inspectGrievanceId ? 'No Matching Cases' : 'No Active Cases'}
                   </Text>
                   <Text style={styles.emptyDesc}>
-                    {user.role === 'citizen'
-                      ? `No grievances registered for +91 ${user.phone.slice(-10)}`
-                      : 'No active cases in this jurisdiction.'}
+                    {inspectGrievanceId
+                      ? `No grievance found matching "${inspectGrievanceId}".`
+                      : 'No cases currently registered in the database.'}
                   </Text>
+                  {inspectGrievanceId ? (
+                    <TouchableOpacity
+                      style={[styles.chipBtn, { alignSelf: 'center', marginTop: 12, backgroundColor: '#00a884' }]}
+                      onPress={() => {
+                        setInspectGrievanceId('');
+                        setInspectedGrievance(null);
+                        setInspectError(null);
+                      }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>Show All Cases</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ) : (
-                grievances.map((item) => (
-                  <View key={item.grievanceId} style={styles.caseCard}>
+                filteredGrievances.map((item) => (
+                  <TouchableOpacity
+                    key={item.grievanceId}
+                    style={styles.caseCard}
+                    activeOpacity={0.9}
+                    onPress={() => {
+                      setInspectGrievanceId(item.grievanceId);
+                      handleInspectGrievance(item.grievanceId);
+                    }}
+                  >
                     <View style={styles.caseHeader}>
                       <View style={styles.caseIdBadge}>
                         <Text style={styles.caseIdText}>{item.grievanceId}</Text>
@@ -1275,34 +1334,49 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       </Text>
                     )}
 
-                    {item.assignedEmployee && (
-                      <Text style={styles.officerName}>
-                        👮 {item.assignedEmployee.name} ({item.assignedEmployee.designation})
+                    {item.citizen && (
+                      <Text style={[styles.officerName, { color: '#8696a0', marginTop: 3 }]}>
+                        👤 Citizen: {item.citizen.name} ({item.citizen.phone})
                       </Text>
                     )}
 
-                    {/* Call facility strictly for officers */}
-                    {isOfficer ? (
+                    {item.assignedEmployee && (
+                      <Text style={[styles.officerName, { marginTop: 2 }]}>
+                        👮 Officer: {item.assignedEmployee.name} ({item.assignedEmployee.designation})
+                      </Text>
+                    )}
+
+                    {/* Action buttons */}
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
                       <TouchableOpacity
-                        style={[styles.startHearingBtn, isJoining && styles.btnDisabled]}
-                        onPress={() => handleConnectHearing(item.grievanceId, item)}
-                        disabled={isJoining}
+                        style={[styles.inspectBtn, { flex: 1, height: 42 }]}
+                        onPress={() => {
+                          setInspectGrievanceId(item.grievanceId);
+                          handleInspectGrievance(item.grievanceId);
+                        }}
                         activeOpacity={0.8}
                       >
-                        {isJoining ? (
-                          <ActivityIndicator color="#111b21" size="small" />
-                        ) : (
-                          <Text style={styles.startHearingBtnText}>
-                            📞 Start Video Call
-                          </Text>
-                        )}
+                        <Text style={styles.inspectBtnText}>🔍 View Details</Text>
                       </TouchableOpacity>
-                    ) : (
-                      <View style={styles.awaitingCallBadge}>
-                        <Text style={styles.awaitingCallTitle}>⏳ Waiting for Magistrate Call</Text>
-                      </View>
-                    )}
-                  </View>
+
+                      {isOfficer ? (
+                        <TouchableOpacity
+                          style={[styles.startHearingBtn, { flex: 1.2, marginTop: 0, height: 42 }, isJoining && styles.btnDisabled]}
+                          onPress={() => handleConnectHearing(item.grievanceId, item)}
+                          disabled={isJoining}
+                          activeOpacity={0.8}
+                        >
+                          {isJoining ? (
+                            <ActivityIndicator color="#111b21" size="small" />
+                          ) : (
+                            <Text style={styles.startHearingBtnText}>
+                              📞 Start Video Call
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  </TouchableOpacity>
                 ))
               )}
             </View>
@@ -1344,7 +1418,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         <TouchableOpacity
           style={styles.bottomTabItem}
-          onPress={() => setCurrentTab('cases')}
+          onPress={() => {
+            setCurrentTab('cases');
+            if (grievances.length === 0) {
+              fetchGrievances();
+            }
+          }}
           activeOpacity={0.7}
         >
           <View

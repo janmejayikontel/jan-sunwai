@@ -436,6 +436,34 @@ function seedInitialData(): void {
       '2024-09-08'
     );
 
+    insertGrievance.run(
+      'RAJ-2024-55102',
+      'Burnt distribution transformer causing 10-day power outage — Sanganer Rural',
+      '11kV agricultural distribution transformer burnt out following lightning surge. Over 40 tubewells non-functional. Farmers unable to irrigate standing crops.',
+      'Energy & Discom (JVVNL) — Rural Electricity',
+      'Gram Sanganer Rural, Jaipur',
+      'Jaipur',
+      'Under Investigation',
+      'cit-001',
+      'emp-003',
+      '2024-09-01',
+      '2024-09-12'
+    );
+
+    insertGrievance.run(
+      'RAJ-2024-63914',
+      'PMGSY connecting road washed out during monsoon — Gudamalani, Barmer',
+      'Main PMGSY black-top road washed out near culvert km 4/200. Three villages completely cut off from Tehsil headquarters. Ambulance access compromised.',
+      'Public Works Department (PWD) — Road Infrastructure',
+      'Connecting Road Gudamalani, Barmer',
+      'Barmer',
+      'Pending Hearing',
+      'cit-002',
+      'emp-006',
+      '2024-09-05',
+      '2024-09-14'
+    );
+
     // ─── 5. Citizen KYC Identity Verifications ────────────────────
     insertVerification.run('cit-001', 'JA-88492011', '7328', 'verified', 'rep-001', '2024-09-12 11:30:00', 'Jan Aadhaar and Aadhaar matched with live phone record.');
     insertVerification.run('cit-002', 'JA-10928472', '4033', 'pending', null, null, 'Awaiting document upload from Tehsil office.');
