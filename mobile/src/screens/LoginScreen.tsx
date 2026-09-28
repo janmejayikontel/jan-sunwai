@@ -300,47 +300,39 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#020617" />
+      <StatusBar barStyle="light-content" backgroundColor="#111b21" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.container}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          {/* Top Bar with Discreet Gear Icon */}
+          {/* Top Bar with Minimal Header & Discreet Settings */}
           <View style={styles.topBarRow}>
-            <View style={{ width: 40 }} />
+            <View style={{ width: 36 }} />
             <View style={styles.header}>
-              <View style={styles.emblemContainer}>
-                <Text style={styles.emblemIcon}>🏛️</Text>
+              <View style={styles.brandIconCircle}>
+                <Text style={styles.brandIcon}>🏛️</Text>
               </View>
-              <Text style={styles.hindiTitle}>संपर्क लाइट</Text>
-              <Text style={styles.englishTitle}>Sampark Lite</Text>
-              <Text style={styles.subtitle}>जन सुनवाई • Government of Rajasthan</Text>
+              <Text style={styles.appTitle}>Jan Sunwai</Text>
+              <Text style={styles.appSubtitle}>
+                {step === 'phone' ? 'Enter your phone number to continue' : `Verify +91 ${phone}`}
+              </Text>
             </View>
             <TouchableOpacity
               style={styles.gearBtn}
               onPress={() => setShowConfig(!showConfig)}
               activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Text style={styles.gearIcon}>⚙️</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Login Card */}
+          {/* WhatsApp-Style Clean Card */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>
-              {step === 'phone' ? 'Citizen & Officer Login' : 'Enter OTP Verification'}
-            </Text>
-            <Text style={styles.cardDesc}>
-              {step === 'phone'
-                ? 'Enter your 10-digit mobile number to access the hearing portal'
-                : `We have sent a verification code to +91 ${phone}`}
-            </Text>
-
             {step === 'phone' ? (
-              // Step 1: Phone input
+              // Step 1: Clean Phone Input Form
               <View style={styles.formGroup}>
-                <Text style={styles.inputLabel}>Mobile Number (मोबाइल नंबर)</Text>
                 <View style={styles.phoneInputRow}>
                   <View style={styles.countryCodeBox}>
                     <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
@@ -349,8 +341,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                     style={styles.phoneInput}
                     value={phone}
                     onChangeText={setPhone}
-                    placeholder="Enter 10-digit number"
-                    placeholderTextColor="#64748b"
+                    placeholder="Phone number"
+                    placeholderTextColor="#8696a0"
                     keyboardType="phone-pad"
                     maxLength={10}
                     autoFocus
@@ -367,22 +359,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   activeOpacity={0.8}
                 >
                   {isLoading ? (
-                    <ActivityIndicator color="#ffffff" />
+                    <ActivityIndicator color="#ffffff" size="small" />
                   ) : (
-                    <Text style={styles.primaryButtonText}>Get OTP (ओटीपी प्राप्त करें) ➔</Text>
+                    <Text style={styles.primaryButtonText}>Next ➔</Text>
                   )}
                 </TouchableOpacity>
 
-                {/* Clean Quick Login Chips */}
+                {/* Sleek Demo Role Chips */}
                 <View style={styles.quickSection}>
-                  <Text style={styles.quickSectionTitle}>QUICK SELECT DEMO ROLE</Text>
+                  <Text style={styles.quickSectionTitle}>QUICK DEMO ACCOUNTS</Text>
                   <View style={styles.quickGrid}>
                     <TouchableOpacity
                       style={[styles.quickChip, phone === '9829012345' && styles.quickChipActive]}
                       onPress={() => setPhone('9829012345')}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.quickChipRole}>🏛️ Officer / Collector</Text>
+                      <Text style={styles.quickChipRole}>🏛️ Collector</Text>
                       <Text style={styles.quickChipNum}>9829012345</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -398,7 +390,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                       onPress={() => setPhone('9999999999')}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.quickChipRole}>🛡️ Super Admin</Text>
+                      <Text style={styles.quickChipRole}>🛡️ Admin</Text>
                       <Text style={styles.quickChipNum}>9999999999</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -406,7 +398,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                       onPress={() => setPhone('9337453714')}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.quickChipRole}>👮 Patwari (Mrityunjay)</Text>
+                      <Text style={styles.quickChipRole}>👮 Patwari</Text>
                       <Text style={styles.quickChipNum}>9337453714</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -414,30 +406,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                       onPress={() => setPhone('8888888888')}
                       activeOpacity={0.7}
                     >
-                      <Text style={styles.quickChipRole}>🎧 181 Call Centre</Text>
+                      <Text style={styles.quickChipRole}>🎧 181 Support</Text>
                       <Text style={styles.quickChipNum}>8888888888</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
               </View>
             ) : (
-              // Step 2: OTP input
+              // Step 2: Clean WhatsApp-Style OTP Screen
               <View style={styles.formGroup}>
                 {detectedUser ? (
-                  <View
-                    style={[
-                      styles.detectedCard,
-                      detectedUser.role === 'officer'
-                        ? styles.detectedOfficer
-                        : detectedUser.role === 'admin'
-                        ? styles.detectedAdmin
-                        : (detectedUser.role === 'call_center' || detectedUser.role === 'employee')
-                        ? styles.detectedEmployee
-                        : styles.detectedCitizen,
-                    ]}
-                  >
-                    <View style={styles.detectedHeaderRow}>
-                      <Text style={styles.detectedIcon}>
+                  <View style={styles.detectedUserCard}>
+                    <View style={styles.detectedAvatar}>
+                      <Text style={styles.detectedAvatarText}>
                         {detectedUser.role === 'officer'
                           ? '🏛️'
                           : detectedUser.role === 'admin'
@@ -446,43 +427,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                           ? '🎧'
                           : '👤'}
                       </Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.detectedName}>{detectedUser.name}</Text>
-                        <Text style={styles.detectedDesig}>{detectedUser.designation}</Text>
-                        {detectedUser.department && (
-                          <Text style={styles.detectedDept}>🏢 {detectedUser.department}</Text>
-                        )}
-                      </View>
                     </View>
-                    <View style={styles.detectedRoleTag}>
-                      <Text style={styles.detectedRoleTagText}>
-                        {detectedUser.role === 'officer'
-                          ? '🏛️ OFFICIAL / DISTRICT MAGISTRATE'
-                          : detectedUser.role === 'admin'
-                          ? '🛡️ SUPER ADMIN / SYSTEM OVERSIGHT'
-                          : (detectedUser.role === 'call_center' || detectedUser.role === 'employee')
-                          ? '🎧 181 CALL CENTRE REPRESENTATIVE'
-                          : '👤 REGISTERED CITIZEN'}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.detectedUserName}>{detectedUser.name}</Text>
+                      <Text style={styles.detectedUserSub}>
+                        {detectedUser.designation} {detectedUser.department ? `• ${detectedUser.department}` : ''}
                       </Text>
                     </View>
+                    <View style={styles.rolePill}>
+                      <Text style={styles.rolePillText}>{detectedUser.role.toUpperCase()}</Text>
+                    </View>
                   </View>
-                ) : (
-                  <View style={styles.newCitizenCard}>
-                    <Text style={styles.newCitizenText}>
-                      👤 New Citizen Registration (Auto-linking upon OTP verify)
-                    </Text>
-                  </View>
-                )}
+                ) : null}
 
                 <View style={styles.otpHeaderRow}>
-                  <Text style={styles.inputLabel}>Enter 6-Digit OTP</Text>
+                  <Text style={styles.otpLabel}>Enter 6-digit code</Text>
                   <TouchableOpacity
                     onPress={() => {
                       setStep('phone');
                       setOtp('');
                     }}
                   >
-                    <Text style={styles.changePhoneText}>Change Number</Text>
+                    <Text style={styles.changePhoneText}>Wrong number?</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -500,11 +466,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 {devOtpHint && (
                   <View style={styles.hintBox}>
                     <Text style={styles.hintText}>
-                      🔑 Demo OTP: <Text style={styles.hintBold}>{devOtpHint}</Text>
+                      Demo Code: <Text style={styles.hintBold}>{devOtpHint}</Text>
                     </Text>
                     <TouchableOpacity
                       onPress={() => setOtp(devOtpHint)}
                       style={styles.hintFillBtn}
+                      activeOpacity={0.7}
                     >
                       <Text style={styles.hintFillText}>Auto-Fill</Text>
                     </TouchableOpacity>
@@ -518,9 +485,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   activeOpacity={0.8}
                 >
                   {isLoading ? (
-                    <ActivityIndicator color="#ffffff" />
+                    <ActivityIndicator color="#ffffff" size="small" />
                   ) : (
-                    <Text style={styles.primaryButtonText}>Verify & Proceed ➔</Text>
+                    <Text style={styles.primaryButtonText}>Verify & Proceed</Text>
                   )}
                 </TouchableOpacity>
 
@@ -528,8 +495,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   style={styles.resendBtn}
                   onPress={handleSendOtp}
                   disabled={isLoading}
+                  activeOpacity={0.7}
                 >
-                  <Text style={styles.resendText}>Didn't receive code? Resend OTP</Text>
+                  <Text style={styles.resendText}>Didn't receive code? Resend SMS</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -543,19 +511,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 value={serverBase}
                 onChangeText={setServerBase}
                 placeholder="https://your-server.com"
-                placeholderTextColor="#64748b"
+                placeholderTextColor="#8696a0"
                 autoCapitalize="none"
                 autoCorrect={false}
               />
             </View>
           )}
 
-          {/* Footer Helpline */}
+          {/* Clean WhatsApp Style Footer */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              Rajasthan Sampark Toll-Free Helpline: <Text style={styles.helplineText}>181</Text>
-            </Text>
-            <Text style={styles.securityText}>🔒 256-Bit E2EE Encrypted Video Stream</Text>
+            <Text style={styles.securityText}>🔒 End-to-end encrypted</Text>
+            <Text style={styles.footerText}>Helpline: 181</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -572,14 +538,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             <View style={styles.modalHeaderRow}>
               <Text style={styles.modalHeaderIcon}>🛡️</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Administrator PIN Gate</Text>
-                <Text style={styles.modalSub}>Restricted Administrative Access</Text>
+                <Text style={styles.modalTitle}>Admin Access</Text>
+                <Text style={styles.modalSub}>Enter 4-digit security PIN</Text>
               </View>
             </View>
-
-            <Text style={styles.modalPrompt}>
-              Enter the 4-digit security PIN to access the Super Admin control profile:
-            </Text>
 
             <TextInput
               style={styles.modalPinInput}
@@ -589,7 +551,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 setAdminPinError('');
               }}
               placeholder="• • • •"
-              placeholderTextColor="#64748b"
+              placeholderTextColor="#8696a0"
               keyboardType="number-pad"
               maxLength={4}
               secureTextEntry
@@ -618,7 +580,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 style={styles.modalConfirmBtn}
                 onPress={handleVerifyAdminPin}
               >
-                <Text style={styles.modalConfirmText}>Verify PIN ➔</Text>
+                <Text style={styles.modalConfirmText}>Verify</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -631,7 +593,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#020617',
+    backgroundColor: '#111b21',
   },
   container: {
     flex: 1,
@@ -643,440 +605,371 @@ const styles = StyleSheet.create({
   },
   topBarRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 24,
     width: '100%',
   },
   gearBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   gearIcon: {
-    fontSize: 18,
+    fontSize: 16,
+    color: '#8696a0',
   },
   header: {
     flex: 1,
     alignItems: 'center',
   },
-  emblemContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#0f172a',
-    borderWidth: 1.5,
-    borderColor: '#334155',
+  brandIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#202c33',
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  emblemIcon: {
-    fontSize: 32,
-  },
-  hindiTitle: {
+  brandIcon: {
     fontSize: 26,
-    fontWeight: '800',
-    color: '#f8fafc',
-    letterSpacing: 0.5,
   },
-  englishTitle: {
-    fontSize: 16,
+  appTitle: {
+    fontSize: 22,
     fontWeight: '700',
-    color: '#38bdf8',
-    marginTop: 2,
+    color: '#e9edef',
     letterSpacing: 0.3,
   },
-  subtitle: {
-    fontSize: 12,
-    color: '#94a3b8',
+  appSubtitle: {
+    fontSize: 13,
+    color: '#8696a0',
     marginTop: 4,
+    textAlign: 'center',
   },
   card: {
-    backgroundColor: '#0f172a',
-    borderRadius: 20,
-    padding: 24,
+    backgroundColor: '#202c33',
+    borderRadius: 16,
+    padding: 20,
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: 'rgba(134, 150, 160, 0.15)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#f8fafc',
-    marginBottom: 6,
-  },
-  cardDesc: {
-    fontSize: 13,
-    color: '#94a3b8',
-    marginBottom: 20,
-    lineHeight: 18,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   formGroup: {
     width: '100%',
   },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#cbd5e1',
-    marginBottom: 8,
-  },
   phoneInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   countryCodeBox: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#111b21',
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 12,
+    borderColor: '#2a3942',
+    borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 14,
+    paddingVertical: 13,
     marginRight: 8,
   },
   countryCodeText: {
-    color: '#f8fafc',
+    color: '#e9edef',
     fontSize: 15,
     fontWeight: '600',
   },
   phoneInput: {
     flex: 1,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#111b21',
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: '#ffffff',
+    borderColor: '#2a3942',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    color: '#e9edef',
     fontSize: 16,
+    fontWeight: '500',
+  },
+  primaryButton: {
+    backgroundColor: '#00a884',
+    borderRadius: 22,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  buttonDisabled: {
+    opacity: 0.45,
+  },
+  primaryButtonText: {
+    color: '#111b21',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  quickSection: {
+    marginTop: 18,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#2a3942',
+  },
+  quickSectionTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#8696a0',
+    letterSpacing: 0.8,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  quickGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'space-between',
+  },
+  quickChip: {
+    width: '48%',
+    backgroundColor: '#111b21',
+    borderWidth: 1,
+    borderColor: '#2a3942',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  quickChipActive: {
+    borderColor: '#00a884',
+    backgroundColor: 'rgba(0, 168, 132, 0.1)',
+  },
+  quickChipRole: {
+    fontSize: 11,
     fontWeight: '600',
-    letterSpacing: 1,
+    color: '#e9edef',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  quickChipNum: {
+    fontSize: 11,
+    color: '#00a884',
+    fontWeight: '500',
+  },
+  detectedUserCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#2a3942',
+  },
+  detectedAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#202c33',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  detectedAvatarText: {
+    fontSize: 18,
+  },
+  detectedUserName: {
+    color: '#e9edef',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  detectedUserSub: {
+    color: '#8696a0',
+    fontSize: 11,
+    marginTop: 1,
+  },
+  rolePill: {
+    backgroundColor: 'rgba(0, 168, 132, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  rolePillText: {
+    color: '#00a884',
+    fontSize: 10,
+    fontWeight: '700',
   },
   otpHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+  },
+  otpLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8696a0',
   },
   changePhoneText: {
-    color: '#38bdf8',
-    fontSize: 12,
+    color: '#00a884',
+    fontSize: 13,
     fontWeight: '600',
   },
   otpInput: {
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: '#0284c7',
-    borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: '#111b21',
+    borderWidth: 1.5,
+    borderColor: '#00a884',
+    borderRadius: 10,
+    paddingVertical: 12,
     textAlign: 'center',
-    color: '#ffffff',
+    color: '#e9edef',
     fontSize: 22,
     fontWeight: '700',
-    letterSpacing: 8,
-    marginBottom: 16,
+    letterSpacing: 10,
+    marginBottom: 14,
   },
   hintBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(2, 132, 199, 0.1)',
+    backgroundColor: 'rgba(0, 168, 132, 0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(2, 132, 199, 0.3)',
-    borderRadius: 10,
+    borderColor: 'rgba(0, 168, 132, 0.25)',
+    borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 16,
+    paddingVertical: 7,
+    marginBottom: 14,
   },
   hintText: {
-    color: '#7dd3fc',
+    color: '#8696a0',
     fontSize: 12,
   },
   hintBold: {
-    fontWeight: '800',
-    color: '#38bdf8',
+    fontWeight: '700',
+    color: '#00a884',
   },
   hintFillBtn: {
-    backgroundColor: '#0284c7',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
+    backgroundColor: '#00a884',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
   },
   hintFillText: {
-    color: '#ffffff',
+    color: '#111b21',
     fontSize: 11,
     fontWeight: '700',
-  },
-  primaryButton: {
-    backgroundColor: '#059669',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.5,
   },
   resendBtn: {
     alignItems: 'center',
     marginTop: 14,
+    paddingVertical: 6,
   },
   resendText: {
-    color: '#64748b',
-    fontSize: 12,
-    textDecorationLine: 'underline',
-  },
-  configToggle: {
-    alignItems: 'center',
-    marginTop: 24,
-    paddingVertical: 8,
-  },
-  configToggleText: {
-    color: '#64748b',
-    fontSize: 12,
+    color: '#00a884',
+    fontSize: 13,
+    fontWeight: '500',
   },
   configBox: {
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: '#202c33',
+    borderRadius: 10,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#1e293b',
-    marginTop: 8,
+    borderColor: '#2a3942',
+    marginTop: 12,
   },
   configLabel: {
-    color: '#94a3b8',
+    color: '#8696a0',
     fontSize: 12,
     marginBottom: 6,
   },
   configInput: {
-    backgroundColor: '#1e293b',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    backgroundColor: '#111b21',
+    borderRadius: 6,
+    paddingHorizontal: 10,
     paddingVertical: 8,
-    color: '#ffffff',
+    color: '#e9edef',
     fontSize: 13,
     borderWidth: 1,
-    borderColor: '#334155',
-  },
-  serverSettingsToggle: {
-    alignItems: 'center',
-    marginTop: 18,
-    paddingVertical: 6,
-  },
-  serverSettingsToggleText: {
-    color: '#38bdf8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  quickUrlRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 10,
-  },
-  quickUrlBtn: {
-    flex: 1,
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 8,
-    paddingVertical: 6,
-    alignItems: 'center',
-  },
-  quickUrlBtnText: {
-    color: '#94a3b8',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  configHelp: {
-    color: '#64748b',
-    fontSize: 11,
-    marginTop: 6,
+    borderColor: '#2a3942',
   },
   footer: {
     alignItems: 'center',
-    marginTop: 32,
-  },
-  footerText: {
-    color: '#64748b',
-    fontSize: 12,
-  },
-  helplineText: {
-    color: '#f59e0b',
-    fontWeight: '700',
+    marginTop: 28,
   },
   securityText: {
-    fontSize: 11,
-    color: '#10b981',
-    marginTop: 6,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  detectedCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1.5,
-  },
-  detectedOfficer: {
-    borderColor: '#8b5cf6',
-    backgroundColor: 'rgba(139, 92, 246, 0.08)',
-  },
-  detectedAdmin: {
-    borderColor: '#ef4444',
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
-  },
-  detectedEmployee: {
-    borderColor: '#f59e0b',
-    backgroundColor: 'rgba(245, 158, 11, 0.08)',
-  },
-  detectedCitizen: {
-    borderColor: '#10b981',
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
-  },
-  detectedHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-  },
-  detectedIcon: {
-    fontSize: 28,
-  },
-  detectedName: {
-    color: '#f8fafc',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  detectedDesig: {
-    color: '#38bdf8',
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  detectedDept: {
-    color: '#94a3b8',
-    fontSize: 11,
-    marginTop: 2,
-  },
-  detectedRoleTag: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#0f172a',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  detectedRoleTagText: {
-    color: '#e2e8f0',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  newCitizenCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  newCitizenText: {
-    color: '#94a3b8',
     fontSize: 12,
+    color: '#00a884',
+    fontWeight: '500',
+  },
+  footerText: {
+    color: '#8696a0',
+    fontSize: 11,
+    marginTop: 4,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.85)',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 20,
   },
   modalBox: {
     width: '100%',
-    maxWidth: 380,
-    backgroundColor: '#0f172a',
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: '#ef4444',
-    padding: 22,
-    shadowColor: '#ef4444',
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 10,
+    maxWidth: 340,
+    backgroundColor: '#202c33',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
   },
   modalHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     marginBottom: 14,
+    gap: 10,
   },
   modalHeaderIcon: {
-    fontSize: 32,
+    fontSize: 24,
   },
   modalTitle: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#ffffff',
+    fontWeight: '700',
+    color: '#e9edef',
   },
   modalSub: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#f87171',
-    textTransform: 'uppercase',
-  },
-  modalPrompt: {
-    fontSize: 13,
-    color: '#cbd5e1',
-    lineHeight: 18,
-    marginBottom: 16,
+    fontSize: 12,
+    color: '#8696a0',
+    marginTop: 1,
   },
   modalPinInput: {
-    backgroundColor: '#020617',
+    backgroundColor: '#111b21',
     borderWidth: 1.5,
-    borderColor: '#38bdf8',
-    borderRadius: 12,
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#ffffff',
+    borderColor: '#00a884',
+    borderRadius: 8,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#e9edef',
     textAlign: 'center',
-    letterSpacing: 10,
-    paddingVertical: 12,
+    letterSpacing: 8,
+    paddingVertical: 10,
     marginBottom: 8,
   },
   modalErrorText: {
     fontSize: 12,
     color: '#f87171',
-    fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   modalHelpText: {
     fontSize: 11,
-    color: '#64748b',
+    color: '#8696a0',
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   modalBtnRow: {
     flexDirection: 'row',
@@ -1084,73 +977,27 @@ const styles = StyleSheet.create({
   },
   modalCancelBtn: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 10,
+    borderRadius: 20,
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     alignItems: 'center',
   },
   modalCancelText: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#94a3b8',
+    fontWeight: '600',
+    color: '#8696a0',
   },
   modalConfirmBtn: {
-    flex: 1.5,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#ef4444',
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#00a884',
     alignItems: 'center',
   },
   modalConfirmText: {
     fontSize: 13,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  quickSection: {
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#1e293b',
-  },
-  quickSectionTitle: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#64748b',
-    letterSpacing: 1,
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  quickGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  quickChip: {
-    flexBasis: '48%',
-    flexGrow: 1,
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-  },
-  quickChipActive: {
-    borderColor: '#38bdf8',
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-  },
-  quickChipRole: {
-    fontSize: 11,
     fontWeight: '700',
-    color: '#f8fafc',
-    marginBottom: 2,
-    textAlign: 'center',
-  },
-  quickChipNum: {
-    fontSize: 11,
-    color: '#38bdf8',
-    fontWeight: '600',
+    color: '#111b21',
   },
 });
 

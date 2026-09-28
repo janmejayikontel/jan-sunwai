@@ -82,6 +82,8 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
     >
       <Animated.View style={[styles.overlay, { opacity: fadeAnim }]}>
         <Animated.View style={[styles.card, { transform: [{ translateY: slideAnim }] }]}>
+          {/* Top header subtitle */}
+          <Text style={styles.topCallLabel}>Jan Sunwai Video Call</Text>
 
           {/* Pulse Ring + Avatar */}
           <View style={styles.avatarArea}>
@@ -91,46 +93,41 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
             </View>
           </View>
 
-          {/* Call label */}
-          <View style={styles.callTypeTag}>
-            <View style={styles.liveRingDot} />
-            <Text style={styles.callTypeText}>INCOMING VIDEO HEARING</Text>
-          </View>
-
-          {/* Caller name */}
+          {/* Caller name & designation */}
           <Text style={styles.callerName}>{incomingCall.callerName}</Text>
           <Text style={styles.callerDesig}>{incomingCall.callerDesignation || 'Presiding Officer'}</Text>
 
-          {/* Case info */}
+          {/* Case pill */}
           <View style={styles.caseBox}>
-            <Text style={styles.caseLabel}>CASE</Text>
-            <Text style={styles.caseId}>#{incomingCall.grievanceId}</Text>
+            <Text style={styles.caseId}>Case #{incomingCall.grievanceId}</Text>
             {!!incomingCall.title && (
               <Text style={styles.caseTitle} numberOfLines={2}>{incomingCall.title}</Text>
             )}
           </View>
 
-          {/* Action buttons */}
+          {/* WhatsApp Iconic Circular Call Action Buttons */}
           <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.declineBtn} onPress={onDecline} activeOpacity={0.8}>
-              {/* X icon */}
-              <View style={styles.iconX}>
-                <View style={[styles.xBar, { transform: [{ rotate: '45deg' }] }]} />
-                <View style={[styles.xBar, { transform: [{ rotate: '-45deg' }] }]} />
-              </View>
+            <View style={styles.actionBtnWrapper}>
+              <TouchableOpacity style={styles.declineBtn} onPress={onDecline} activeOpacity={0.8}>
+                <View style={styles.iconX}>
+                  <View style={[styles.xBar, { transform: [{ rotate: '45deg' }] }]} />
+                  <View style={[styles.xBar, { transform: [{ rotate: '-45deg' }] }]} />
+                </View>
+              </TouchableOpacity>
               <Text style={styles.declineTxt}>Decline</Text>
-            </TouchableOpacity>
+            </View>
 
-            <TouchableOpacity style={styles.acceptBtn} onPress={onAccept} activeOpacity={0.8}>
-              {/* Phone icon */}
-              <View style={styles.phoneIcon}>
-                <View style={styles.phoneBody} />
-              </View>
-              <Text style={styles.acceptTxt}>Join Hearing</Text>
-            </TouchableOpacity>
+            <View style={styles.actionBtnWrapper}>
+              <TouchableOpacity style={styles.acceptBtn} onPress={onAccept} activeOpacity={0.8}>
+                <View style={styles.phoneIcon}>
+                  <View style={styles.phoneBody} />
+                </View>
+              </TouchableOpacity>
+              <Text style={styles.acceptTxt}>Accept</Text>
+            </View>
           </View>
 
-          <Text style={styles.footNote}>जन सुनवाई • Government of Rajasthan</Text>
+          <Text style={styles.footNote}>🔒 End-to-end encrypted</Text>
         </Animated.View>
       </Animated.View>
     </Modal>
@@ -140,31 +137,38 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: 20,
   },
   card: {
     width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#0d1526',
-    borderRadius: 28,
-    padding: 28,
+    maxWidth: 340,
+    backgroundColor: '#111b21',
+    borderRadius: 24,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(56,189,248,0.25)',
-    shadowColor: '#38bdf8',
-    shadowOpacity: 0.2,
-    shadowRadius: 30,
-    elevation: 20,
+    borderColor: 'rgba(134, 150, 160, 0.2)',
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 15,
   },
-
-  // Avatar
+  topCallLabel: {
+    color: '#8696a0',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    marginBottom: 20,
+    textTransform: 'uppercase',
+  },
   avatarArea: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
     width: 96,
     height: 96,
   },
@@ -174,152 +178,117 @@ const styles = StyleSheet.create({
     height: 96,
     borderRadius: 48,
     borderWidth: 2,
-    borderColor: 'rgba(56,189,248,0.35)',
+    borderColor: 'rgba(0, 168, 132, 0.4)',
   },
   avatarCircle: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#1e40af',
+    backgroundColor: '#202c33',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2.5,
-    borderColor: '#38bdf8',
+    borderWidth: 2,
+    borderColor: '#00a884',
   },
   avatarText: {
-    color: '#fff',
-    fontSize: 26,
-    fontWeight: '800',
-    letterSpacing: 1,
+    color: '#00a884',
+    fontSize: 24,
+    fontWeight: '700',
   },
-
-  // Call type tag
-  callTypeTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-  },
-  liveRingDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#38bdf8',
-  },
-  callTypeText: {
-    color: '#38bdf8',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-  },
-
-  // Caller info
   callerName: {
-    color: '#f8fafc',
-    fontSize: 22,
-    fontWeight: '800',
+    color: '#e9edef',
+    fontSize: 20,
+    fontWeight: '700',
     textAlign: 'center',
     marginBottom: 4,
   },
   callerDesig: {
-    color: '#94a3b8',
+    color: '#8696a0',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
-
-  // Case box
   caseBox: {
     width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 14,
-    borderLeftWidth: 3,
-    borderLeftColor: '#f59e0b',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 24,
-  },
-  caseLabel: {
-    color: '#64748b',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1,
-    marginBottom: 3,
+    backgroundColor: '#202c33',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    marginBottom: 26,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.1)',
   },
   caseId: {
-    color: '#f59e0b',
-    fontSize: 15,
-    fontWeight: '800',
-    marginBottom: 3,
+    color: '#00a884',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 2,
   },
   caseTitle: {
-    color: '#cbd5e1',
-    fontSize: 12,
-    lineHeight: 18,
+    color: '#8696a0',
+    fontSize: 11,
+    textAlign: 'center',
   },
-
-  // Action buttons
   actionRow: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
     width: '100%',
-    gap: 12,
+    paddingHorizontal: 30,
     marginBottom: 18,
   },
-  declineBtn: {
-    flex: 1,
-    height: 56,
-    backgroundColor: '#7f1d1d',
-    borderRadius: 16,
+  actionBtnWrapper: {
     alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#ef4444',
     gap: 6,
   },
-  acceptBtn: {
-    flex: 1.5,
-    height: 56,
-    backgroundColor: '#064e3b',
-    borderRadius: 16,
+  declineBtn: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#ea0038',
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: '#10b981',
-    gap: 10,
-    shadowColor: '#10b981',
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
+    shadowColor: '#ea0038',
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  acceptBtn: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#00a884',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#00a884',
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
     elevation: 6,
   },
   declineTxt: {
-    color: '#fca5a5',
-    fontSize: 13,
-    fontWeight: '700',
+    color: '#ea0038',
+    fontSize: 12,
+    fontWeight: '600',
   },
   acceptTxt: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '800',
+    color: '#00a884',
+    fontSize: 12,
+    fontWeight: '600',
   },
-
-  // X icon
   iconX: {
-    width: 18,
-    height: 18,
+    width: 20,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   xBar: {
     position: 'absolute',
     width: 18,
-    height: 2.5,
-    backgroundColor: '#fca5a5',
+    height: 3,
+    backgroundColor: '#ffffff',
     borderRadius: 2,
   },
-
-  // Phone icon (simple)
   phoneIcon: {
     width: 22,
     height: 22,
@@ -327,17 +296,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   phoneBody: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2.5,
-    borderColor: '#34d399',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 3,
+    borderColor: '#ffffff',
     borderTopColor: 'transparent',
     transform: [{ rotate: '-45deg' }],
   },
-
   footNote: {
-    color: '#334155',
+    color: '#8696a0',
     fontSize: 11,
     textAlign: 'center',
   },

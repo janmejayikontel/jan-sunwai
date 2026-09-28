@@ -1120,7 +1120,7 @@ export const VideoHearingScreen: React.FC<VideoHearingScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#020617" />
+      <StatusBar barStyle="light-content" backgroundColor="#1f2c34" />
       <LiveKitRoom
         serverUrl={serverUrl}
         token={token}
@@ -1156,7 +1156,7 @@ export const VideoHearingScreen: React.FC<VideoHearingScreenProps> = ({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#020617',
+    backgroundColor: '#111b21',
   },
   container: {
     flex: 1,
@@ -1171,18 +1171,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#0f172a',
+    backgroundColor: '#1f2c34',
     borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
+    borderBottomColor: 'rgba(134, 150, 160, 0.15)',
   },
   headerTitle: {
-    color: '#ffffff',
-    fontSize: 16,
+    color: '#e9edef',
+    fontSize: 15,
     fontWeight: '700',
   },
   headerSub: {
-    color: '#94a3b8',
-    fontSize: 12,
+    color: '#8696a0',
+    fontSize: 11,
     marginTop: 2,
   },
   badgeLive: {
@@ -1190,24 +1190,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     backgroundColor: 'rgba(239, 68, 68, 0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 14,
   },
   liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#ef4444',
   },
   liveText: {
     color: '#ef4444',
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 10,
+    fontWeight: '700',
   },
   videoArea: {
     flex: 1,
-    backgroundColor: '#020617',
+    backgroundColor: '#111b21',
     overflow: 'hidden',
   },
   grid: {

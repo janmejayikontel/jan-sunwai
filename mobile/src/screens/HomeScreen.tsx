@@ -561,28 +561,35 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#020617" />
+      <StatusBar barStyle="light-content" backgroundColor="#1f2c34" />
       <ScrollView
         contentContainerStyle={styles.scroll}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#38bdf8" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00a884" />
         }
       >
-        {/* Top Bar */}
+        {/* WhatsApp-Style Clean Top App Bar */}
         <View style={styles.topHeader}>
           <View style={styles.topHeaderLeft}>
-            <Text style={styles.topEmblem}>🏛️</Text>
+            <View style={styles.topEmblemCircle}>
+              <Text style={styles.topEmblem}>🏛️</Text>
+            </View>
             <View>
-              <Text style={styles.topTitleHindi}>जन सुनवाई</Text>
-              <Text style={styles.topTitleEnglish}>Department of Administrative Reforms</Text>
+              <Text style={styles.topTitle}>Jan Sunwai</Text>
+              <Text style={styles.topSubtitle}>Rajasthan Portal</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.logoutBtn} onPress={onLogout}>
-            <Text style={styles.logoutBtnText}>Logout ⎋</Text>
-          </TouchableOpacity>
+          <View style={styles.topHeaderRight}>
+            <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh} activeOpacity={0.7}>
+              <Text style={styles.refreshBtnIcon}>↻</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.logoutBtn} onPress={onLogout} activeOpacity={0.7}>
+              <Text style={styles.logoutBtnText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* User Profile Card */}
+        {/* WhatsApp-Style Clean Profile Strip */}
         <View style={styles.profileCard}>
           <View style={styles.profileRow}>
             <View style={styles.avatar}>
@@ -591,33 +598,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </Text>
             </View>
             <View style={styles.profileInfo}>
-              <Text style={styles.greetingText}>नमस्ते (Welcome),</Text>
               <Text style={styles.userNameText}>{user.name}</Text>
-              {user.designation ? (
-                <Text style={styles.userDesigText}>🏛️ {user.designation}</Text>
-              ) : null}
-              {user.department ? (
-                <Text style={styles.userDeptText}>🏢 {user.department}</Text>
-              ) : null}
-              <Text style={styles.userPhoneText}>📱 {user.phone}</Text>
+              <Text style={styles.userDesigText}>
+                {user.designation || getRoleLabel(user.role)} {user.department ? `• ${user.department}` : ''}
+              </Text>
+              <Text style={styles.userPhoneText}>+91 {user.phone.replace(/\D/g, '').slice(-10)}</Text>
             </View>
-          </View>
-
-          <View style={styles.profileMetaRow}>
-            <View
-              style={[
-                styles.roleBadge,
-                {
-                  backgroundColor: `${getRoleBadgeColor(user.role)}22`,
-                  borderColor: getRoleBadgeColor(user.role),
-                },
-              ]}
-            >
-              <Text style={[styles.roleBadgeText, { color: getRoleBadgeColor(user.role) }]}>
-                {user.designation || getRoleLabel(user.role)}
+            <View style={styles.roleBadge}>
+              <Text style={styles.roleBadgeText}>
+                {getRoleLabel(user.role).toUpperCase()}
               </Text>
             </View>
-            <Text style={styles.districtText}>📍 {user.district || 'Rajasthan'}</Text>
           </View>
         </View>
 
@@ -1028,10 +1019,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           /* ─── ROLE VIEW 3: OFFICER / DISTRICT MAGISTRATE VIEW ─── */
           <View style={styles.officerInspectCard}>
             <View style={styles.officerInspectHeader}>
-              <Text style={styles.inspectHeading}>🔍 Grievance Inspection & Call</Text>
-              <Text style={styles.inspectSub}>
-                Enter Grievance ID to inspect case details and initiate Live Hearing:
-              </Text>
+              <Text style={styles.inspectHeading}>🔍 Inspect & Call Case</Text>
             </View>
 
             <View style={styles.inspectInputRow}>
@@ -1039,34 +1027,35 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 style={styles.inspectInput}
                 value={inspectGrievanceId}
                 onChangeText={setInspectGrievanceId}
-                placeholder="e.g. RAJ-2024-88421"
-                placeholderTextColor="#64748b"
+                placeholder="Case ID (e.g. RAJ-2024-88421)"
+                placeholderTextColor="#8696a0"
                 autoCapitalize="characters"
               />
               <TouchableOpacity
                 style={[styles.inspectBtn, isInspecting && styles.btnDisabled]}
                 onPress={() => handleInspectGrievance(inspectGrievanceId)}
                 disabled={isInspecting}
+                activeOpacity={0.8}
               >
                 {isInspecting ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
+                  <ActivityIndicator color="#111b21" size="small" />
                 ) : (
-                  <Text style={styles.inspectBtnText}>Inspect ➔</Text>
+                  <Text style={styles.inspectBtnText}>Search</Text>
                 )}
               </TouchableOpacity>
             </View>
 
             {/* Quick Grievance Select Chips */}
             <View style={styles.quickChipsRow}>
-              <Text style={styles.quickChipsLabel}>Quick Cases:</Text>
               <TouchableOpacity
                 style={styles.chipBtn}
                 onPress={() => {
                   setInspectGrievanceId('RAJ-2024-88421');
                   handleInspectGrievance('RAJ-2024-88421');
                 }}
+                activeOpacity={0.7}
               >
-                <Text style={styles.chipBtnText}>💧 RAJ-2024-88421 (PHED)</Text>
+                <Text style={styles.chipBtnText}>💧 RAJ-2024-88421 (Water)</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.chipBtn}
@@ -1074,6 +1063,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   setInspectGrievanceId('RAJ-2024-71205');
                   handleInspectGrievance('RAJ-2024-71205');
                 }}
+                activeOpacity={0.7}
               >
                 <Text style={styles.chipBtnText}>📜 RAJ-2024-71205 (Pension)</Text>
               </TouchableOpacity>
@@ -1100,50 +1090,27 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <Text style={styles.previewTitle}>{inspectedGrievance.title}</Text>
 
                 {inspectedGrievance.category && (
-                  <Text style={styles.previewCategory}>📁 {inspectedGrievance.category}</Text>
-                )}
-                {inspectedGrievance.location && (
-                  <Text style={styles.previewLocation}>📍 {inspectedGrievance.location}</Text>
+                  <Text style={styles.previewCategory}>📁 {inspectedGrievance.category} {inspectedGrievance.location ? `• 📍 ${inspectedGrievance.location}` : ''}</Text>
                 )}
 
                 {/* Participant Details */}
                 <View style={styles.partiesGrid}>
                   {inspectedGrievance.citizen && (
                     <View style={styles.partyBox}>
-                      <Text style={styles.partyBoxHeader}>👤 Citizen / Complainant</Text>
+                      <Text style={styles.partyBoxHeader}>Citizen</Text>
                       <Text style={styles.partyName}>{inspectedGrievance.citizen.name}</Text>
                       <Text style={styles.partyPhone}>📞 {inspectedGrievance.citizen.phone}</Text>
-                      {inspectedGrievance.citizen.village && (
-                        <Text style={styles.partyMeta}>
-                          🏡 {inspectedGrievance.citizen.village} ({inspectedGrievance.citizen.district})
-                        </Text>
-                      )}
                     </View>
                   )}
 
                   {inspectedGrievance.assignedEmployee && (
                     <View style={[styles.partyBox, styles.partyBoxOfficer]}>
-                      <Text style={styles.partyBoxHeader}>👮 Assigned Official</Text>
+                      <Text style={styles.partyBoxHeader}>Official</Text>
                       <Text style={styles.partyName}>{inspectedGrievance.assignedEmployee.name}</Text>
                       <Text style={styles.partyDesig}>{inspectedGrievance.assignedEmployee.designation}</Text>
-                      <Text style={styles.partyPhone}>📞 {inspectedGrievance.assignedEmployee.phone}</Text>
-                      {inspectedGrievance.assignedEmployee.department && (
-                        <Text style={styles.partyMeta}>
-                          🏢 {inspectedGrievance.assignedEmployee.department}
-                        </Text>
-                      )}
                     </View>
                   )}
                 </View>
-
-                {inspectedGrievance.description && (
-                  <View style={styles.descriptionBox}>
-                    <Text style={styles.descriptionLabel}>Grievance Summary:</Text>
-                    <Text style={styles.descriptionText} numberOfLines={3}>
-                      {inspectedGrievance.description}
-                    </Text>
-                  </View>
-                )}
 
                 {/* Direct 1-Tap Video Call Button */}
                 <TouchableOpacity
@@ -1153,16 +1120,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   activeOpacity={0.85}
                 >
                   {isJoining ? (
-                    <ActivityIndicator color="#ffffff" size="small" />
+                    <ActivityIndicator color="#111b21" size="small" />
                   ) : (
                     <View style={styles.primaryCallBtnContent}>
                       <Text style={styles.primaryCallIcon}>📞</Text>
-                      <View>
-                        <Text style={styles.primaryCallTitle}>Start Video Hearing Call</Text>
-                        <Text style={styles.primaryCallSub}>
-                          Rings {inspectedGrievance.citizen?.name} & {inspectedGrievance.assignedEmployee?.name}
-                        </Text>
-                      </View>
+                      <Text style={styles.primaryCallTitle}>Start Video Hearing</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -1173,15 +1135,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           /* ─── ROLE VIEW 4: CITIZEN / EMPLOYEE NOTICE CARD ─── */
           <View style={styles.citizenNoticeCard}>
             <View style={styles.noticeHeaderRow}>
-              <Text style={styles.noticeEmblem}>🏛️</Text>
+              <Text style={styles.noticeEmblem}>🔔</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.noticeTitle}>
-                  {user.role === 'employee' ? 'Official Hearing Portal' : 'Citizen Grievance Redressal'}
-                </Text>
+                <Text style={styles.noticeTitle}>Hearing Bench Active</Text>
                 <Text style={styles.noticeDesc}>
-                  {user.role === 'employee'
-                    ? 'Field officials are invited into video hearings by the District Collector or Presiding Officer.'
-                    : 'When the Presiding Officer conducts the hearing for your grievance, an incoming video call prompt will ring on your phone automatically.'}
+                  You will receive an incoming video call directly when your case is called.
                 </Text>
               </View>
             </View>
@@ -1193,28 +1151,28 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <View style={styles.listSection}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionHeading}>
-                📋 {isOfficer ? 'Jurisdiction Grievances' : user.role === 'employee' ? 'My Assigned Cases' : 'My Filed Grievances'}
+                Cases ({grievances.length})
               </Text>
-              <TouchableOpacity onPress={fetchGrievances}>
+              <TouchableOpacity onPress={fetchGrievances} activeOpacity={0.7}>
                 <Text style={styles.refreshLink}>Refresh ↻</Text>
               </TouchableOpacity>
             </View>
 
             {isLoading && grievances.length === 0 ? (
               <View style={styles.loadingBox}>
-                <ActivityIndicator color="#38bdf8" size="small" />
-                <Text style={styles.loadingText}>Loading grievances...</Text>
+                <ActivityIndicator color="#00a884" size="small" />
+                <Text style={styles.loadingText}>Loading cases...</Text>
               </View>
             ) : grievances.length === 0 ? (
               <View style={styles.emptyCard}>
                 <Text style={styles.emptyIcon}>📂</Text>
                 <Text style={styles.emptyTitle}>
-                  {user.role === 'citizen' ? 'No Grievances Found' : 'No Active Cases Assigned'}
+                  {user.role === 'citizen' ? 'No Cases Found' : 'No Active Cases'}
                 </Text>
                 <Text style={styles.emptyDesc}>
                   {user.role === 'citizen'
-                    ? `There are no grievances registered under +91 ${user.phone.slice(-10)}.`
-                    : 'No active cases currently mapped to your jurisdiction.'}
+                    ? `No grievances registered for +91 ${user.phone.slice(-10)}`
+                    : 'No active cases in this jurisdiction.'}
                 </Text>
               </View>
             ) : (
@@ -1232,20 +1190,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   <Text style={styles.caseTitle}>{item.title}</Text>
 
                   {item.category && (
-                    <Text style={styles.caseCategory}>📁 {item.category}</Text>
-                  )}
-
-                  {item.location && (
-                    <Text style={styles.caseLocation}>📍 {item.location}</Text>
+                    <Text style={styles.caseCategory}>
+                      📁 {item.category} {item.location ? `• 📍 ${item.location}` : ''}
+                    </Text>
                   )}
 
                   {item.assignedEmployee && (
-                    <View style={styles.officerBox}>
-                      <Text style={styles.officerLabel}>Assigned Official:</Text>
-                      <Text style={styles.officerName}>
-                        {item.assignedEmployee.name} ({item.assignedEmployee.designation})
-                      </Text>
-                    </View>
+                    <Text style={styles.officerName}>
+                      👮 {item.assignedEmployee.name} ({item.assignedEmployee.designation})
+                    </Text>
                   )}
 
                   {/* Call facility strictly for officers */}
@@ -1254,24 +1207,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       style={[styles.startHearingBtn, isJoining && styles.btnDisabled]}
                       onPress={() => handleConnectHearing(item.grievanceId, item)}
                       disabled={isJoining}
+                      activeOpacity={0.8}
                     >
                       {isJoining ? (
-                        <ActivityIndicator color="#ffffff" size="small" />
+                        <ActivityIndicator color="#111b21" size="small" />
                       ) : (
                         <Text style={styles.startHearingBtnText}>
-                          📞 Start Live Hearing Call ➔
+                          📞 Start Video Call
                         </Text>
                       )}
                     </TouchableOpacity>
                   ) : (
                     <View style={styles.awaitingCallBadge}>
-                      <Text style={styles.awaitingCallIcon}>🔔</Text>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.awaitingCallTitle}>Waiting for Hearing Call</Text>
-                        <Text style={styles.awaitingCallDesc}>
-                          The District Collector will call you into hearing when this case is called.
-                        </Text>
-                      </View>
+                      <Text style={styles.awaitingCallTitle}>⏳ Waiting for Magistrate Call</Text>
                     </View>
                   )}
                 </View>
@@ -1280,14 +1228,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </View>
         )}
 
-        {/* Sampark Helpline Info */}
+        {/* Minimal WhatsApp Footer */}
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>🏛️ Sampark Lite — Rajasthan</Text>
           <Text style={styles.infoDesc}>
-            Citizen Grievance Redressal & Live Video Hearing Platform. Native screen sharing and multi-party hearing enabled.
-          </Text>
-          <Text style={styles.helplineHighlight}>
-            Dial 181 (Toll-Free) for immediate telephonic assistance.
+            Jan Sunwai • Helpline: 181 • 🔒 End-to-end encrypted
           </Text>
         </View>
       </ScrollView>
@@ -1401,165 +1345,156 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#020617',
+    backgroundColor: '#111b21',
   },
   scroll: {
-    padding: 16,
+    padding: 14,
     paddingBottom: 40,
   },
   topHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingVertical: 6,
+    marginHorizontal: -14,
+    marginTop: -14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#1f2c34',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(134, 150, 160, 0.15)',
+    marginBottom: 14,
   },
   topHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
+  },
+  topEmblemCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#202c33',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   topEmblem: {
-    fontSize: 30,
+    fontSize: 18,
   },
-  topTitleHindi: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#f8fafc',
-    letterSpacing: 0.3,
+  topTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#e9edef',
   },
-  topTitleEnglish: {
-    fontSize: 12,
-    color: '#38bdf8',
-    fontWeight: '600',
+  topSubtitle: {
+    fontSize: 11,
+    color: '#8696a0',
+  },
+  topHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  refreshBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshBtnIcon: {
+    fontSize: 16,
+    color: '#00a884',
+    fontWeight: '700',
   },
   logoutBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: 16,
   },
   logoutBtnText: {
     color: '#f87171',
     fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.5,
   },
   profileCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: 18,
-    padding: 16,
+    backgroundColor: '#202c33',
+    borderRadius: 14,
+    padding: 14,
     borderWidth: 1,
-    borderColor: '#1e293b',
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    borderColor: 'rgba(134, 150, 160, 0.15)',
+    marginBottom: 14,
   },
   profileRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
   },
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(56, 189, 248, 0.1)',
-    borderWidth: 2,
-    borderColor: '#38bdf8',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#00a884',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
   },
   avatarText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#38bdf8',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111b21',
   },
   profileInfo: {
     flex: 1,
   },
-  greetingText: {
-    fontSize: 12,
-    color: '#64748b',
-  },
   userNameText: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#f8fafc',
-    marginTop: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#e9edef',
   },
   userDesigText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#38bdf8',
-    marginTop: 2,
-  },
-  userDeptText: {
-    fontSize: 11,
-    color: '#94a3b8',
+    fontSize: 12,
+    color: '#8696a0',
     marginTop: 1,
   },
   userPhoneText: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 3,
-  },
-  profileMetaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#1e293b',
+    fontSize: 11,
+    color: '#00a884',
+    marginTop: 2,
+    fontWeight: '500',
   },
   roleBadge: {
-    borderWidth: 1,
-    borderRadius: 6,
+    backgroundColor: 'rgba(0, 168, 132, 0.12)',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
+    borderRadius: 6,
   },
   roleBadgeText: {
-    fontSize: 11,
+    color: '#00a884',
+    fontSize: 10,
     fontWeight: '700',
   },
   districtText: {
-    fontSize: 12,
-    color: '#94a3b8',
-    fontWeight: '500',
+    fontSize: 11,
+    color: '#8696a0',
   },
 
   // Officer Inspector Styles
   officerInspectCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1.5,
-    borderColor: '#0284c7',
-    marginBottom: 20,
-    shadowColor: '#0284c7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 5,
+    backgroundColor: '#202c33',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(134, 150, 160, 0.15)',
+    marginBottom: 14,
   },
   officerInspectHeader: {
-    marginBottom: 12,
+    marginBottom: 10,
   },
   inspectHeading: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#f8fafc',
-  },
-  inspectSub: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 3,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#e9edef',
   },
   inspectInputRow: {
     flexDirection: 'row',
@@ -1568,52 +1503,44 @@ const styles = StyleSheet.create({
   },
   inspectInput: {
     flex: 1,
-    backgroundColor: '#1e293b',
+    backgroundColor: '#111b21',
     borderWidth: 1,
-    borderColor: '#334155',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    color: '#ffffff',
+    borderColor: '#2a3942',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    color: '#e9edef',
     fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontWeight: '500',
   },
   inspectBtn: {
-    backgroundColor: '#0284c7',
-    borderRadius: 10,
+    backgroundColor: '#00a884',
+    borderRadius: 8,
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   inspectBtnText: {
-    color: '#ffffff',
+    color: '#111b21',
     fontSize: 13,
     fontWeight: '700',
   },
   quickChipsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-    marginBottom: 12,
-  },
-  quickChipsLabel: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '600',
+    gap: 8,
+    marginBottom: 10,
   },
   chipBtn: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#111b21',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#2a3942',
     borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   chipBtnText: {
     fontSize: 11,
-    color: '#38bdf8',
+    color: '#00a884',
     fontWeight: '600',
   },
   errorBox: {
@@ -1629,410 +1556,396 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   previewBox: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#334155',
-    marginTop: 6,
+    borderColor: '#2a3942',
+    marginTop: 8,
   },
   previewHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   previewIdBadge: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: '#202c33',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   previewIdText: {
-    color: '#38bdf8',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  previewStatusBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  previewStatusText: {
-    color: '#fbbf24',
+    color: '#00a884',
     fontSize: 11,
     fontWeight: '700',
   },
-  previewTitle: {
-    color: '#f8fafc',
-    fontSize: 15,
+  previewStatusBadge: {
+    backgroundColor: 'rgba(0, 168, 132, 0.12)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  previewStatusText: {
+    color: '#00a884',
+    fontSize: 10,
     fontWeight: '700',
-    marginBottom: 6,
+  },
+  previewTitle: {
+    color: '#e9edef',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
   },
   previewCategory: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginBottom: 2,
+    color: '#8696a0',
+    fontSize: 11,
+    marginBottom: 8,
   },
   previewLocation: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginBottom: 10,
+    color: '#8696a0',
+    fontSize: 11,
+    marginBottom: 8,
   },
   partiesGrid: {
+    flexDirection: 'row',
     gap: 8,
     marginBottom: 10,
   },
   partyBox: {
-    backgroundColor: '#0f172a',
+    flex: 1,
+    backgroundColor: '#202c33',
     borderRadius: 8,
-    padding: 10,
+    padding: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#2a3942',
   },
   partyBoxOfficer: {
-    borderColor: 'rgba(59, 130, 246, 0.4)',
+    borderColor: 'rgba(0, 168, 132, 0.3)',
   },
   partyBoxHeader: {
-    fontSize: 11,
-    color: '#94a3b8',
-    fontWeight: '700',
-    marginBottom: 4,
+    fontSize: 10,
+    color: '#8696a0',
+    fontWeight: '600',
+    marginBottom: 2,
     textTransform: 'uppercase',
   },
   partyName: {
-    fontSize: 14,
-    color: '#f8fafc',
-    fontWeight: '700',
+    fontSize: 13,
+    color: '#e9edef',
+    fontWeight: '600',
   },
   partyDesig: {
-    fontSize: 12,
-    color: '#38bdf8',
-    fontWeight: '600',
+    fontSize: 11,
+    color: '#8696a0',
     marginTop: 1,
   },
   partyPhone: {
-    fontSize: 12,
-    color: '#10b981',
-    fontWeight: '600',
-    marginTop: 2,
+    fontSize: 11,
+    color: '#00a884',
+    fontWeight: '500',
+    marginTop: 1,
   },
   partyMeta: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
+    fontSize: 10,
+    color: '#8696a0',
+    marginTop: 1,
   },
   descriptionBox: {
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    borderRadius: 8,
+    backgroundColor: '#202c33',
+    borderRadius: 6,
     padding: 8,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
+    marginBottom: 8,
   },
   descriptionLabel: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '700',
+    fontSize: 10,
+    color: '#8696a0',
+    fontWeight: '600',
     marginBottom: 2,
   },
   descriptionText: {
-    fontSize: 12,
-    color: '#cbd5e1',
-    lineHeight: 16,
+    fontSize: 11,
+    color: '#e9edef',
+    lineHeight: 15,
   },
   primaryCallBtn: {
-    backgroundColor: '#059669',
-    borderRadius: 12,
-    paddingVertical: 12,
+    backgroundColor: '#00a884',
+    borderRadius: 20,
+    paddingVertical: 10,
     paddingHorizontal: 16,
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    alignItems: 'center',
+    marginTop: 8,
   },
   primaryCallBtnContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   primaryCallIcon: {
-    fontSize: 24,
+    fontSize: 16,
   },
   primaryCallTitle: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '800',
+    color: '#111b21',
+    fontSize: 14,
+    fontWeight: '700',
   },
   primaryCallSub: {
-    color: '#d1fae5',
+    color: '#111b21',
     fontSize: 11,
     marginTop: 1,
   },
 
   // Citizen / Employee Notice Card
   citizenNoticeCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: '#202c33',
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#1e293b',
-    marginBottom: 20,
+    borderColor: 'rgba(134, 150, 160, 0.15)',
+    marginBottom: 14,
   },
   noticeHeaderRow: {
     flexDirection: 'row',
-    gap: 12,
-    alignItems: 'flex-start',
+    gap: 10,
+    alignItems: 'center',
   },
   noticeEmblem: {
-    fontSize: 28,
+    fontSize: 22,
   },
   noticeTitle: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#f8fafc',
-    marginBottom: 4,
+    color: '#e9edef',
+    marginBottom: 2,
   },
   noticeDesc: {
-    fontSize: 12,
-    color: '#94a3b8',
-    lineHeight: 17,
+    fontSize: 11,
+    color: '#8696a0',
+    lineHeight: 15,
   },
 
   // List Section
   listSection: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   sectionHeading: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
-    color: '#f8fafc',
+    color: '#8696a0',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   refreshLink: {
     fontSize: 12,
-    color: '#38bdf8',
+    color: '#00a884',
     fontWeight: '600',
   },
   loadingBox: {
-    padding: 30,
-    alignItems: 'center',
-    gap: 8,
-  },
-  loadingText: {
-    color: '#64748b',
-    fontSize: 13,
-  },
-  emptyCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: 14,
     padding: 24,
     alignItems: 'center',
+    gap: 6,
+  },
+  loadingText: {
+    color: '#8696a0',
+    fontSize: 12,
+  },
+  emptyCard: {
+    backgroundColor: '#202c33',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: 'rgba(134, 150, 160, 0.15)',
   },
   emptyIcon: {
-    fontSize: 32,
-    marginBottom: 8,
+    fontSize: 28,
+    marginBottom: 6,
   },
   emptyTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    color: '#f8fafc',
-    marginBottom: 4,
+    color: '#e9edef',
+    marginBottom: 2,
   },
   emptyDesc: {
-    fontSize: 12,
-    color: '#64748b',
+    fontSize: 11,
+    color: '#8696a0',
     textAlign: 'center',
-    lineHeight: 17,
   },
   caseCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: 14,
-    padding: 16,
+    backgroundColor: '#202c33',
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#1e293b',
-    marginBottom: 12,
+    borderColor: 'rgba(134, 150, 160, 0.15)',
+    marginBottom: 10,
   },
   caseHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   caseIdBadge: {
-    backgroundColor: '#1e293b',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: '#111b21',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   caseIdText: {
-    color: '#38bdf8',
-    fontSize: 12,
+    color: '#00a884',
+    fontSize: 11,
     fontWeight: '700',
   },
   statusBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.15)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: 'rgba(0, 168, 132, 0.12)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   statusText: {
-    color: '#fbbf24',
-    fontSize: 11,
+    color: '#00a884',
+    fontSize: 10,
     fontWeight: '600',
   },
   caseTitle: {
     fontSize: 14,
-    fontWeight: '700',
-    color: '#f8fafc',
-    marginBottom: 6,
+    fontWeight: '600',
+    color: '#e9edef',
+    marginBottom: 4,
   },
   caseCategory: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginBottom: 2,
+    fontSize: 11,
+    color: '#8696a0',
+    marginBottom: 4,
   },
   caseLocation: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginBottom: 10,
+    fontSize: 11,
+    color: '#8696a0',
+    marginBottom: 4,
   },
   officerBox: {
-    backgroundColor: '#1e293b',
-    borderRadius: 8,
-    padding: 8,
-    marginBottom: 12,
+    backgroundColor: '#111b21',
+    borderRadius: 6,
+    padding: 6,
+    marginBottom: 6,
   },
   officerLabel: {
     fontSize: 10,
-    color: '#64748b',
+    color: '#8696a0',
     fontWeight: '600',
-    marginBottom: 2,
   },
   officerName: {
-    fontSize: 12,
-    color: '#e2e8f0',
-    fontWeight: '600',
+    fontSize: 11,
+    color: '#8696a0',
+    marginBottom: 6,
   },
   startHearingBtn: {
-    backgroundColor: '#059669',
-    borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: '#00a884',
+    borderRadius: 18,
+    paddingVertical: 9,
     alignItems: 'center',
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 3,
+    marginTop: 6,
   },
   startHearingBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.3,
+    color: '#111b21',
+    fontSize: 13,
+    fontWeight: '700',
   },
   awaitingCallBadge: {
-    flexDirection: 'row',
+    backgroundColor: '#111b21',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginTop: 4,
     alignItems: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(30, 41, 59, 0.7)',
-    borderRadius: 8,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#334155',
   },
   awaitingCallIcon: {
-    fontSize: 18,
+    fontSize: 16,
   },
   awaitingCallTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#fbbf24',
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8696a0',
   },
   awaitingCallDesc: {
-    fontSize: 11,
-    color: '#94a3b8',
+    fontSize: 10,
+    color: '#8696a0',
     marginTop: 1,
   },
   btnDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
 
   // Footer Card
   infoCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#1e293b',
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginTop: 6,
   },
   infoTitle: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#f8fafc',
-    marginBottom: 4,
+    color: '#e9edef',
+    marginBottom: 2,
   },
   infoDesc: {
-    fontSize: 12,
-    color: '#64748b',
-    lineHeight: 16,
-    marginBottom: 8,
+    fontSize: 11,
+    color: '#8696a0',
+    textAlign: 'center',
   },
   helplineHighlight: {
-    fontSize: 12,
-    color: '#38bdf8',
+    fontSize: 11,
+    color: '#00a884',
     fontWeight: '600',
   },
 
   // Role Container & Tabs
   roleContainer: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   tabBar: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
+    gap: 6,
+    marginBottom: 12,
   },
   tabBtn: {
     flex: 1,
-    backgroundColor: '#0f172a',
-    borderRadius: 10,
-    paddingVertical: 10,
+    backgroundColor: '#202c33',
+    borderRadius: 8,
+    paddingVertical: 8,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: 'rgba(134, 150, 160, 0.15)',
   },
   tabBtnActiveOrange: {
-    backgroundColor: '#f59e0b',
-    borderColor: '#d97706',
+    backgroundColor: '#00a884',
+    borderColor: '#00a884',
   },
   tabBtnActiveRed: {
-    backgroundColor: '#dc2626',
-    borderColor: '#b91c1c',
+    backgroundColor: '#00a884',
+    borderColor: '#00a884',
   },
   tabBtnText: {
-    color: '#94a3b8',
-    fontSize: 12,
+    color: '#8696a0',
+    fontSize: 11,
     fontWeight: '700',
   },
   tabBtnTextActive: {
-    color: '#ffffff',
+    color: '#111b21',
   },
   panelCard: {
-    backgroundColor: '#0f172a',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: '#202c33',
+    borderRadius: 14,
+    padding: 14,
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: 'rgba(134, 150, 160, 0.15)',
   },
   panelHeaderRow: {
     flexDirection: 'row',
@@ -2041,121 +1954,121 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   panelTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#f8fafc',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#e9edef',
   },
   panelSub: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginBottom: 14,
-    lineHeight: 16,
+    fontSize: 11,
+    color: '#8696a0',
+    marginBottom: 10,
+    lineHeight: 15,
   },
   refreshSmall: {
-    fontSize: 12,
-    color: '#38bdf8',
-    fontWeight: '700',
+    fontSize: 11,
+    color: '#00a884',
+    fontWeight: '600',
   },
   queueCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#2a3942',
   },
   queueHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   priorityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   priorityBadgeText: {
     color: '#ffffff',
     fontSize: 10,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   queueTimeText: {
-    color: '#94a3b8',
+    color: '#8696a0',
     fontSize: 11,
   },
   queueCitizenName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
-    color: '#f8fafc',
+    color: '#e9edef',
   },
   queuePhone: {
-    fontSize: 12,
-    color: '#38bdf8',
+    fontSize: 11,
+    color: '#00a884',
     marginTop: 2,
   },
   queueTitle: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 4,
-    marginBottom: 10,
+    fontSize: 11,
+    color: '#8696a0',
+    marginTop: 2,
+    marginBottom: 8,
   },
   dispatchBtn: {
-    backgroundColor: '#f59e0b',
-    borderRadius: 8,
-    paddingVertical: 10,
+    backgroundColor: '#00a884',
+    borderRadius: 16,
+    paddingVertical: 8,
     alignItems: 'center',
   },
   dispatchBtnText: {
-    color: '#000000',
+    color: '#111b21',
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   emptyCardSmall: {
-    padding: 20,
+    padding: 16,
     alignItems: 'center',
   },
   inputFieldLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#94a3b8',
-    marginTop: 10,
-    marginBottom: 4,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#8696a0',
+    marginTop: 8,
+    marginBottom: 3,
   },
   formInput: {
-    backgroundColor: '#1e293b',
+    backgroundColor: '#111b21',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    color: '#ffffff',
+    color: '#e9edef',
     fontSize: 13,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#2a3942',
   },
   primaryActionBtn: {
-    backgroundColor: '#059669',
-    borderRadius: 10,
-    paddingVertical: 12,
+    backgroundColor: '#00a884',
+    borderRadius: 18,
+    paddingVertical: 10,
     alignItems: 'center',
-    marginTop: 14,
+    marginTop: 12,
   },
   primaryActionBtnText: {
-    color: '#ffffff',
-    fontSize: 14,
+    color: '#111b21',
+    fontSize: 13,
     fontWeight: '700',
   },
   consultCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 14,
+    backgroundColor: '#111b21',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#2a3942',
   },
   consultName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#f8fafc',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#e9edef',
   },
   consultMeta: {
     fontSize: 12,
