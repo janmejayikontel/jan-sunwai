@@ -117,7 +117,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       let response: Response | null = null;
       let lastErr: any = null;
 
-      // Try with quick retry in case tunnel is momentarily waking up
+      // Try with quick retry in case tunnel is momentarily waking up or rate-limited
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           response = await fetch(url, {
@@ -128,14 +128,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             },
             body: JSON.stringify({ phone: cleanPhone }),
           });
-          if (response && response.status !== 502 && response.status !== 503 && response.status !== 504) {
+          if (
+            response &&
+            response.status !== 429 &&
+            response.status !== 502 &&
+            response.status !== 503 &&
+            response.status !== 504
+          ) {
             break;
           }
         } catch (netErr: any) {
           lastErr = netErr;
         }
         if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, 800));
+          const waitMs = response?.status === 429 ? 1500 : 800;
+          await new Promise((r) => setTimeout(r, waitMs));
         }
       }
 
@@ -149,6 +156,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         data = JSON.parse(resText);
       } catch (parseErr) {
         console.warn('[LoginScreen] Non-JSON response received:', resText.slice(0, 100));
+        if (response.status === 429) {
+          throw new Error('Server rate limit reached. Please wait a few seconds before requesting OTP again.');
+        }
         if (response.status === 502 || response.status === 503 || response.status === 504) {
           throw new Error('Sampark Lite server is currently waking up. Please tap "Get OTP" again in 2 seconds.');
         }
@@ -156,6 +166,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       }
 
       if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error('Too many requests. Please wait a few seconds before trying again.');
+        }
         throw new Error(data?.error || data?.message || 'Failed to send OTP. Check server connection.');
       }
 
@@ -215,14 +228,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               otp: cleanOtp,
             }),
           });
-          if (response && response.status !== 502 && response.status !== 503 && response.status !== 504) {
+          if (
+            response &&
+            response.status !== 429 &&
+            response.status !== 502 &&
+            response.status !== 503 &&
+            response.status !== 504
+          ) {
             break;
           }
         } catch (netErr: any) {
           lastErr = netErr;
         }
         if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, 800));
+          const waitMs = response?.status === 429 ? 1500 : 800;
+          await new Promise((r) => setTimeout(r, waitMs));
         }
       }
 
@@ -236,6 +256,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         data = JSON.parse(resText);
       } catch (parseErr) {
         console.warn('[LoginScreen] Non-JSON response received during verify:', resText.slice(0, 100));
+        if (response.status === 429) {
+          throw new Error('Server rate limit reached. Please wait a few seconds and tap Verify again.');
+        }
         if (response.status === 502 || response.status === 503 || response.status === 504) {
           throw new Error('Sampark Lite server is currently reconnecting. Please tap Verify again.');
         }
@@ -243,6 +266,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       }
 
       if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error('Too many verification attempts. Please wait a few seconds and try again.');
+        }
         throw new Error(data?.error || data?.message || 'Invalid OTP. Please try again.');
       }
 

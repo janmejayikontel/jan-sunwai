@@ -350,7 +350,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       } catch (e) {
         // silent polling
       }
-    }, 4000);
+    }, 12000);
     return () => clearInterval(interval);
   }, [isAdmin, serverUrl]);
 

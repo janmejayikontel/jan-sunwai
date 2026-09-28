@@ -622,8 +622,8 @@ class JanSunwaiVoIPService : Service() {
 
                 try {
                     // When WebSocket is connected, incoming calls arrive instantly (0ms) via WS push!
-                    // If WS is disconnected, poll every 4s for rapid incoming call detection.
-                    val sleepMs = if (isWebSocketConnected) 20000L else 4000L
+                    // If WS is disconnected, poll every 12s to avoid triggering tunnel rate limits.
+                    val sleepMs = if (isWebSocketConnected) 25000L else 12000L
                     Thread.sleep(sleepMs)
                 } catch (ie: InterruptedException) {
                     break
@@ -682,8 +682,8 @@ class JanSunwaiVoIPService : Service() {
                 .build()
             val res = client.newCall(req).execute()
             if (res.code == 429) {
-                Log.w(TAG, "Cloudflare tunnel rate limit (429) hit, pausing background polling for 30s")
-                rateLimitBackoffUntil = System.currentTimeMillis() + 30000L
+                Log.w(TAG, "Cloudflare tunnel rate limit (429) hit, pausing background polling for 60s")
+                rateLimitBackoffUntil = System.currentTimeMillis() + 60000L
             } else if (res.isSuccessful) {
                 val body = res.body?.string() ?: ""
                 val json = JSONObject(body)
