@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Build
@@ -603,8 +604,8 @@ class JanSunwaiVoIPService : Service() {
                         fetchLatestServerUrl()
                     }
 
-                    // Check incoming calls via HTTP (only if not rate limited)
-                    if (System.currentTimeMillis() >= rateLimitBackoffUntil) {
+                    // Check incoming calls via HTTP (only if not in an active call and not rate limited)
+                    if (!isInCall && System.currentTimeMillis() >= rateLimitBackoffUntil) {
                         checkIncomingCallHttp()
                     }
 
@@ -687,15 +688,17 @@ class JanSunwaiVoIPService : Service() {
             } else if (res.isSuccessful) {
                 val body = res.body?.string() ?: ""
                 val json = JSONObject(body)
-                if (json.optBoolean("hasIncomingCall", false) && !isCallRinging) {
+                if (json.optBoolean("hasIncomingCall", false) && !isCallRinging && !isInCall) {
                     val callObj = json.optJSONObject("incomingCall")
-                    if (callObj != null && !isCallRinging) {
+                    if (callObj != null && !isCallRinging && !isInCall) {
                         val callId = callObj.optString("callId", "")
                         if (callId.isNotEmpty() && isCallDismissed(callId)) {
                             Log.i(TAG, "Ignoring incoming call in background poll — call $callId was already dismissed")
                         } else {
                             handler.post {
-                                handleIncomingCall(callObj.toString())
+                                if (!isInCall) {
+                                    handleIncomingCall(callObj.toString())
+                                }
                             }
                         }
                     }
@@ -709,6 +712,12 @@ class JanSunwaiVoIPService : Service() {
 
     fun handleIncomingCall(callJsonString: String) {
         try {
+            // CRITICAL: If user is actively in a call / meeting room, NEVER ring or play sound!
+            if (isInCall) {
+                Log.i(TAG, "handleIncomingCall: Aborting ring — user is actively in a call/meeting room (isInCall=true)")
+                return
+            }
+
             val json = JSONObject(callJsonString)
             val callId = json.optString("callId")
             val grievanceId = json.optString("grievanceId", "Hearing")
@@ -721,13 +730,15 @@ class JanSunwaiVoIPService : Service() {
                 return
             }
 
+            if (isCallRinging) {
+                Log.i(TAG, "handleIncomingCall: Already ringing — ignoring duplicate trigger for call $callId")
+                return
+            }
+
             if (callId.isNotEmpty() && isCallDismissed(callId)) {
                 Log.i(TAG, "handleIncomingCall: Aborting ring — call $callId was dismissed")
                 return
             }
-
-            // Always allow new incoming call from officer: reset inCall state
-            isInCall = false
 
             isCallRinging = true
             lastReceivedCallData = callJsonString
@@ -970,6 +981,11 @@ class JanSunwaiVoIPService : Service() {
         isCallRinging = false
         currentRingingCallId = null
 
+        // 0. Cancel any pending incoming call triggers or runnables on the main looper immediately
+        try {
+            handler.removeCallbacksAndMessages(null)
+        } catch (e: Throwable) {}
+
         // 1. Synchronously stop and release MediaPlayer immediately
         try {
             mediaPlayer?.let { mp ->
@@ -988,6 +1004,11 @@ class JanSunwaiVoIPService : Service() {
                 try { mp.release() } catch (e: Throwable) {}
             }
             activeMediaPlayer = null
+        } catch (e: Throwable) {}
+
+        try {
+            val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            audioManager?.mode = AudioManager.MODE_NORMAL
         } catch (e: Throwable) {}
 
         // 2. Synchronously cancel vibrator immediately

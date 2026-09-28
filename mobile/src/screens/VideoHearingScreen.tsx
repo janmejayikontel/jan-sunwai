@@ -206,7 +206,24 @@ const RoomContent: React.FC<{
   useEffect(() => {
     NativeModules.JanSunwaiVoIP?.stopRinging?.();
     NativeModules.JanSunwaiVoIP?.setInCall?.(true);
+    if (callId) {
+      NativeModules.JanSunwaiVoIP?.dismissCall?.(callId);
+    }
+    if (grievanceId) {
+      NativeModules.JanSunwaiVoIP?.dismissCall?.(grievanceId);
+    }
+    // Also perform safety follow-up stopRinging calls to catch any delayed audio threads
+    const t1 = setTimeout(() => {
+      NativeModules.JanSunwaiVoIP?.stopRinging?.();
+      NativeModules.JanSunwaiVoIP?.setInCall?.(true);
+    }, 300);
+    const t2 = setTimeout(() => {
+      NativeModules.JanSunwaiVoIP?.stopRinging?.();
+      NativeModules.JanSunwaiVoIP?.setInCall?.(true);
+    }, 1000);
     return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
       NativeModules.JanSunwaiVoIP?.setInCall?.(false);
       if (callId) {
         NativeModules.JanSunwaiVoIP?.dismissCall?.(callId);

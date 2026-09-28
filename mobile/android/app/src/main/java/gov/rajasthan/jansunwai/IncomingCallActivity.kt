@@ -414,8 +414,9 @@ class IncomingCallActivity : AppCompatActivity() {
         } catch (e: Throwable) {}
         try { window.decorView.visibility = View.GONE } catch (e: Throwable) {}
         CallOverlayManager.dismiss(applicationContext)
-        JanSunwaiVoIPService.stopActiveRinging(this)
+        JanSunwaiVoIPService.dismissCall(callId)
         JanSunwaiVoIPService.setInCallState(true)
+        JanSunwaiVoIPService.stopActiveRinging(this)
         JanSunwaiVoIPService.lastReceivedCallData = null
 
         val updatedCallData = try {

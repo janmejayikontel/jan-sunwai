@@ -359,8 +359,9 @@ object CallOverlayManager {
                             IncomingCallActivity.activeInstance?.finish()
                         } catch (e: Exception) {}
 
-                        JanSunwaiVoIPService.stopActiveRinging()
+                        JanSunwaiVoIPService.dismissCall(effectiveCallId)
                         JanSunwaiVoIPService.setInCallState(true)
+                        JanSunwaiVoIPService.stopActiveRinging(context)
                         JanSunwaiVoIPService.lastReceivedCallData = null
 
                         val updatedCallData = try {
