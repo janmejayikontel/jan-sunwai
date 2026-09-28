@@ -10,7 +10,7 @@
 
 import { Platform } from 'react-native';
 
-export const DEFAULT_SERVER_URL = 'https://speaks-from-surveys-show.trycloudflare.com';
+export const DEFAULT_SERVER_URL = 'https://generous-donations-neither-architect.trycloudflare.com';
 
 
 export const CONFIG = {

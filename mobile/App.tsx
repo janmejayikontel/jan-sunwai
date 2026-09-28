@@ -93,13 +93,22 @@ export default function App() {
         let activeSrv = DEFAULT_SERVER_URL;
         try {
           const liveRes = await fetch(`https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=${Date.now()}`);
-          const liveTxt = (await liveRes.text()).trim();
+          const liveTxt = (await liveRes.text()).trim().replace(/\/+$/, '');
           if (liveTxt.startsWith('http')) {
-            console.log('[App] Fetched live server URL from GitHub:', liveTxt);
-            activeSrv = liveTxt;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000);
+            const hRes = await fetch(`${liveTxt}/api/health`, {
+              signal: controller.signal,
+              headers: { 'Bypass-Tunnel-Reminder': 'true' },
+            });
+            clearTimeout(timeoutId);
+            if (hRes.ok) {
+              console.log('[App] Fetched and verified live server URL from GitHub:', liveTxt);
+              activeSrv = liveTxt;
+            }
           }
         } catch (e) {
-          // ignore
+          // ignore, keep activeSrv = DEFAULT_SERVER_URL
         }
 
         const saved = await AsyncStorage.getItem(STORAGE_SESSION_KEY);

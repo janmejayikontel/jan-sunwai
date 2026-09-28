@@ -58,16 +58,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     fetch(`https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=${Date.now()}`)
       .then((res) => res.text())
       .then(async (txt) => {
-        const clean = txt.trim();
+        const clean = txt.trim().replace(/\/+$/, '');
         if (clean.startsWith('http')) {
-          console.log('[LoginScreen] Fetched remote live server URL:', clean);
-          setServerBase(clean);
           try {
-            await fetch(`${clean}/api/health`, {
-              method: 'GET',
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000);
+            const hRes = await fetch(`${clean}/api/health`, {
+              signal: controller.signal,
               headers: { 'Bypass-Tunnel-Reminder': 'true' },
             });
-          } catch {}
+            clearTimeout(timeoutId);
+            if (hRes.ok) {
+              console.log('[LoginScreen] Verified remote live server URL:', clean);
+              setServerBase(clean);
+            }
+          } catch (err) {
+            console.warn('[LoginScreen] Remote URL check failed, keeping default server:', clean);
+          }
         }
       })
       .catch((e) => console.log('[LoginScreen] Using default server URL:', e.message));
