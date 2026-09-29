@@ -48,14 +48,12 @@ import {
   Activity,
   Settings,
   Lock,
-  Sliders,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
 } from "lucide-react";
 import LiveKitVideoRoom from "@/components/LiveKitVideoRoom";
 import IncomingCallModal, { stopAllRingtones } from "@/components/IncomingCallModal";
-import DevicePreCheckModal, { OFFICIAL_PERSONAS, RoleType } from "@/components/DevicePreCheckModal";
 
 // ─── Interfaces ───────────────────────────────────────────────
 
@@ -209,9 +207,6 @@ export default function JanSunwaiPortalPage() {
   const [showParticipantsModal, setShowParticipantsModal] = useState(false);
   const [hearingParticipants, setHearingParticipants] = useState<any[]>([]);
 
-  // Diagnostics Launcher
-  const [showPreCheckModal, setShowPreCheckModal] = useState(false);
-  const [preCheckRole, setPreCheckRole] = useState<RoleType>("citizen");
 
   // Call Centre & Admin State
   const [ccTab, setCcTab] = useState<"queue" | "kyc" | "records">("queue");
@@ -793,46 +788,6 @@ export default function JanSunwaiPortalPage() {
     }
   };
 
-  // Diagnostic Launcher helper
-  const handleLaunchFromPreCheck = async ({
-    roomCode,
-    role,
-    userName,
-    userPhone,
-  }: {
-    roomCode: string;
-    role: RoleType;
-    userName: string;
-    userPhone: string;
-  }) => {
-    try {
-      showToast(`Launching Hearing Room ${roomCode}...`, "info");
-      const res = await fetch(`${API_BASE}/api/livekit/token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          roomName: roomCode,
-          participantName: userName,
-          participantRole: role,
-          identity: userPhone || `${role}_${Date.now()}`,
-          phone: userPhone,
-        }),
-      });
-      const data = await res.json();
-      if (data.token) {
-        setLivekitConnection({
-          token: data.token,
-          url: data.serverUrl || data.url,
-          roomName: data.roomName || roomCode,
-          callId: data.callId || `call-${Date.now()}`,
-        });
-        setShowPreCheckModal(false);
-        showToast(`🎉 Connected to Hearing Room ${roomCode}!`, "success");
-      }
-    } catch (e: any) {
-      showToast(e.message || "Connection error", "error");
-    }
-  };
 
   const filteredGrievances = inspectGrievanceId.trim()
     ? grievances.filter(
@@ -1179,13 +1134,6 @@ export default function JanSunwaiPortalPage() {
           </div>
         </div>
 
-        {/* Device Diagnostics Modal */}
-        <DevicePreCheckModal
-          isOpen={showPreCheckModal}
-          onClose={() => setShowPreCheckModal(false)}
-          onLaunchRoom={handleLaunchFromPreCheck}
-          initialRole={preCheckRole}
-        />
       </div>
     );
   }
@@ -1300,30 +1248,6 @@ export default function JanSunwaiPortalPage() {
             <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>{currentUser.name.split(" ")[0]}</span>
           </button>
 
-          {/* Diagnostics Button */}
-          <button
-            type="button"
-            onClick={() => {
-              const r = (isCallCenter ? "call_center" : isAdmin ? "admin" : isOfficer ? "officer" : "citizen") as RoleType;
-              setPreCheckRole(r);
-              setShowPreCheckModal(true);
-            }}
-            style={{
-              background: "rgba(255, 255, 255, 0.06)",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              borderRadius: "10px",
-              padding: "6px 10px",
-              color: "#8696a0",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-              fontSize: "0.8rem",
-            }}
-            title="Hardware & Diagnostic Suite"
-          >
-            <Sliders size={15} />
-          </button>
         </div>
       </header>
 
@@ -2574,13 +2498,6 @@ export default function JanSunwaiPortalPage() {
         </div>
       )}
 
-      {/* Diagnostics Suite Modal */}
-      <DevicePreCheckModal
-        isOpen={showPreCheckModal}
-        onClose={() => setShowPreCheckModal(false)}
-        onLaunchRoom={handleLaunchFromPreCheck}
-        initialRole={preCheckRole}
-      />
     </div>
   );
 }
