@@ -2098,14 +2098,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 {/* Action Buttons */}
                 <View style={styles.scheduleActionsRow}>
                   <TouchableOpacity
-                    style={styles.scheduleCancelBtn}
+                    style={[styles.scheduleCancelBtn, { flex: 1 }]}
                     onPress={() => setScheduleStep('date')}
                   >
                     <Text style={styles.scheduleCancelText}>◀ Back</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.scheduleConfirmBtn, isSubmittingSchedule && styles.btnDisabled]}
+                    style={[styles.scheduleCancelBtn, { flex: 1, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.15)' }]}
+                    onPress={() => setShowScheduleModal(false)}
+                  >
+                    <Text style={[styles.scheduleCancelText, { color: '#8696a0' }]}>✕ Cancel</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.scheduleConfirmBtn, { flex: 2 }, isSubmittingSchedule && styles.btnDisabled]}
                     onPress={handleConfirmSchedule}
                     disabled={isSubmittingSchedule}
                     activeOpacity={0.85}

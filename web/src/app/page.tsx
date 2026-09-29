@@ -230,6 +230,8 @@ export default function JanSunwaiPortalPage() {
   const [adminTab, setAdminTab] = useState<"diagnostics" | "audit" | "security">("diagnostics");
   const [adminDiagnostics, setAdminDiagnostics] = useState<any | null>(null);
   const [adminAuditLogs, setAdminAuditLogs] = useState<any[]>([]);
+  const [activeMeetings, setActiveMeetings] = useState<any[]>([]);
+  const [isJoiningMeeting, setIsJoiningMeeting] = useState<string | null>(null);
   const [adminSettings, setAdminSettings] = useState<Record<string, string>>({
     max_meeting_participants: "1500",
     e2ee_encryption_enabled: "true",
@@ -689,10 +691,11 @@ export default function JanSunwaiPortalPage() {
   const fetchAdminData = async () => {
     setIsLoadingAdmin(true);
     try {
-      const [diagRes, auditRes, settingsRes] = await Promise.all([
+      const [diagRes, auditRes, settingsRes, meetingsRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/diagnostics`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
         fetch(`${API_BASE}/api/admin/audit-logs?limit=25`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
         fetch(`${API_BASE}/api/admin/settings`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
+        fetch(`${API_BASE}/api/admin/active-meetings`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
       ]);
       if (diagRes && diagRes.ok) {
         const d = await diagRes.json().catch(() => null);
@@ -706,8 +709,70 @@ export default function JanSunwaiPortalPage() {
         const s = await settingsRes.json().catch(() => null);
         if (s?.success && s.settings) setAdminSettings(s.settings);
       }
+      if (meetingsRes && meetingsRes.ok) {
+        const m = await meetingsRes.json().catch(() => null);
+        if (m?.success && Array.isArray(m.meetings)) {
+          setActiveMeetings(m.meetings);
+        }
+      }
     } finally {
       setIsLoadingAdmin(false);
+    }
+  };
+
+  // Real-time poller for Super Admin (polls active meetings every 4 seconds)
+  useEffect(() => {
+    if (!isAdmin) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/active-meetings`, {
+          headers: { "Bypass-Tunnel-Reminder": "true" },
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data?.success && Array.isArray(data.meetings)) {
+            setActiveMeetings(data.meetings);
+          }
+        }
+      } catch {
+        // silent
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isAdmin]);
+
+  const handleSuperAdminJoinMeeting = async (meeting: any) => {
+    const targetRoom = meeting.roomName || meeting.id;
+    if (!targetRoom) return;
+    setIsJoiningMeeting(targetRoom);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/join-meeting`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Bypass-Tunnel-Reminder": "true",
+        },
+        body: JSON.stringify({
+          roomName: targetRoom,
+          adminPhone: currentUser?.phone || "+919999999999",
+          adminName: currentUser?.name || "Rajasthan DOIT&C Admin",
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success || !data?.token) {
+        throw new Error(data?.error || "Failed to generate Super Admin token");
+      }
+      setLivekitConnection({
+        token: data.token,
+        url: data.url || data.serverUrl || API_BASE,
+        roomName: targetRoom,
+        callId: meeting.id || `call-${Date.now()}`,
+      });
+      showToast(`Joined hearing ${targetRoom} as Super Admin!`, "success");
+    } catch (err: any) {
+      showToast(err?.message || "Join failed", "error");
+    } finally {
+      setIsJoiningMeeting(null);
     }
   };
 
@@ -1398,35 +1463,155 @@ export default function JanSunwaiPortalPage() {
             ) : isAdmin ? (
               /* If Super Admin */
               <div className="app-card">
-                <div style={{ display: "flex", gap: "8px", marginBottom: "1rem" }}>
+                <div style={{ display: "flex", gap: "8px", marginBottom: "1rem", flexWrap: "wrap" }}>
                   <button
                     type="button"
                     onClick={() => setAdminTab("diagnostics")}
                     className={`app-tab-btn ${adminTab === "diagnostics" ? "active" : ""}`}
-                    style={{ flex: "none", padding: "6px 14px" }}
+                    style={{ flex: "none", padding: "8px 16px" }}
                   >
-                    Telemetry & Health
+                    <span>📊</span>
+                    <span>Live Benches & Telemetry ({activeMeetings.length})</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setAdminTab("audit")}
                     className={`app-tab-btn ${adminTab === "audit" ? "active" : ""}`}
-                    style={{ flex: "none", padding: "6px 14px" }}
+                    style={{ flex: "none", padding: "8px 16px" }}
                   >
-                    Audit Trail
+                    <span>📜</span>
+                    <span>Audit Trail</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setAdminTab("security")}
                     className={`app-tab-btn ${adminTab === "security" ? "active" : ""}`}
-                    style={{ flex: "none", padding: "6px 14px" }}
+                    style={{ flex: "none", padding: "8px 16px" }}
                   >
-                    Security
+                    <span>🔐</span>
+                    <span>Security</span>
                   </button>
                 </div>
 
                 {adminTab === "diagnostics" && (
                   <div>
+                    {/* 🔴 ACTIVE MEETINGS HERO CARD */}
+                    <div
+                      style={{
+                        background: activeMeetings.length > 0 ? "linear-gradient(145deg, #241419 0%, #1a151b 100%)" : "#202c33",
+                        border: `1.5px solid ${activeMeetings.length > 0 ? "#ef4444" : "var(--app-border)"}`,
+                        borderRadius: "16px",
+                        padding: "1.25rem",
+                        marginBottom: "1.25rem",
+                        boxShadow: activeMeetings.length > 0 ? "0 8px 24px rgba(239, 68, 68, 0.25)" : "none",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span
+                            style={{
+                              width: "10px",
+                              height: "10px",
+                              borderRadius: "50%",
+                              background: activeMeetings.length > 0 ? "#ef4444" : "#64748b",
+                              boxShadow: activeMeetings.length > 0 ? "0 0 10px #ef4444" : "none",
+                              display: "inline-block",
+                            }}
+                          />
+                          <strong style={{ fontSize: "0.85rem", letterSpacing: "0.05em", color: activeMeetings.length > 0 ? "#fca5a5" : "#8696a0" }}>
+                            {activeMeetings.length > 0 ? `🔴 LIVE VIDEO HEARINGS ACTIVE (${activeMeetings.length})` : "⚪ NO ACTIVE VIDEO HEARINGS"}
+                          </strong>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={fetchAdminData}
+                          style={{ background: "none", border: "none", color: "var(--app-gold)", fontSize: "0.8rem", cursor: "pointer", fontWeight: 700 }}
+                        >
+                          Refresh ↻
+                        </button>
+                      </div>
+
+                      {activeMeetings.length === 0 ? (
+                        <div style={{ textAlign: "center", padding: "1.5rem 1rem", color: "#8696a0" }}>
+                          <div style={{ fontSize: "1.8rem", marginBottom: "6px" }}>🏛️</div>
+                          <div style={{ fontWeight: 700, color: "#ffffff", fontSize: "0.95rem" }}>No Active Hearings Right Now</div>
+                          <div style={{ fontSize: "0.82rem", marginTop: "4px" }}>
+                            When any District Collector, Presiding Officer, or Field Official starts a Jan Sunwai video call, it will appear here in real-time.
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                          {activeMeetings.map((meeting) => (
+                            <div
+                              key={meeting.id || meeting.roomName}
+                              style={{
+                                background: "rgba(0, 0, 0, 0.4)",
+                                border: "1px solid rgba(255, 255, 255, 0.08)",
+                                borderRadius: "14px",
+                                padding: "14px",
+                              }}
+                            >
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                                <span className="app-case-id-badge">{meeting.roomName}</span>
+                                <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "#25D366", background: "rgba(37, 211, 102, 0.15)", border: "1px solid rgba(37, 211, 102, 0.3)", padding: "3px 8px", borderRadius: "999px" }}>
+                                  ● {meeting.status || "Live Hearing"}
+                                </span>
+                              </div>
+
+                              <div style={{ fontSize: "1rem", fontWeight: 800, color: "#ffffff", marginBottom: "6px" }}>
+                                {meeting.title}
+                              </div>
+
+                              <div style={{ fontSize: "0.85rem", color: "#8696a0", marginBottom: "8px" }}>
+                                Presiding Officer: <strong style={{ color: "#ffffff" }}>{meeting.hostName} ({meeting.hostDesignation})</strong>
+                              </div>
+
+                              <div style={{ fontSize: "0.82rem", color: "#FACC15", marginBottom: "10px", fontWeight: 700 }}>
+                                👥 Active Connected: {meeting.participantCount || (meeting.participants ? meeting.participants.length : 1)} Attendees
+                              </div>
+
+                              {meeting.participants && meeting.participants.length > 0 && (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "12px" }}>
+                                  {meeting.participants.map((p: any, idx: number) => (
+                                    <span
+                                      key={idx}
+                                      style={{
+                                        background: "rgba(255, 255, 255, 0.06)",
+                                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                                        borderRadius: "6px",
+                                        padding: "3px 8px",
+                                        fontSize: "0.75rem",
+                                        color: "#E9EDEF",
+                                      }}
+                                    >
+                                      👤 {p.name} ({p.role || p.status || "Member"})
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+
+                              <button
+                                type="button"
+                                className="app-btn-gold"
+                                style={{
+                                  width: "100%",
+                                  background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                                  color: "#ffffff",
+                                  boxShadow: "0 2px 10px rgba(239, 68, 68, 0.4)",
+                                }}
+                                onClick={() => handleSuperAdminJoinMeeting(meeting)}
+                                disabled={isJoiningMeeting === (meeting.roomName || meeting.id)}
+                              >
+                                {isJoiningMeeting === (meeting.roomName || meeting.id)
+                                  ? "Entering Room..."
+                                  : "⚡ Join Meeting as Super Admin (Full Control)"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: "0 0 1rem" }}>System Telemetry & LiveKit Status</h3>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                       <div className="app-card" style={{ margin: 0, padding: "12px", background: "#202c33" }}>
@@ -2107,7 +2292,23 @@ export default function JanSunwaiPortalPage() {
               <button
                 type="button"
                 onClick={() => setShowScheduleModal(false)}
-                style={{ background: "none", border: "none", color: "#8696a0", cursor: "pointer", fontSize: "1.2rem" }}
+                style={{
+                  background: "rgba(255, 255, 255, 0.12)",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  borderRadius: "50%",
+                  width: "36px",
+                  height: "36px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  fontSize: "1.15rem",
+                  fontWeight: 900,
+                  transition: "all 0.2s ease",
+                  flexShrink: 0,
+                }}
+                title="Close & Cancel Schedule (रद्द करें)"
               >
                 ✕
               </button>
@@ -2237,10 +2438,10 @@ export default function JanSunwaiPortalPage() {
                 <button
                   type="button"
                   className="app-btn-outline-gold"
-                  style={{ width: "100%", marginTop: "1rem" }}
+                  style={{ width: "100%", marginTop: "1rem", borderColor: "rgba(255, 255, 255, 0.2)", color: "#8696a0" }}
                   onClick={() => setShowScheduleModal(false)}
                 >
-                  Cancel
+                  ✕ Cancel & Close (रद्द करें)
                 </button>
               </div>
             )}
@@ -2308,11 +2509,11 @@ export default function JanSunwaiPortalPage() {
                 </div>
 
                 {/* Action Buttons */}
-                <div style={{ display: "flex", gap: "10px" }}>
+                <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                   <button
                     type="button"
                     className="app-btn-outline-gold"
-                    style={{ flex: 1 }}
+                    style={{ flex: 1, minWidth: "90px" }}
                     onClick={() => setScheduleStep("date")}
                   >
                     ◀ Back
@@ -2320,8 +2521,17 @@ export default function JanSunwaiPortalPage() {
 
                   <button
                     type="button"
+                    className="app-btn-outline-gold"
+                    style={{ flex: 1, minWidth: "90px", borderColor: "rgba(255, 255, 255, 0.2)", color: "#8696a0" }}
+                    onClick={() => setShowScheduleModal(false)}
+                  >
+                    ✕ Cancel
+                  </button>
+
+                  <button
+                    type="button"
                     className="app-btn-gold"
-                    style={{ flex: 2 }}
+                    style={{ flex: 2, minWidth: "160px" }}
                     onClick={handleConfirmSchedule}
                     disabled={isSubmittingSchedule}
                   >
