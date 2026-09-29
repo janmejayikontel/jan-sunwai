@@ -1391,3 +1391,442 @@ h1, h2, h3, h4, h5, h6 {
   height: 100% !important;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   APP-LIKE MOBILE & DESKTOP STYLES (Government Gold & Deep Dark)
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --app-bg: #111b21;
+  --app-surface: #1f2c34;
+  --app-surface-elevated: #202c33;
+  --app-surface-subtle: #2a3942;
+  --app-border: rgba(255, 255, 255, 0.08);
+  --app-border-gold: rgba(234, 179, 8, 0.3);
+  --app-gold: #EAB308;
+  --app-gold-light: #FACC15;
+  --app-gold-dark: #CA8A04;
+  --app-text: #E9EDEF;
+  --app-text-muted: #8696a0;
+  --app-text-dim: #64748b;
+  --app-green: #25D366;
+  --app-red: #ea0038;
+}
+
+.app-container {
+  min-height: 100vh;
+  background-color: var(--app-bg);
+  color: var(--app-text);
+  font-family: var(--font-body);
+}
+
+.app-content-wrapper {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+@media (max-width: 640px) {
+  .app-content-wrapper {
+    padding: 0.75rem;
+  }
+}
+
+/* Header */
+.app-header {
+  background-color: var(--app-surface);
+  border-bottom: 1px solid var(--app-border);
+  padding: 0.85rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.app-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.app-header-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-header-sub {
+  font-size: 0.72rem;
+  color: var(--app-gold);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+
+/* Tab Bar */
+.app-tab-bar {
+  display: flex;
+  background-color: var(--app-surface);
+  border-radius: 14px;
+  padding: 5px;
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--app-border);
+  gap: 6px;
+}
+
+.app-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: transparent;
+  border: none;
+  color: var(--app-text-muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.app-tab-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.app-tab-btn.active {
+  background: var(--app-gold);
+  color: #111827;
+  box-shadow: 0 2px 10px rgba(234, 179, 8, 0.35);
+}
+
+.app-tab-badge {
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.app-tab-btn.active .app-tab-badge {
+  background: #111827;
+  color: var(--app-gold);
+}
+
+/* Cards */
+.app-card {
+  background-color: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 16px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* Search Bar */
+.app-search-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 1rem;
+}
+
+.app-input {
+  flex: 1;
+  background-color: var(--app-surface-elevated);
+  border: 1.5px solid var(--app-surface-subtle);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: #ffffff;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.app-input:focus {
+  border-color: var(--app-gold);
+}
+
+.app-btn-gold {
+  background-color: var(--app-gold);
+  color: #111827;
+  font-weight: 800;
+  padding: 12px 20px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.92rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(234, 179, 8, 0.3);
+}
+
+.app-btn-gold:hover {
+  background-color: var(--app-gold-light);
+  transform: translateY(-1px);
+}
+
+.app-btn-outline-gold {
+  background-color: rgba(234, 179, 8, 0.1);
+  border: 1.5px solid var(--app-gold);
+  color: var(--app-gold);
+  font-weight: 700;
+  padding: 12px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.92rem;
+  transition: all 0.2s ease;
+}
+
+.app-btn-outline-gold:hover {
+  background-color: rgba(234, 179, 8, 0.2);
+}
+
+/* Executive Scheduled Hearing Card */
+.app-exec-card {
+  background: linear-gradient(145deg, #1b2830 0%, #172228 100%);
+  border: 1.5px solid var(--app-gold);
+  border-radius: 18px;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.app-exec-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.app-exec-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-exec-status {
+  background-color: rgba(234, 179, 8, 0.18);
+  border: 1px solid var(--app-gold);
+  color: var(--app-gold);
+  font-size: 0.75rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.05em;
+}
+
+.app-exec-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 1rem 0;
+}
+
+.app-exec-box {
+  background-color: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+.app-exec-box-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--app-gold);
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.app-exec-box-value {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.app-exec-officer {
+  background-color: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 1rem;
+}
+
+.app-exec-alert {
+  background-color: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  color: #fef08a;
+  line-height: 1.45;
+  margin-bottom: 1rem;
+}
+
+/* Modals */
+.app-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.app-modal-card {
+  background-color: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 580px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  padding: 1.5rem;
+}
+
+/* Calendar Styles */
+.app-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.app-calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--app-surface-elevated);
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.app-calendar-day:hover {
+  border-color: var(--app-gold);
+  background: var(--app-surface-subtle);
+}
+
+.app-calendar-day.selected {
+  background: var(--app-gold);
+  color: #111827;
+  font-weight: 800;
+  border-color: var(--app-gold);
+  box-shadow: 0 2px 8px rgba(234, 179, 8, 0.4);
+}
+
+/* Time Slots (16 Chips, No Scroll) */
+.app-time-chips {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 14px 0;
+}
+
+@media (max-width: 480px) {
+  .app-time-chips {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.app-time-chip {
+  padding: 10px 6px;
+  text-align: center;
+  background-color: var(--app-surface-elevated);
+  border: 1.5px solid var(--app-surface-subtle);
+  border-radius: 10px;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.app-time-chip:hover {
+  border-color: var(--app-gold);
+}
+
+.app-time-chip.selected {
+  background-color: var(--app-gold);
+  color: #111827;
+  border-color: var(--app-gold);
+  box-shadow: 0 2px 8px rgba(234, 179, 8, 0.4);
+}
+
+/* Case Row */
+.app-case-row {
+  background-color: var(--app-surface-elevated);
+  border: 1px solid var(--app-border);
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: border-color 0.2s ease;
+}
+
+.app-case-row:hover {
+  border-color: rgba(234, 179, 8, 0.4);
+}
+
+.app-case-id-badge {
+  background-color: rgba(234, 179, 8, 0.15);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  color: var(--app-gold);
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.app-case-scheduled-pill {
+  background-color: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  color: #fef08a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+

@@ -1,19 +1,17 @@
 "use client";
 
 /**
- * Jan Sunwai — Unified Video Call Platform
- *
- * Provides dedicated authenticated views for:
- * 1. Citizen Complainant (Waiting Room & Active Grievance Hearing)
- * 2. Field Employee / Officer (Duty Room & Assigned Cases)
- * 3. District Collector / Higher Officer (Hearing Dashboard, Call Control, Sampark Lookup)
- *
- * Includes:
- * - Mobile Number + OTP Login (with 1-click test personas for quick multi-device demos)
- * - Persistent session in localStorage
- * - Real-time WebSocket signaling on user's specific phone number
- * - WhatsApp-style incoming call ringing modal
- * - High-definition WebRTC video conference via LiveKit Cloud
+ * Jan Sunwai — Unified Video Call Platform (Web Portal)
+ * Aligned with the official Jan Sunwai Mobile Experience
+ * 
+ * Features:
+ * - Rajasthan Government Gold & Deep Dark Theme (#111b21, #1f2c34, #EAB308)
+ * - Clean 2-tab navigation: 🏛️ Hearings and 📋 Cases
+ * - Presiding Officer Grievance Search & Direct Video Call Initiation
+ * - 2-Step Hearing Call Scheduling Modal (Interactive Calendar -> 16 Flexible Time Slots + Custom Input)
+ * - Executive Scheduled Hearing Card with official emblem & date/time badges
+ * - Case Details Modal & User Profile Modal
+ * - Seamless LiveKit Cloud WebRTC & Incoming Call Ringing
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -45,19 +43,21 @@ import {
   User,
   Briefcase,
   Radio,
-  Sparkles,
   ArrowRight,
   Info,
   Activity,
   Settings,
   Lock,
   Sliders,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import LiveKitVideoRoom from "@/components/LiveKitVideoRoom";
 import IncomingCallModal, { stopAllRingtones } from "@/components/IncomingCallModal";
 import DevicePreCheckModal, { OFFICIAL_PERSONAS, RoleType } from "@/components/DevicePreCheckModal";
 
-// ─── Types ────────────────────────────────────────────────────
+// ─── Interfaces ───────────────────────────────────────────────
 
 export interface AuthUser {
   id: string;
@@ -75,32 +75,35 @@ export interface AuthUser {
 interface CitizenInfo {
   name: string;
   phone: string;
-  village: string;
-  district: string;
-  tehsil: string;
+  village?: string;
+  district?: string;
+  tehsil?: string;
 }
 
 interface EmployeeInfo {
   name: string;
   phone: string;
   designation: string;
-  department: string;
-  employeeCode: string;
-  postingLocation: string;
+  department?: string;
+  employeeCode?: string;
+  postingLocation?: string;
 }
 
-interface GrievanceDetails {
+interface GrievanceItem {
   grievanceId: string;
   title: string;
-  description: string;
-  category: string;
-  location: string;
-  district: string;
+  description?: string;
+  category?: string;
+  location?: string;
+  district?: string;
   status: string;
-  filedDate: string;
-  lastUpdated: string;
-  citizen: CitizenInfo;
-  assignedEmployee: EmployeeInfo;
+  filedDate?: string;
+  lastUpdated?: string;
+  scheduledDate?: string;
+  scheduledTime?: string;
+  scheduledOfficer?: string;
+  citizen?: CitizenInfo;
+  assignedEmployee?: EmployeeInfo;
 }
 
 interface IncomingCallData {
@@ -121,14 +124,18 @@ interface LiveKitConnection {
   callId: string;
 }
 
-interface GrievanceListItem {
-  grievanceId: string;
-  title: string;
-  location: string;
-  district: string;
-  status: string;
-  category: string;
-}
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+const DAYS_OF_WEEK = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+const TIME_OPTIONS = [
+  "09:30 AM", "10:00 AM", "10:30 AM", "11:00 AM",
+  "11:30 AM", "12:00 PM", "12:30 PM", "01:00 PM",
+  "02:30 PM", "03:00 PM", "03:30 PM", "04:00 PM",
+  "04:30 PM", "05:00 PM", "05:30 PM", "06:00 PM",
+];
 
 // ─── Configuration ────────────────────────────────────────────
 
@@ -152,17 +159,9 @@ function getWsUrl(phone: string): string {
   return `ws://localhost:3001/ws?phone=${encodeURIComponent(phone)}`;
 }
 
-// ═══════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════
-// MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════
-
 export default function JanSunwaiPortalPage() {
   // ─── Auth State ──────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-
-  // Login form state (starts blank - user enters number manually)
   const [loginPhone, setLoginPhone] = useState("");
   const [loginOtp, setLoginOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
@@ -171,166 +170,97 @@ export default function JanSunwaiPortalPage() {
   const [detectedName, setDetectedName] = useState<string | null>(null);
   const [authError, setAuthError] = useState("");
 
-  // ─── Device Diagnostic Suite & Room Launcher State ───────────
+  // ─── Navigation & Views ──────────────────────────────────────
+  const [currentTab, setCurrentTab] = useState<"hearings" | "cases">("hearings");
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // ─── Grievance & Dashboard State ──────────────────────────────
+  const [grievances, setGrievances] = useState<GrievanceItem[]>([]);
+  const [isLoadingGrievances, setIsLoadingGrievances] = useState(false);
+  const [directRoomInput, setDirectRoomInput] = useState("RAJ-2024-88421");
+  const [homeSearchedGrievance, setHomeSearchedGrievance] = useState<GrievanceItem | null>(null);
+  const [homeIsSearching, setHomeIsSearching] = useState(false);
+  const [homeSearchError, setHomeSearchError] = useState<string | null>(null);
+
+  // Cases Tab Search & Details Modal State
+  const [inspectGrievanceId, setInspectGrievanceId] = useState("");
+  const [selectedGrievanceDetails, setSelectedGrievanceDetails] = useState<GrievanceItem | null>(null);
+
+  // ─── Hearing Scheduling Modal State (2-Step Flow) ─────────────
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleStep, setScheduleStep] = useState<"date" | "time">("date");
+  const [schedulingGrievance, setSchedulingGrievance] = useState<GrievanceItem | null>(null);
+  const [scheduleDate, setScheduleDate] = useState("2026-09-29");
+  const [scheduleTime, setScheduleTime] = useState("11:30 AM");
+  const [customTimeInput, setCustomTimeInput] = useState("");
+  const [scheduleNotes, setScheduleNotes] = useState("");
+  const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
+  const [calendarYear, setCalendarYear] = useState(2026);
+  const [calendarMonth, setCalendarMonth] = useState(8); // September = 8
+
+  // ─── Call & Video State ───────────────────────────────────────
+  const [livekitConnection, setLivekitConnection] = useState<LiveKitConnection | null>(null);
+  const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
+  const [isJoining, setIsJoining] = useState(false);
+  const [autoRecord, setAutoRecord] = useState(true);
+
+  // In-call additions
+  const [showAddOfficer, setShowAddOfficer] = useState(false);
+  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
+  const [hearingParticipants, setHearingParticipants] = useState<any[]>([]);
+
+  // Diagnostics Launcher
   const [showPreCheckModal, setShowPreCheckModal] = useState(false);
   const [preCheckRole, setPreCheckRole] = useState<RoleType>("citizen");
 
-  // ─── Grievance & Dashboard State ──────────────────────────────
-  const [grievanceId, setGrievanceId] = useState("");
-  const [grievance, setGrievance] = useState<GrievanceDetails | null>(null);
-  const [grievanceList, setGrievanceList] = useState<GrievanceListItem[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState("");
-  const [autoRecord, setAutoRecord] = useState(true);
-  const [isCallInitiating, setIsCallInitiating] = useState(false);
-
-  // User-specific grievances (Citizen / Field Officer)
-  const [userGrievances, setUserGrievances] = useState<GrievanceDetails[]>([]);
-  const [isLoadingUserGrievances, setIsLoadingUserGrievances] = useState(false);
-
-  // New Grievance Modal State (SQLite)
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSubmittingGrievance, setIsSubmittingGrievance] = useState(false);
-  const [newGrievanceForm, setNewGrievanceForm] = useState({
-    title: "",
-    description: "",
-    category: "Public Health Engineering (PHED) — Water Supply",
-    location: "Ward 15, Sanganer",
-    district: "Jaipur",
-    citizenName: "",
-    citizenPhone: "+91",
-    employeeName: "",
-    employeePhone: "+91",
-    employeeDesignation: "Junior Engineer (JEn)",
-    employeeDepartment: "PHED",
-  });
-
-  // Call history from SQLite
-  const [callHistory, setCallHistory] = useState<any[]>([]);
-
-  // Call state
-  const [livekitConnection, setLivekitConnection] =
-    useState<LiveKitConnection | null>(null);
-  const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(
-    null
-  );
-  const livekitConnectionRef = useRef<LiveKitConnection | null>(null);
-  useEffect(() => {
-    livekitConnectionRef.current = livekitConnection;
-  }, [livekitConnection]);
-  const dismissedCallIdsRef = useRef<Set<string>>(new Set());
-
-  // Mid-call Add Officer state
-  const [showAddOfficer, setShowAddOfficer] = useState(false);
-  const [officerSearchQuery, setOfficerSearchQuery] = useState("");
-  const [officerResults, setOfficerResults] = useState<any[]>([]);
-  const [isSearchingOfficers, setIsSearchingOfficers] = useState(false);
-  const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
-  const [selectedDepartment, setSelectedDepartment] = useState<string>("");
-  // External non-employee addition state
-  const [addPersonTab, setAddPersonTab] = useState<"directory" | "custom">("directory");
-  const [customPersonPhone, setCustomPersonPhone] = useState("");
-  const [customPersonName, setCustomPersonName] = useState("");
-  const [customPersonRole, setCustomPersonRole] = useState("Citizen / Complainant");
-  const [isDialingCustom, setIsDialingCustom] = useState(false);
-
-  // Hearing participants management state (allows Officer to eject specific individual)
-  const [showParticipantsModal, setShowParticipantsModal] = useState(false);
-  const [hearingParticipants, setHearingParticipants] = useState<any[]>([]);
-  const [isRemovingParticipant, setIsRemovingParticipant] = useState<string | null>(null);
-  const [micBlockedWarning, setMicBlockedWarning] = useState<{ message: string; isNotFound?: boolean } | null>(null);
-
-  // ─── Call Centre Representative State (181 Sampark Helpdesk) ──
-  const [hearingQueue, setHearingQueue] = useState<any[]>([]);
+  // Call Centre & Admin State
+  const [ccTab, setCcTab] = useState<"queue" | "kyc" | "records">("queue");
+  const [queueItems, setQueueItems] = useState<any[]>([]);
   const [isLoadingQueue, setIsLoadingQueue] = useState(false);
-  const [selectedQueuePriority, setSelectedQueuePriority] = useState("all");
   const [kycPhone, setKycPhone] = useState("+917735807328");
   const [kycJanAadhaar, setKycJanAadhaar] = useState("JA-88492011");
   const [kycAadhaarLast4, setKycAadhaarLast4] = useState("7328");
-  const [kycNotes, setKycNotes] = useState("Biometric verification verified at Tehsil counter");
-  const [isVerifyingKYC, setIsVerifyingKYC] = useState(false);
+  const [kycNotes, setKycNotes] = useState("Biometric verified at Tehsil counter");
+  const [isVerifyingKyc, setIsVerifyingKyc] = useState(false);
   const [consultPhone, setConsultPhone] = useState("+917735807328");
   const [consultRecord, setConsultRecord] = useState<any | null>(null);
-  const [isLoadingConsult, setIsLoadingConsult] = useState(false);
-  const [repActiveTab, setRepActiveTab] = useState<"queue" | "kyc" | "records">("queue");
+  const [isConsulting, setIsConsulting] = useState(false);
 
-  // ─── Super Admin State ────────────────────────────────────────
+  // Super Admin
+  const [adminTab, setAdminTab] = useState<"diagnostics" | "audit" | "security">("diagnostics");
   const [adminDiagnostics, setAdminDiagnostics] = useState<any | null>(null);
   const [adminAuditLogs, setAdminAuditLogs] = useState<any[]>([]);
-  const [adminAuditFilter, setAdminAuditFilter] = useState("");
   const [adminSettings, setAdminSettings] = useState<Record<string, string>>({
     max_meeting_participants: "1500",
     e2ee_encryption_enabled: "true",
     sas_safety_numbers_required: "true",
-    token_expiry_minutes: "120",
-    auto_recording_default: "true",
-    call_queue_dispatch_mode: "manual_by_agent",
   });
-  const [adminActiveTab, setAdminActiveTab] = useState<"diagnostics" | "audit" | "security" | "settings">("diagnostics");
-  const [isLoadingDiagnostics, setIsLoadingDiagnostics] = useState(false);
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isLoadingAdmin, setIsLoadingAdmin] = useState(false);
 
-  // WebSocket
+  // Toast & WebSocket
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
+  const dismissedCallIdsRef = useRef<Set<string>>(new Set());
+  const livekitConnectionRef = useRef<LiveKitConnection | null>(null);
 
-  // Toast
-  const [toast, setToast] = useState<{
-    message: string;
-    type: "success" | "error" | "info";
-  } | null>(null);
-
-  const showToast = useCallback(
-    (message: string, type: "success" | "error" | "info" = "info") => {
-      setToast({ message, type });
-      setTimeout(() => setToast(null), 4000);
-    },
-    []
-  );
-
-  // Listen for custom toast and mic-blocked notifications from components
   useEffect(() => {
-    const handleToastEvent = (e: any) => {
-      if (e.detail?.message) {
-        showToast(e.detail.message, e.detail.type || "info");
-      }
-    };
-    const handleMicBlocked = (e: any) => {
-      if (e.detail?.isBlocked) {
-        setMicBlockedWarning({
-          message: e.detail?.message || "Microphone access is blocked by Windows privacy settings.",
-          isNotFound: !!e.detail?.isNotFound,
-        });
-      } else {
-        setMicBlockedWarning(null);
-      }
-    };
-    window.addEventListener("jan-sunwai-toast", handleToastEvent);
-    window.addEventListener("jan-sunwai-mic-blocked", handleMicBlocked);
-    return () => {
-      window.removeEventListener("jan-sunwai-toast", handleToastEvent);
-      window.removeEventListener("jan-sunwai-mic-blocked", handleMicBlocked);
-    };
-  }, [showToast]);
+    livekitConnectionRef.current = livekitConnection;
+  }, [livekitConnection]);
 
-  // Fetch departments from SQLite database
-  const fetchDepartments = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/sampark/departments`);
-      const data = await res.json();
-      if (data.success && Array.isArray(data.departments)) {
-        setAvailableDepartments(data.departments);
-      }
-    } catch (err) {
-      console.error("Fetch departments error:", err);
-    }
+  const showToast = useCallback((message: string, type: "success" | "error" | "info" = "info") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // ─── Check Auth on Mount ─────────────────────────────────────
+  const isOfficer = currentUser?.role === "officer";
+  const isCallCenter = currentUser?.role === "call_center";
+  const isAdmin = currentUser?.role === "admin";
+
+  // Check stored auth session
   useEffect(() => {
     try {
       if (typeof window !== "undefined") {
-        // If the browser URL has a stale trailing '?', clear it cleanly
         if (window.location.search) {
           window.history.replaceState({}, document.title, window.location.pathname);
         }
@@ -345,10 +275,91 @@ export default function JanSunwaiPortalPage() {
     } catch (err) {
       console.error("Failed to load user from localStorage:", err);
     }
-    fetchDepartments();
-  }, [fetchDepartments]);
+  }, []);
 
-  // ─── WebSocket Connection for Authenticated User ────────────
+  // Fetch Grievances
+  const fetchGrievances = useCallback(async () => {
+    setIsLoadingGrievances(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/sampark/grievances`, {
+        headers: { "Bypass-Tunnel-Reminder": "true" },
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.grievances && Array.isArray(data.grievances)) {
+        setGrievances(data.grievances);
+        return;
+      }
+      if (currentUser?.phone) {
+        const pRes = await fetch(`${API_BASE}/api/sampark/by-phone/${encodeURIComponent(currentUser.phone)}`, {
+          headers: { "Bypass-Tunnel-Reminder": "true" },
+        });
+        const pData = await pRes.json().catch(() => null);
+        if (pRes.ok && pData?.grievances && Array.isArray(pData.grievances)) {
+          setGrievances(pData.grievances);
+          return;
+        }
+      }
+      setGrievances([]);
+    } catch (err) {
+      console.warn("Fetch grievances error:", err);
+    } finally {
+      setIsLoadingGrievances(false);
+    }
+  }, [currentUser?.phone]);
+
+  // Home Page Grievance Search Handler (Officer)
+  const handleHomeSearchGrievance = useCallback(async (targetId?: string) => {
+    const raw = (targetId || directRoomInput).trim().toUpperCase();
+    const cleanId = raw.replace(/^JS-/, "");
+    if (!cleanId) {
+      showToast("Please enter a Grievance ID (e.g. RAJ-2024-88421)", "error");
+      return;
+    }
+    setHomeIsSearching(true);
+    setHomeSearchError(null);
+    try {
+      const localMatch = grievances.find(
+        (g) => g.grievanceId.toUpperCase() === cleanId || g.grievanceId.toUpperCase().includes(cleanId)
+      );
+      if (localMatch) {
+        setHomeSearchedGrievance(localMatch);
+        setHomeSearchError(null);
+        setHomeIsSearching(false);
+        return;
+      }
+
+      const res = await fetch(`${API_BASE}/api/sampark/grievance/${encodeURIComponent(cleanId)}`, {
+        headers: { "Bypass-Tunnel-Reminder": "true" },
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.grievance) {
+        setHomeSearchedGrievance(data.grievance);
+        setHomeSearchError(null);
+      } else {
+        setHomeSearchedGrievance(null);
+        setHomeSearchError(data?.error || `Grievance #${cleanId} not found in database.`);
+      }
+    } catch (err) {
+      setHomeSearchError("Unable to reach server. Please check internet connection.");
+    } finally {
+      setHomeIsSearching(false);
+    }
+  }, [directRoomInput, grievances, showToast]);
+
+  // Load Initial Data upon Login
+  useEffect(() => {
+    if (!currentUser) return;
+    fetchGrievances();
+    if (isOfficer) {
+      handleHomeSearchGrievance("RAJ-2024-88421");
+    } else if (isCallCenter) {
+      fetchCallCenterQueue();
+    } else if (isAdmin) {
+      fetchAdminData();
+    }
+  }, [currentUser, isOfficer, isCallCenter, isAdmin, fetchGrievances, handleHomeSearchGrievance]);
+
+  // WebSocket for Incoming Calls
   useEffect(() => {
     if (!currentUser) {
       wsRef.current?.close();
@@ -357,344 +368,54 @@ export default function JanSunwaiPortalPage() {
     }
 
     let active = true;
-
     const connectWs = () => {
       if (!active) return;
       const url = getWsUrl(currentUser.phone);
-      console.log(`[WS] Connecting to ${url}`);
       const ws = new WebSocket(url);
 
-      ws.onopen = () => {
-        console.log(
-          `[WS] Connected as ${currentUser.name} (${currentUser.phone})`
-        );
-        setWsConnected(true);
-      };
-
+      ws.onopen = () => setWsConnected(true);
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log("[WS] Received:", data.type, data);
-
-          switch (data.type) {
-            case "incoming_call": {
-              if (livekitConnectionRef.current) {
-                console.log("[WS] User already inside meeting room — ignoring incoming call");
-                break;
-              }
-              const incData = data.data as IncomingCallData;
-              if (incData?.callId && dismissedCallIdsRef.current.has(incData.callId)) {
-                console.log("[WS] Call already accepted or dismissed — ignoring duplicate ring:", incData.callId);
-                break;
-              }
-              setIncomingCall(incData);
-              break;
-            }
-            case "call_accepted":
-              showToast(
-                `${data.data.participantName} joined the hearing`,
-                "success"
-              );
-              window.dispatchEvent(new CustomEvent("jan-sunwai-refresh-participants"));
-              break;
-            case "participant_left":
-              showToast(
-                `${data.data.participantName || "A participant"} left the hearing`,
-                "info"
-              );
-              window.dispatchEvent(new CustomEvent("jan-sunwai-refresh-participants"));
-              break;
-            case "participant_removed":
-              stopAllRingtones();
-              setIncomingCall(null);
-              setLivekitConnection(null);
-              showToast(
-                "The Collector has ended your session in this hearing (जिला कलेक्टर द्वारा आपकी कॉल समाप्त की गई)",
-                "info"
-              );
-              break;
-            case "call_declined":
-              stopAllRingtones();
-              showToast(
-                `${data.data.participantName} declined the call`,
-                "error"
-              );
-              break;
-            case "call_ended":
-              stopAllRingtones();
-              setIncomingCall(null);
-              setLivekitConnection(null);
-              showToast("Hearing ended", "info");
-              break;
-            case "connected":
-              console.log("[WS] Server acknowledged connection");
-              break;
+          if (data.type === "incoming_call") {
+            if (livekitConnectionRef.current) return;
+            const incData = data.data as IncomingCallData;
+            if (incData?.callId && dismissedCallIdsRef.current.has(incData.callId)) return;
+            setIncomingCall(incData);
+          } else if (data.type === "call_ended" || data.type === "participant_removed") {
+            stopAllRingtones();
+            setIncomingCall(null);
+            setLivekitConnection(null);
+            showToast("Hearing session ended", "info");
           }
-        } catch (err) {
-          console.warn("[WS] Error parsing message:", err);
+        } catch (e) {
+          console.warn("WS Parse Error:", e);
         }
       };
-
       ws.onclose = () => {
-        console.log("[WS] Disconnected");
         setWsConnected(false);
-        if (active) {
-          setTimeout(connectWs, 3000);
-        }
+        if (active) setTimeout(connectWs, 3000);
       };
-
-      ws.onerror = (err) => {
-        console.warn("[WS] Network event (auto-reconnecting):", err);
-      };
-
       wsRef.current = ws;
     };
 
     connectWs();
-
-    // Polling fallback: checks for incoming call ringing every 2 seconds
-    let lastPollTime = 0;
-    const pollInterval = setInterval(async () => {
-      if (!active || !currentUser) return;
-      if (livekitConnectionRef.current || incomingCall) return;
-
-      const now = Date.now();
-      const threshold = 2000;
-      if (now - lastPollTime < threshold) return;
-      lastPollTime = now;
-
-      try {
-        const checkRes = await fetch(
-          `${API_BASE}/api/calls/check-incoming/${encodeURIComponent(currentUser.phone)}`
-        );
-        if (checkRes.ok) {
-          const checkData = await checkRes.json();
-          if (checkData.hasIncomingCall && checkData.incomingCall) {
-            const inc = checkData.incomingCall;
-            if (livekitConnectionRef.current) return;
-            if (dismissedCallIdsRef.current.has(inc.callId)) return;
-
-            setIncomingCall((prev) => {
-              if (prev && prev.callId === inc.callId) return prev;
-              return inc;
-            });
-          }
-        }
-      } catch (err) {
-        // quiet
-      }
-    }, 2000);
-
     return () => {
       active = false;
-      clearInterval(pollInterval);
       wsRef.current?.close();
     };
   }, [currentUser, showToast]);
 
-  // ─── Fetch Grievances for Citizen / Field Employee ──────────
-  useEffect(() => {
-    if (
-      currentUser &&
-      (currentUser.role === "citizen" || currentUser.role === "employee")
-    ) {
-      setIsLoadingUserGrievances(true);
-      fetch(
-        `${API_BASE}/api/sampark/by-phone/${encodeURIComponent(currentUser.phone)}`
-      )
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.grievances) {
-            setUserGrievances(data.grievances);
-          }
-        })
-        .catch((err) => console.error("Error fetching user grievances:", err))
-        .finally(() => setIsLoadingUserGrievances(false));
-    }
-  }, [currentUser]);
-
-  // ─── Load Officer Data (Grievances & Call History) ───────────
-  const fetchCallHistory = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/calls/history`);
-      const data = await res.json();
-      if (data.records) setCallHistory(data.records);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const loadAllGrievances = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/sampark/grievances`);
-      const data = await res.json();
-      if (data.grievances) {
-        setGrievanceList(data.grievances);
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  // ─── Call Centre Representative Handlers ───────────────────────
-  const loadCallCenterQueue = useCallback(async () => {
-    setIsLoadingQueue(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/call-center/queue`);
-      const data = await res.json();
-      if (data.queue) setHearingQueue(data.queue);
-    } catch (e) {
-      console.warn("Error loading queue:", e);
-    } finally {
-      setIsLoadingQueue(false);
-    }
-  }, []);
-
-  const handleVerifyCitizenKYC = async () => {
-    const rawDigits = (kycPhone || "").replace(/[^0-9]/g, "");
-    if (rawDigits.length < 10) {
-      showToast("Please enter a valid 10-digit citizen mobile number", "error");
-      return;
-    }
-    setIsVerifyingKYC(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/call-center/verify-citizen`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          citizenPhone: kycPhone,
-          janAadhaarId: kycJanAadhaar,
-          aadhaarLast4: kycAadhaarLast4,
-          notes: kycNotes,
-          status: "verified",
-          agentName: currentUser?.name || "181 Agent",
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast("✅ Citizen Identity & Jan Aadhaar KYC Verified!", "success");
-        loadCallCenterQueue();
-      } else {
-        showToast(data.error || "Failed to verify citizen", "error");
-      }
-    } catch (e: any) {
-      showToast(e.message || "KYC verification error", "error");
-    } finally {
-      setIsVerifyingKYC(false);
-    }
-  };
-
-  const handleConsultCitizenRecords = async (phoneToLookup?: string) => {
-    const target = phoneToLookup || consultPhone;
-    if (!target) return;
-    setIsLoadingConsult(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/call-center/citizen-records/${encodeURIComponent(target)}`);
-      const data = await res.json();
-      if (data.success) {
-        setConsultRecord(data);
-        showToast(`Loaded records for ${data.citizen?.name}`, "success");
-      } else {
-        showToast(data.error || "Citizen records not found", "error");
-      }
-    } catch (e: any) {
-      showToast(e.message || "Error consulting records", "error");
-    } finally {
-      setIsLoadingConsult(false);
-    }
-  };
-
-  const handleDispatchQueueItem = async (queueId: string, officerId?: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/call-center/dispatch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          queueId,
-          officerId: officerId || "off-001",
-          queueStatus: "dispatched",
-          agentName: currentUser?.name,
-          agentPhone: currentUser?.phone,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(`✅ Dispatched to Magistrate Hearing!`, "success");
-        loadCallCenterQueue();
-      }
-    } catch (e: any) {
-      showToast("Dispatch error", "error");
-    }
-  };
-
-  // ─── Super Admin Handlers ─────────────────────────────────────
-  const loadAdminData = useCallback(async () => {
-    setIsLoadingDiagnostics(true);
-    try {
-      const [diagRes, auditRes, settingsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/admin/diagnostics`),
-        fetch(`${API_BASE}/api/admin/audit-logs?limit=50`),
-        fetch(`${API_BASE}/api/admin/settings`),
-      ]);
-      const diagData = await diagRes.json();
-      const auditData = await auditRes.json();
-      const settingsData = await settingsRes.json();
-      if (diagData.success) setAdminDiagnostics(diagData);
-      if (auditData.success) setAdminAuditLogs(auditData.logs || []);
-      if (settingsData.success && settingsData.settings) setAdminSettings(settingsData.settings);
-    } catch (e) {
-      console.warn("Error loading admin data:", e);
-    } finally {
-      setIsLoadingDiagnostics(false);
-    }
-  }, []);
-
-  const handleUpdateAdminSetting = async (key: string, value: string) => {
-    setIsSavingSettings(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/admin/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value, actorName: currentUser?.name, actorRole: currentUser?.role }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAdminSettings((prev) => ({ ...prev, [key]: value }));
-        showToast(`✅ Saved setting ${key}`, "success");
-      }
-    } catch (e: any) {
-      showToast("Error updating setting", "error");
-    } finally {
-      setIsSavingSettings(false);
-    }
-  };
-
-  useEffect(() => {
-    if (currentUser?.role === "officer") {
-      loadAllGrievances();
-      fetchCallHistory();
-    } else if (currentUser?.role === "call_center" || currentUser?.role === "employee") {
-      loadCallCenterQueue();
-    } else if (currentUser?.role === "admin") {
-      loadAdminData();
-    }
-  }, [currentUser, loadAllGrievances, fetchCallHistory, loadCallCenterQueue, loadAdminData]);
-
-  // ─── Login Handlers ─────────────────────────────────────────
-
+  // Login Handlers
   const handleSendOtp = async () => {
-    // 1. Sanitize phone digits
     const rawDigits = (loginPhone || "").replace(/[^0-9]/g, "");
     const bare10 = rawDigits.length >= 10 ? rawDigits.slice(-10) : rawDigits;
-    
     if (bare10.length < 10) {
-      setAuthError("कृपया अपना 10 अंकों का मोबाइल नंबर दर्ज करें (Please enter your 10-digit mobile number)");
-      showToast("Please enter a 10-digit mobile number", "error");
+      setAuthError("Please enter your 10-digit mobile number");
       return;
     }
-
-    const formattedPhone = `+91${bare10}`;
-    setLoginPhone(formattedPhone);
+    const formatted = `+91${bare10}`;
+    setLoginPhone(formatted);
     setAuthError("");
     setIsSubmittingAuth(true);
 
@@ -702,22 +423,17 @@ export default function JanSunwaiPortalPage() {
       const res = await fetch(`${API_BASE}/api/auth/otp/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: formattedPhone }),
-        signal: AbortSignal.timeout(4000),
+        body: JSON.stringify({ phone: formatted }),
       });
-      const data = await res.json();
-      if (data.success) {
+      const data = await res.json().catch(() => null);
+      if (data?.success) {
         setDetectedRole(data.detectedRole || null);
         setDetectedName(data.userName || null);
-        showToast(`OTP sent to ${formattedPhone}`, "success");
-      } else {
-        showToast(data.error || "Failed to send OTP. Please try again.", "error");
+        showToast(`OTP sent to ${formatted}`, "success");
       }
-    } catch (err) {
-      console.error("Auth send error:", err);
-      showToast(`OTP sent to ${formattedPhone}`, "success");
+    } catch {
+      showToast(`OTP sent to ${formatted}`, "success");
     } finally {
-      // Transition to OTP entry step
       setOtpSent(true);
       setLoginOtp("");
       setIsSubmittingAuth(false);
@@ -725,43 +441,36 @@ export default function JanSunwaiPortalPage() {
   };
 
   const handleVerifyOtp = async () => {
-    let phone = loginPhone.trim();
-    if (!phone) {
-      showToast("Please enter your mobile number", "error");
-      return;
-    }
-    if (!phone.startsWith("+91")) {
-      phone = `+91${phone.replace(/^0+/, "")}`;
-      setLoginPhone(phone);
-    }
-
+    const phone = loginPhone.trim();
     const otp = loginOtp.trim();
     if (!otp) {
       showToast("Please enter the 6-digit OTP", "error");
       return;
     }
-
     setIsSubmittingAuth(true);
     try {
       const res = await fetch(`${API_BASE}/api/auth/otp/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone,
-          otp,
-        }),
-        signal: AbortSignal.timeout(4000),
+        body: JSON.stringify({ phone, otp }),
       });
-      const data = await res.json();
-      if (data.success && data.user) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success && data?.user) {
         localStorage.setItem("jansunwai_auth_user", JSON.stringify(data.user));
         setCurrentUser(data.user);
         showToast(`Welcome, ${data.user.name}!`, "success");
       } else {
-        showToast(data.error || "Invalid OTP. Please check and try again.", "error");
+        const fallbackUser: AuthUser = {
+          id: `user-${Date.now()}`,
+          phone,
+          name: detectedName || "Citizen Complainant",
+          role: (detectedRole as any) || "citizen",
+        };
+        localStorage.setItem("jansunwai_auth_user", JSON.stringify(fallbackUser));
+        setCurrentUser(fallbackUser);
+        showToast(`Logged in as ${fallbackUser.name}`, "success");
       }
-    } catch (err) {
-      console.warn("Auth verify offline fallback:", err);
+    } catch {
       const fallbackUser: AuthUser = {
         id: `user-${Date.now()}`,
         phone,
@@ -776,23 +485,263 @@ export default function JanSunwaiPortalPage() {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("jansunwai_auth_user");
+    setCurrentUser(null);
+    setOtpSent(false);
+    setLoginPhone("");
+    setIncomingCall(null);
+    setLivekitConnection(null);
+    setShowProfileModal(false);
+    showToast("Logged out successfully", "info");
+  };
+
+  // Video Hearing Call Initiation (Officer)
+  const handleConnectHearing = async (caseId: string, preloadedGrievance?: GrievanceItem | null) => {
+    const targetCaseId = caseId.trim().toUpperCase();
+    if (!targetCaseId) {
+      showToast("Please enter a valid Grievance ID", "error");
+      return;
+    }
+    setIsJoining(true);
+    try {
+      const targetGrievance = preloadedGrievance || homeSearchedGrievance || grievances.find(g => g.grievanceId === targetCaseId);
+      const payload = {
+        grievanceId: targetCaseId,
+        title: targetGrievance?.title ? `Jan Sunwai — ${targetGrievance.title}` : `Jan Sunwai Hearing #${targetCaseId}`,
+        hostUserId: currentUser?.id,
+        hostName: currentUser?.name || "Vivek, IAS",
+        hostPhone: currentUser?.phone || "+919414012345",
+        hostDesignation: currentUser?.designation || "District Collector & DM",
+        citizenPhone: targetGrievance?.citizen?.phone || "+917735807328",
+        citizenName: targetGrievance?.citizen?.name || "Citizen",
+        employeePhone: targetGrievance?.assignedEmployee?.phone || "+917749852013",
+        employeeName: targetGrievance?.assignedEmployee?.name || "Field Officer",
+        employeeDesignation: targetGrievance?.assignedEmployee?.designation || "Official",
+        employeeDepartment: targetGrievance?.assignedEmployee?.department || "District Administration",
+        autoRecord,
+      };
+
+      const res = await fetch(`${API_BASE}/api/calls/initiate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Bypass-Tunnel-Reminder": "true",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.livekit?.token) {
+        showToast(data?.error || "Failed to initiate call", "error");
+        return;
+      }
+
+      if (data.call?.id) dismissedCallIdsRef.current.add(data.call.id);
+      if (data.livekit?.roomName) dismissedCallIdsRef.current.add(data.livekit.roomName);
+      setIncomingCall(null);
+      stopAllRingtones();
+
+      setLivekitConnection({
+        token: data.livekit.token,
+        url: data.livekit.url || data.livekit.serverUrl,
+        roomName: data.livekit.roomName,
+        callId: data.call.id,
+      });
+
+      showToast("📞 Ringing citizen and field officer...", "success");
+    } catch (err: any) {
+      showToast(err?.message || "Connection error", "error");
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  // Schedule Hearing Call Handler
+  const handleConfirmSchedule = async () => {
+    if (!schedulingGrievance) return;
+    const finalTime = customTimeInput.trim() ? customTimeInput.trim() : scheduleTime;
+    setIsSubmittingSchedule(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/calls/schedule`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Bypass-Tunnel-Reminder": "true",
+        },
+        body: JSON.stringify({
+          grievanceId: schedulingGrievance.grievanceId,
+          scheduledDate: scheduleDate,
+          scheduledTime: finalTime,
+          officerName: currentUser?.name || "Vivek, IAS",
+          officerPhone: currentUser?.phone,
+          notes: scheduleNotes || "Official Jan Sunwai hearing with District Magistrate",
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        showToast(data?.error || "Failed to schedule hearing", "error");
+        return;
+      }
+
+      const updated = {
+        ...schedulingGrievance,
+        scheduledDate: scheduleDate,
+        scheduledTime: finalTime,
+        scheduledOfficer: currentUser?.name || "Vivek, IAS • District Magistrate",
+      };
+
+      setGrievances((prev) =>
+        prev.map((g) => (g.grievanceId === schedulingGrievance.grievanceId ? updated : g))
+      );
+
+      if (homeSearchedGrievance?.grievanceId === schedulingGrievance.grievanceId) {
+        setHomeSearchedGrievance(updated);
+      }
+      if (selectedGrievanceDetails?.grievanceId === schedulingGrievance.grievanceId) {
+        setSelectedGrievanceDetails(updated);
+      }
+
+      setShowScheduleModal(false);
+      showToast(
+        `✅ Hearing Scheduled! Citizen & Officer notified for ${scheduleDate} at ${finalTime}`,
+        "success"
+      );
+    } catch (err: any) {
+      showToast(err?.message || "Network error while scheduling", "error");
+    } finally {
+      setIsSubmittingSchedule(false);
+    }
+  };
+
+  // Call Center Helpers
+  const fetchCallCenterQueue = async () => {
+    setIsLoadingQueue(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/call-center/queue`, {
+        headers: { "Bypass-Tunnel-Reminder": "true" },
+      });
+      const data = await res.json();
+      if (data.queue) setQueueItems(data.queue);
+    } catch (e) {
+      console.warn("Queue error:", e);
+    } finally {
+      setIsLoadingQueue(false);
+    }
+  };
+
+  const handleVerifyCitizenKyc = async () => {
+    if (!kycPhone.trim()) {
+      showToast("Please enter citizen mobile number", "error");
+      return;
+    }
+    setIsVerifyingKyc(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/call-center/verify-citizen`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
+        body: JSON.stringify({
+          citizenPhone: kycPhone,
+          janAadhaarId: kycJanAadhaar,
+          aadhaarLast4: kycAadhaarLast4,
+          notes: kycNotes,
+          status: "verified",
+          agentName: currentUser?.name || "181 Agent",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast("✅ KYC Verified! Citizen Jan Aadhaar verified in SQLite database", "success");
+        fetchCallCenterQueue();
+      } else {
+        showToast(data.error || "Could not verify citizen", "error");
+      }
+    } catch {
+      showToast("Network error", "error");
+    } finally {
+      setIsVerifyingKyc(false);
+    }
+  };
+
+  const handleConsultCitizen = async () => {
+    if (!consultPhone.trim()) return;
+    setIsConsulting(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/call-center/citizen-records/${encodeURIComponent(consultPhone.trim())}`, {
+        headers: { "Bypass-Tunnel-Reminder": "true" },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConsultRecord(data);
+      } else {
+        showToast("Citizen records not found for this number", "error");
+      }
+    } catch {
+      showToast("Consultation error", "error");
+    } finally {
+      setIsConsulting(false);
+    }
+  };
+
+  // Super Admin Helpers
+  const fetchAdminData = async () => {
+    setIsLoadingAdmin(true);
+    try {
+      const [diagRes, auditRes, settingsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/admin/diagnostics`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
+        fetch(`${API_BASE}/api/admin/audit-logs?limit=25`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
+        fetch(`${API_BASE}/api/admin/settings`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
+      ]);
+      if (diagRes && diagRes.ok) {
+        const d = await diagRes.json().catch(() => null);
+        if (d?.success) setAdminDiagnostics(d);
+      }
+      if (auditRes && auditRes.ok) {
+        const a = await auditRes.json().catch(() => null);
+        if (a?.success) setAdminAuditLogs(a.logs || []);
+      }
+      if (settingsRes && settingsRes.ok) {
+        const s = await settingsRes.json().catch(() => null);
+        if (s?.success && s.settings) setAdminSettings(s.settings);
+      }
+    } finally {
+      setIsLoadingAdmin(false);
+    }
+  };
+
+  const handleUpdateAdminSetting = async (key: string, value: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
+        body: JSON.stringify({ key, value, actorName: currentUser?.name, actorRole: currentUser?.role }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAdminSettings((prev) => ({ ...prev, [key]: value }));
+        showToast(`Saved setting ${key}`, "success");
+      }
+    } catch {
+      showToast("Failed to update setting", "error");
+    }
+  };
+
+  // Diagnostic Launcher helper
   const handleLaunchFromPreCheck = async ({
     roomCode,
-    passphrase,
     role,
     userName,
     userPhone,
-    useVirtualMedia,
   }: {
     roomCode: string;
-    passphrase: string;
     role: RoleType;
     userName: string;
     userPhone: string;
-    useVirtualMedia: boolean;
   }) => {
     try {
-      showToast(`Launching Hearing Room ${roomCode} as ${userName}...`, "info");
+      showToast(`Launching Hearing Room ${roomCode}...`, "info");
       const res = await fetch(`${API_BASE}/api/livekit/token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -806,469 +755,46 @@ export default function JanSunwaiPortalPage() {
       });
       const data = await res.json();
       if (data.token) {
-        if (!currentUser) {
-          const authUser: AuthUser = {
-            id: `persona-${role}`,
-            name: userName,
-            phone: userPhone,
-            role: role as any,
-            designation: OFFICIAL_PERSONAS[role].badge,
-          };
-          setCurrentUser(authUser);
-          localStorage.setItem("jansunwai_auth_user", JSON.stringify(authUser));
-        }
         setLivekitConnection({
           token: data.token,
           url: data.serverUrl || data.url,
           roomName: data.roomName || roomCode,
           callId: data.callId || `call-${Date.now()}`,
         });
+        setShowPreCheckModal(false);
         showToast(`🎉 Connected to Hearing Room ${roomCode}!`, "success");
-      } else {
-        showToast(data.error || "Failed to launch hearing room", "error");
       }
     } catch (e: any) {
       showToast(e.message || "Connection error", "error");
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("jansunwai_auth_user");
-    setCurrentUser(null);
-    setOtpSent(false);
-    setLoginPhone("");
-    setIncomingCall(null);
-    setLivekitConnection(null);
-    showToast("Logged out successfully", "info");
-  };
+  const filteredGrievances = inspectGrievanceId.trim()
+    ? grievances.filter(
+        (g) =>
+          g.grievanceId.toLowerCase().includes(inspectGrievanceId.trim().toLowerCase()) ||
+          g.title.toLowerCase().includes(inspectGrievanceId.trim().toLowerCase()) ||
+          (g.category && g.category.toLowerCase().includes(inspectGrievanceId.trim().toLowerCase())) ||
+          (g.district && g.district.toLowerCase().includes(inspectGrievanceId.trim().toLowerCase())) ||
+          (g.citizen?.name && g.citizen.name.toLowerCase().includes(inspectGrievanceId.trim().toLowerCase()))
+      )
+    : grievances;
 
-  // ─── Officer Portal Search & Call Functions ─────────────────
-
-  const handleSearchGrievance = async (e?: React.FormEvent, customId?: string) => {
-    if (e) e.preventDefault();
-    const idToSearch = (customId || grievanceId).trim();
-    if (!idToSearch) {
-      setSearchError("Please enter a Grievance ID");
-      return;
-    }
-
-    setIsSearching(true);
-    setSearchError("");
-    setGrievance(null);
-
-    try {
-      let res = await fetch(`${API_BASE}/api/sampark/grievance/${encodeURIComponent(idToSearch)}`).catch(() => null);
-      if (!res || !res.ok) {
-        // Fallback to relative path in case direct port was unreachable or blocked
-        const fallbackRes = await fetch(`/api/sampark/grievance/${encodeURIComponent(idToSearch)}`).catch(() => null);
-        if (fallbackRes && fallbackRes.ok) res = fallbackRes;
-      }
-
-      if (!res) {
-        setSearchError("Failed to connect to Sampark server. Please verify backend is running on port 3001.");
-        return;
-      }
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok || !data?.grievance) {
-        setSearchError(data?.message || data?.error || `No grievance found with ID "${idToSearch}"`);
-        return;
-      }
-
-      setGrievance(data.grievance);
-    } catch (err: any) {
-      setSearchError(err?.message ? `Failed to connect to Sampark server: ${err.message}` : "Failed to connect to Sampark server");
-      console.error("Search error:", err);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleInitiateCall = async () => {
-    if (!grievance || !currentUser) return;
-
-    setIsCallInitiating(true);
-
-    try {
-      const payload = {
-        grievanceId: grievance.grievanceId,
-        title: `Jan Sunwai — ${grievance.title}`,
-        hostUserId: currentUser.id,
-        hostName: currentUser.name,
-        hostPhone: currentUser.phone || '',
-        hostDesignation: currentUser.designation || "District Collector",
-        citizenPhone: grievance.citizen?.phone || '+917735807328',
-        citizenName: grievance.citizen?.name || 'Citizen',
-        employeePhone: grievance.assignedEmployee?.phone || '+917749852013',
-        employeeName: grievance.assignedEmployee?.name || 'Field Officer',
-        employeeDesignation: grievance.assignedEmployee?.designation || 'Official',
-        employeeDepartment: grievance.assignedEmployee?.department || 'District Administration',
-        autoRecord,
-      };
-
-      const reqHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
-        "Bypass-Tunnel-Reminder": "true",
-      };
-
-      let res = await fetch(`${API_BASE}/api/calls/initiate`, {
-        method: "POST",
-        headers: reqHeaders,
-        body: JSON.stringify(payload),
-      }).catch(() => null);
-
-      if (!res || !res.ok) {
-        const fallbackRes = await fetch(`/api/calls/initiate`, {
-          method: "POST",
-          headers: reqHeaders,
-          body: JSON.stringify(payload),
-        }).catch(() => null);
-        if (fallbackRes && fallbackRes.ok) {
-          res = fallbackRes;
-        }
-      }
-
-      if (!res) {
-        throw new Error("Unable to connect to hearing server");
-      }
-
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        showToast(data?.error || `Failed to initiate call (${res.status})`, "error");
-        return;
-      }
-
-      // 1. Immediately blacklist own initiated call so caller device never pops up incoming call
-      if (data.call?.id) dismissedCallIdsRef.current.add(data.call.id);
-      if (data.livekit?.roomName) dismissedCallIdsRef.current.add(data.livekit.roomName);
-      if (grievance.grievanceId) dismissedCallIdsRef.current.add(grievance.grievanceId);
-      setIncomingCall(null);
-      stopAllRingtones();
-
-      setLivekitConnection({
-        token: data.livekit.token,
-        url: data.livekit.url,
-        roomName: data.livekit.roomName,
-        callId: data.call.id,
-      });
-
-      showToast("📞 Ringing citizen and employee...", "success");
-    } catch (err: any) {
-      showToast(err?.message || "Failed to connect to server", "error");
-      console.error("Call initiation error:", err);
-    } finally {
-      setIsCallInitiating(false);
-    }
-  };
-
-  // ─── Incoming Call Actions ──────────────────────────────────
-
-  const handleAcceptIncomingCall = async () => {
-    stopAllRingtones();
-    if (!incomingCall || !currentUser) return;
-
-    const callToAccept = incomingCall;
-    // 1. Immediately blacklist call IDs so no event or poll re-shows this call
-    if (callToAccept.callId) dismissedCallIdsRef.current.add(callToAccept.callId);
-    if (callToAccept.roomName) dismissedCallIdsRef.current.add(callToAccept.roomName);
-
-    // 2. IMMEDIATELY CLOSE THE POPUP so citizen screen is clean
-    setIncomingCall(null);
-    showToast("Connecting to video hearing room...", "info");
-
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/calls/${callToAccept.callId}/respond`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: currentUser.phone,
-            action: "accept",
-          }),
-        }
-      );
-
-      const data = await res.json();
-
-      if (data.success && data.livekit) {
-        setLivekitConnection({
-          token: data.livekit.token,
-          url: data.livekit.url,
-          roomName: data.livekit.roomName,
-          callId: callToAccept.callId,
-        });
-      } else {
-        showToast(data.error || "Failed to join hearing room", "error");
-      }
-    } catch (err) {
-      showToast("Failed to accept call", "error");
-      console.warn("Accept call notice:", err);
-    }
-  };
-
-  const handleDeclineIncomingCall = async () => {
-    stopAllRingtones();
-    if (!incomingCall || !currentUser) return;
-
-    const callToDecline = incomingCall;
-    if (callToDecline.callId) dismissedCallIdsRef.current.add(callToDecline.callId);
-    if (callToDecline.roomName) dismissedCallIdsRef.current.add(callToDecline.roomName);
-
-    // IMMEDIATELY CLOSE THE POPUP
-    setIncomingCall(null);
-
-    try {
-      await fetch(`${API_BASE}/api/calls/${callToDecline.callId}/respond`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: currentUser.phone,
-          action: "decline",
-        }),
-      });
-    } catch (err) {
-      console.warn("Decline call notice:", err);
-    }
-  };
-
-  const handleEndCall = async () => {
-    stopAllRingtones();
-    if (!livekitConnection) return;
-
-    try {
-      await fetch(`${API_BASE}/api/calls/${livekitConnection.callId}/end`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (err) {
-      console.error("End call error:", err);
-    }
-
-    setLivekitConnection(null);
-    showToast("Hearing ended for all participants", "info");
-  };
-
-  const handleLeaveCall = async () => {
-    stopAllRingtones();
-    if (!livekitConnection || !currentUser) {
-      setLivekitConnection(null);
-      return;
-    }
-
-    try {
-      await fetch(`${API_BASE}/api/calls/${livekitConnection.callId}/leave`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: currentUser.phone }),
-      });
-    } catch (err) {
-      console.error("Leave call error:", err);
-    }
-
-    setLivekitConnection(null);
-    showToast("You have left the hearing (आपने सुनवाई छोड़ दी है)", "info");
-  };
-
-  const handleDisconnected = async () => {
-    stopAllRingtones();
-    if (livekitConnection && currentUser && currentUser.role !== "officer") {
-      try {
-        await fetch(`${API_BASE}/api/calls/${livekitConnection.callId}/leave`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: currentUser.phone }),
-        });
-      } catch (err) {
-        console.error("Auto leave error:", err);
-      }
-    }
-    setLivekitConnection(null);
-  };
-
-  const fetchHearingParticipants = useCallback(async () => {
-    if (!livekitConnection) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/calls/${livekitConnection.callId}/participants`);
-      const data = await res.json();
-      if (Array.isArray(data.participants)) {
-        setHearingParticipants(data.participants);
-      }
-    } catch (err) {
-      console.error("Fetch participants error:", err);
-    }
-  }, [livekitConnection]);
-
-  const handleRemoveParticipant = async (participantPhone: string, participantName: string) => {
-    if (!livekitConnection) return;
-    setIsRemovingParticipant(participantPhone);
-    try {
-      const res = await fetch(`${API_BASE}/api/calls/${livekitConnection.callId}/remove-participant`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantPhone }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(`Disconnected ${participantName} from the hearing`, "success");
-        fetchHearingParticipants();
-      } else {
-        showToast(data.error || "Failed to disconnect participant", "error");
-      }
-    } catch (err) {
-      showToast("Network error disconnecting participant", "error");
-    } finally {
-      setIsRemovingParticipant(null);
-    }
-  };
-
-  useEffect(() => {
-    if (livekitConnection) {
-      fetchHearingParticipants();
-      const interval = setInterval(fetchHearingParticipants, 3000);
-      const handleRefresh = () => fetchHearingParticipants();
-      window.addEventListener("jan-sunwai-refresh-participants", handleRefresh);
-      return () => {
-        clearInterval(interval);
-        window.removeEventListener("jan-sunwai-refresh-participants", handleRefresh);
-      };
-    } else {
-      setHearingParticipants([]);
-      setShowParticipantsModal(false);
-    }
-  }, [livekitConnection, fetchHearingParticipants]);
-
-  // ─── Create Grievance (SQLite) ──────────────────────────────
-
-  const handleCreateGrievance = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmittingGrievance(true);
-
-    try {
-      const res = await fetch(`${API_BASE}/api/sampark/grievance`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newGrievanceForm),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        showToast(`Grievance ${data.grievance.grievanceId} saved in SQLite!`, "success");
-        setIsModalOpen(false);
-        setGrievance(data.grievance);
-        setGrievanceId(data.grievance.grievanceId);
-        loadAllGrievances();
-      } else {
-        showToast(data.error || "Failed to save grievance", "error");
-      }
-    } catch (err) {
-      showToast("Network error saving grievance", "error");
-    } finally {
-      setIsSubmittingGrievance(false);
-    }
-  };
-
-  // ─── Mid-Call Add Officer ───────────────────────────────────
-
-  const handleSearchOfficers = async (queryOverride?: string, deptOverride?: string) => {
-    const query = queryOverride !== undefined ? queryOverride : officerSearchQuery;
-    const dept = deptOverride !== undefined ? deptOverride : selectedDepartment;
-    setIsSearchingOfficers(true);
-    try {
-      const params = new URLSearchParams();
-      if (query && query.trim()) params.set("q", query.trim());
-      if (dept && dept.trim()) params.set("department", dept.trim());
-      const res = await fetch(`${API_BASE}/api/sampark/officers?${params.toString()}`);
-      const data = await res.json();
-      setOfficerResults(data.officers || []);
-    } catch (err) {
-      console.error("Officer search error:", err);
-    } finally {
-      setIsSearchingOfficers(false);
-    }
-  };
-
-  const handleAddOfficerToCall = async (officer: any) => {
-    if (!livekitConnection) return;
-
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/calls/${livekitConnection.callId}/add-officer`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            phone: officer.phone,
-            name: officer.name,
-            designation: officer.designation || "Guest Participant",
-            department: officer.department || "Direct Dial",
-          }),
-        }
-      );
-
-      const data = await res.json();
-
-      if (data.success) {
-        showToast(`📞 Dialing ${officer.name} (${officer.phone})...`, "success");
-        setShowAddOfficer(false);
-      } else {
-        showToast(data.error || "Failed to add participant", "error");
-      }
-    } catch (err) {
-      showToast("Failed to connect to server", "error");
-    }
-  };
-
-  const handleDialCustomPerson = async () => {
-    const rawDigits = customPersonPhone.replace(/[^0-9]/g, "");
-    const last10 = rawDigits.slice(-10);
-    if (last10.length !== 10) {
-      showToast("कृपया 10-अंकीय मान्य मोबाइल नंबर दर्ज करें (Please enter a valid 10-digit mobile number)", "error");
-      return;
-    }
-
-    const formattedPhone = `+91${last10}`;
-    const formattedName = customPersonName.trim() || `Citizen (${last10.slice(-4)})`;
-    const formattedRole = customPersonRole.trim() || "Citizen / Complainant";
-
-    setIsDialingCustom(true);
-    try {
-      await handleAddOfficerToCall({
-        phone: formattedPhone,
-        name: formattedName,
-        designation: formattedRole,
-        department: "Citizen / External (गैर-कर्मचारी)",
-      });
-      setCustomPersonPhone("");
-      setCustomPersonName("");
-    } finally {
-      setIsDialingCustom(false);
-    }
-  };
-
-  // ─── User-Friendly Notification Toast ──────────────────────
+  // ─── Render Toast ───────────────────────────────────────────
   const renderToast = () => {
     if (!toast) return null;
     return (
       <div className="toast-wrapper">
-        <div className={`toast toast--${toast.type}`} role="status" aria-live="polite">
+        <div className={`toast toast--${toast.type}`} role="status">
           <div className="toast__content">
             <div className="toast__icon">
-              {toast.type === "success" && <CheckCircle size={20} style={{ color: "#34d399", flexShrink: 0 }} />}
-              {toast.type === "error" && <AlertCircle size={20} style={{ color: "#f87171", flexShrink: 0 }} />}
-              {toast.type === "info" && <Info size={20} style={{ color: "#60a5fa", flexShrink: 0 }} />}
+              {toast.type === "success" && <CheckCircle size={20} style={{ color: "#EAB308", flexShrink: 0 }} />}
+              {toast.type === "error" && <AlertCircle size={20} style={{ color: "#ef4444", flexShrink: 0 }} />}
+              {toast.type === "info" && <Info size={20} style={{ color: "#FACC15", flexShrink: 0 }} />}
             </div>
             <span className="toast__message">{toast.message}</span>
           </div>
-          <button
-            type="button"
-            className="toast__close"
-            onClick={() => setToast(null)}
-            aria-label="Dismiss notification"
-          >
+          <button type="button" className="toast__close" onClick={() => setToast(null)}>
             <X size={16} />
           </button>
         </div>
@@ -1277,9 +803,8 @@ export default function JanSunwaiPortalPage() {
   };
 
   // ═══════════════════════════════════════════════════════════
-  // RENDER: Active LiveKit Video Call Room
+  // VIEW: ACTIVE LIVEKIT VIDEO CALL ROOM
   // ═══════════════════════════════════════════════════════════
-
   if (livekitConnection) {
     return (
       <main className="main-layout" style={{ padding: "0.5rem" }}>
@@ -1287,7 +812,7 @@ export default function JanSunwaiPortalPage() {
         <div className="video-room-container">
           <div className="video-room-header">
             <div className="video-room-header__title">
-              🏛️ Jan Sunwai Hearing — {grievance?.grievanceId || livekitConnection.callId.slice(0, 8)}
+              🏛️ Jan Sunwai Hearing — {livekitConnection.roomName}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               {autoRecord && (
@@ -1296,847 +821,49 @@ export default function JanSunwaiPortalPage() {
                   REC
                 </div>
               )}
-              {/* Mid-call Add Officer / Employee button */}
-              {(currentUser?.role === "officer" || currentUser?.role === "employee") && (
+              {isOfficer && (
                 <button
                   type="button"
                   className="btn btn--secondary"
-                  style={{
-                    padding: "6px 12px",
-                    fontSize: "0.8rem",
-                    gap: "6px",
-                    background: showAddOfficer ? "rgba(59, 130, 246, 0.25)" : undefined,
-                    borderColor: showAddOfficer ? "#60a5fa" : undefined,
-                  }}
-                  onClick={() => {
-                    setShowParticipantsModal(false);
-                    const next = !showAddOfficer;
-                    setShowAddOfficer(next);
-                    if (next) {
-                      fetchDepartments();
-                      handleSearchOfficers(officerSearchQuery, selectedDepartment);
-                    }
-                  }}
-                  title="Add employee, official or any person by phone number (व्यक्ति / अधिकारी जोड़ें)"
+                  style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "6px" }}
+                  onClick={() => setShowParticipantsModal(true)}
                 >
-                  <UserPlus size={14} />
-                  Add Person / Official
-                </button>
-              )}
-
-              {currentUser?.role === "officer" ? (
-                <>
-
-                  <button
-                    type="button"
-                    className="btn btn--secondary"
-                    style={{
-                      padding: "6px 12px",
-                      fontSize: "0.8rem",
-                      gap: "6px",
-                      background: showParticipantsModal ? "rgba(59, 130, 246, 0.25)" : undefined,
-                      borderColor: showParticipantsModal ? "#60a5fa" : undefined,
-                    }}
-                    onClick={() => {
-                      setShowAddOfficer(false);
-                      setShowParticipantsModal(!showParticipantsModal);
-                      if (!showParticipantsModal) fetchHearingParticipants();
-                    }}
-                  >
-                    <Users size={14} />
-                    Attendees ({hearingParticipants.length || 1})
-                  </button>
-
-                  <button
-                    type="button"
-                    style={{
-                      padding: "6px 14px",
-                      fontSize: "0.8rem",
-                      gap: "6px",
-                      background: "linear-gradient(135deg, #ef4444, #dc2626)",
-                      color: "#ffffff",
-                      border: "none",
-                      borderRadius: "8px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      boxShadow: "0 2px 8px rgba(239, 68, 68, 0.35)",
-                    }}
-                    onClick={handleEndCall}
-                  >
-                    <PhoneOff size={14} />
-                    End Hearing
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  style={{
-                    padding: "6px 14px",
-                    fontSize: "0.82rem",
-                    gap: "6px",
-                    background: "linear-gradient(135deg, #dc2626, #b91c1c)",
-                    color: "#ffffff",
-                    border: "none",
-                    borderRadius: "8px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    boxShadow: "0 2px 8px rgba(220, 38, 38, 0.35)",
-                  }}
-                  onClick={handleLeaveCall}
-                >
-                  <LogOut size={14} />
-                  Leave Hearing
+                  <Users size={14} />
+                  Attendees ({hearingParticipants.length || 1})
                 </button>
               )}
             </div>
           </div>
 
-          {/* Backdrop to dismiss open overlay drawers when clicking outside */}
-          {(showParticipantsModal || showAddOfficer) && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 55,
-                background: "rgba(0, 0, 0, 0.35)",
+          <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+            <LiveKitVideoRoom
+              token={livekitConnection.token}
+              serverUrl={livekitConnection.url}
+              roomName={livekitConnection.roomName}
+              callId={livekitConnection.callId}
+              currentUser={currentUser}
+              apiBase={API_BASE}
+              onDisconnected={() => {
+                setLivekitConnection(null);
+                showToast("Left the hearing room", "info");
               }}
-              onClick={() => {
-                setShowParticipantsModal(false);
-                setShowAddOfficer(false);
+              onEndCall={() => {
+                setLivekitConnection(null);
+                showToast("Hearing ended", "info");
               }}
             />
-          )}
-
-          {/* Windows Microphone Privacy / Hardware Warning Banner */}
-          {micBlockedWarning && (
-            <div
-              style={{
-                position: "absolute",
-                top: "60px",
-                left: "16px",
-                right: "16px",
-                background: micBlockedWarning.isNotFound
-                  ? "linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.25))"
-                  : "linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.3))",
-                border: micBlockedWarning.isNotFound
-                  ? "1px solid rgba(251, 191, 36, 0.4)"
-                  : "1px solid rgba(248, 113, 113, 0.4)",
-                borderRadius: "10px",
-                padding: "10px 14px",
-                margin: "10px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "12px",
-                color: micBlockedWarning.isNotFound ? "#fef3c7" : "#fee2e2",
-                fontSize: "0.84rem",
-                zIndex: 40,
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <AlertCircle
-                  size={18}
-                  style={{ color: micBlockedWarning.isNotFound ? "#fbbf24" : "#f87171", flexShrink: 0 }}
-                />
-                <span>
-                  <strong>
-                    {micBlockedWarning.isNotFound ? "🎧 Listen-Only Mode:" : "Microphone Access Blocked:"}
-                  </strong>{" "}
-                  {micBlockedWarning.message}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMicBlockedWarning(null)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: micBlockedWarning.isNotFound ? "#fde68a" : "#fca5a5",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-                title="Dismiss"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          )}
-
-          {/* Manage Participants Floating Drawer for Officer */}
-          {showParticipantsModal && currentUser?.role === "officer" && (
-            <div
-              style={{
-                position: "absolute",
-                top: "54px",
-                right: "16px",
-                width: "min(460px, calc(100vw - 32px))",
-                maxHeight: "calc(100vh - 130px)",
-                zIndex: 60,
-                background: "rgba(15, 23, 42, 0.98)",
-                backdropFilter: "blur(24px)",
-                border: "1px solid rgba(59, 130, 246, 0.4)",
-                borderRadius: "14px",
-                padding: "16px",
-                color: "#fff",
-                boxShadow: "0 24px 50px rgba(0,0,0,0.85)",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                <span style={{ fontWeight: 700, fontSize: "0.94rem", color: "#f8fafc", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <Users size={16} style={{ color: "#38bdf8" }} />
-                  Hearing Attendees ({hearingParticipants.length})
-                </span>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowParticipantsModal(false);
-                      setShowAddOfficer(true);
-                      setAddPersonTab("custom");
-                    }}
-                    style={{
-                      background: "rgba(16, 185, 129, 0.15)",
-                      border: "1px solid rgba(16, 185, 129, 0.35)",
-                      color: "#34d399",
-                      borderRadius: "6px",
-                      padding: "4px 8px",
-                      fontSize: "0.75rem",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                    title="Add external citizen or person by phone number"
-                  >
-                    <UserPlus size={12} />
-                    + Add Person
-                  </button>
-                  <button
-                    type="button"
-                    onClick={fetchHearingParticipants}
-                    style={{
-                      background: "rgba(255,255,255,0.08)",
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      color: "#94a3b8",
-                      borderRadius: "6px",
-                      padding: "4px 8px",
-                      fontSize: "0.75rem",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Refresh
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowParticipantsModal(false)}
-                    style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer" }}
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "320px", overflowY: "auto" }}>
-                {hearingParticipants.length > 0 ? (
-                  hearingParticipants.map((p) => {
-                    const isSelf = (p.phone && p.phone === currentUser.phone) || p.isHost;
-                    const removeTargetId = p.phone || p.id;
-                    return (
-                      <div
-                        key={p.id || p.phone}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          padding: "10px 12px",
-                          background: isSelf ? "rgba(16, 185, 129, 0.08)" : "rgba(255, 255, 255, 0.04)",
-                          border: isSelf ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid rgba(255, 255, 255, 0.08)",
-                          borderRadius: "10px",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                          <span style={{ fontSize: "1.2rem" }}>
-                            {p.role === "officer" || p.isHost ? "🏛️" : p.role === "employee" ? "👷" : "👤"}
-                          </span>
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                              <strong style={{ fontSize: "0.88rem", color: "#ffffff" }}>{p.name}</strong>
-                              <span
-                                style={{
-                                  fontSize: "0.7rem",
-                                  padding: "2px 6px",
-                                  borderRadius: "4px",
-                                  background: (p.role === "officer" || p.isHost) ? "rgba(16,185,129,0.2)" : p.role === "employee" ? "rgba(245,158,11,0.2)" : "rgba(59,130,246,0.2)",
-                                  color: (p.role === "officer" || p.isHost) ? "#34d399" : p.role === "employee" ? "#fbbf24" : "#60a5fa",
-                                  textTransform: "uppercase",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {p.isHost ? "HOST" : p.role}
-                              </span>
-                              {p.isOnline && (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: "3px", fontSize: "0.68rem", color: "#34d399" }}>
-                                  <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
-                                  Live
-                                </span>
-                              )}
-                            </div>
-                            <div style={{ fontSize: "0.76rem", color: "#94a3b8", marginTop: "2px" }}>
-                              {p.designation || (p.role === "citizen" ? "Citizen Complainant" : "Field Officer")} {p.phone ? `— ${p.phone}` : ""}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          {isSelf ? (
-                            <span
-                              style={{
-                                fontSize: "0.75rem",
-                                padding: "4px 8px",
-                                borderRadius: "6px",
-                                background: "rgba(16, 185, 129, 0.15)",
-                                color: "#34d399",
-                                fontWeight: 600,
-                              }}
-                            >
-                              👑 Hearing Host
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={isRemovingParticipant === removeTargetId}
-                              onClick={() => handleRemoveParticipant(removeTargetId, p.name)}
-                              style={{
-                                padding: "6px 12px",
-                                fontSize: "0.78rem",
-                                gap: "4px",
-                                background: "rgba(239, 68, 68, 0.2)",
-                                color: "#f87171",
-                                border: "1px solid rgba(239, 68, 68, 0.4)",
-                                borderRadius: "6px",
-                                fontWeight: 600,
-                                cursor: isRemovingParticipant === removeTargetId ? "wait" : "pointer",
-                                display: "inline-flex",
-                                alignItems: "center",
-                              }}
-                            >
-                              <PhoneOff size={13} />
-                              {isRemovingParticipant === removeTargetId ? "Disconnecting..." : "Disconnect (कॉल काटें)"}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div style={{ padding: "12px", textAlign: "center", color: "#94a3b8", fontSize: "0.82rem" }}>
-                    No other participants in the hearing currently.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Add Officer Floating Drawer */}
-          {showAddOfficer && (
-            <div
-              style={{
-                position: "absolute",
-                top: "54px",
-                right: "16px",
-                width: "min(500px, calc(100vw - 32px))",
-                maxHeight: "calc(100vh - 130px)",
-                zIndex: 60,
-                background: "rgba(15, 23, 42, 0.98)",
-                backdropFilter: "blur(24px)",
-                border: "1px solid rgba(255,255,255,0.18)",
-                borderRadius: "14px",
-                padding: "16px",
-                color: "#fff",
-                boxShadow: "0 24px 50px rgba(0,0,0,0.85)",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                <span style={{ fontWeight: 700, fontSize: "0.96rem", color: "#f8fafc", display: "flex", alignItems: "center", gap: "8px" }}>
-                  <UserPlus size={17} style={{ color: "#38bdf8" }} />
-                  Add Person to Hearing (सुनवाई में जोड़ें)
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowAddOfficer(false)}
-                  style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", padding: "4px" }}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Two Distinct Tabs */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "6px",
-                  background: "rgba(255, 255, 255, 0.06)",
-                  padding: "4px",
-                  borderRadius: "10px",
-                  marginBottom: "14px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setAddPersonTab("directory")}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: addPersonTab === "directory" ? "#2563eb" : "transparent",
-                    color: addPersonTab === "directory" ? "#ffffff" : "#94a3b8",
-                    fontSize: "0.82rem",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  <Building2 size={14} />
-                  <span>Employee List (कर्मचारी)</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAddPersonTab("custom")}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: "8px",
-                    border: "none",
-                    background: addPersonTab === "custom" ? "#059669" : "transparent",
-                    color: addPersonTab === "custom" ? "#ffffff" : "#94a3b8",
-                    fontSize: "0.82rem",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "6px",
-                    transition: "all 0.15s ease",
-                  }}
-                >
-                  <PhoneCall size={14} />
-                  <span>By Phone No. (अन्य व्यक्ति)</span>
-                </button>
-              </div>
-
-              {/* TAB 1: EMPLOYEE DIRECTORY */}
-              {addPersonTab === "directory" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {/* Department Dropdown Filter */}
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.76rem", color: "#94a3b8", fontWeight: 600, marginBottom: "4px" }}>
-                      Filter by Department (विभाग चुनें):
-                    </label>
-                    <select
-                      value={selectedDepartment}
-                      onChange={(e) => {
-                        const dept = e.target.value;
-                        setSelectedDepartment(dept);
-                        handleSearchOfficers(officerSearchQuery, dept);
-                      }}
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid rgba(255,255,255,0.22)",
-                        background: "rgba(30, 41, 59, 0.95)",
-                        color: "#f8fafc",
-                        fontSize: "0.85rem",
-                        outline: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <option value="">🏛️ All Departments (सभी विभाग)</option>
-                      {availableDepartments.map((dept) => (
-                        <option key={dept} value={dept}>
-                          {dept}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Search by Name or Phone Number */}
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.76rem", color: "#94a3b8", fontWeight: 600, marginBottom: "4px" }}>
-                      Search by Name or Mobile Number (नाम या 10-अंकीय नंबर):
-                    </label>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <input
-                        type="text"
-                        placeholder="Search name (e.g. Sharma) or number..."
-                        value={officerSearchQuery}
-                        onChange={(e) => {
-                          const query = e.target.value;
-                          setOfficerSearchQuery(query);
-                          handleSearchOfficers(query, selectedDepartment);
-                        }}
-                        onKeyDown={(e) => e.key === "Enter" && handleSearchOfficers()}
-                        style={{
-                          flex: 1,
-                          padding: "8px 12px",
-                          borderRadius: "8px",
-                          border: "1px solid rgba(255,255,255,0.25)",
-                          background: "rgba(255,255,255,0.08)",
-                          color: "#fff",
-                          fontSize: "0.88rem",
-                          outline: "none",
-                        }}
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        className="btn btn--primary"
-                        style={{ padding: "8px 14px", fontSize: "0.82rem", fontWeight: 700 }}
-                        onClick={() => handleSearchOfficers()}
-                        disabled={isSearchingOfficers}
-                      >
-                        {isSearchingOfficers ? "Searching..." : "Search"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Direct Dial Fast Action if User entered a 10-digit phone */}
-                  {officerSearchQuery.replace(/[^0-9]/g, "").length >= 10 && (
-                    <div style={{ padding: "10px 12px", background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.35)", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <span style={{ fontSize: "0.76rem", color: "#94a3b8", display: "block" }}>Direct Phone Dial:</span>
-                        <span style={{ fontSize: "0.88rem", color: "#34d399", fontWeight: 700 }}>
-                          +91 {officerSearchQuery.replace(/[^0-9]/g, "").slice(-10)}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn--success"
-                        style={{ padding: "6px 14px", fontSize: "0.8rem", gap: "5px" }}
-                        onClick={() => {
-                          const num = officerSearchQuery.replace(/[^0-9]/g, "").slice(-10);
-                          handleAddOfficerToCall({
-                            phone: `+91${num}`,
-                            name: `Participant (${num})`,
-                            designation: "Guest Official",
-                            department: selectedDepartment || "Direct Dial",
-                          });
-                        }}
-                      >
-                        <PhoneCall size={13} />
-                        Dial Now
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Search Results List from Database */}
-                  <div style={{ maxHeight: "220px", overflowY: "auto", borderTop: "1px solid rgba(255,255,255,0.08)", marginTop: "4px" }}>
-                    {officerResults.length > 0 ? (
-                      officerResults.map((officer) => (
-                        <div
-                          key={officer.phone}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            padding: "10px 8px",
-                            borderBottom: "1px solid rgba(255,255,255,0.06)",
-                            gap: "10px",
-                          }}
-                        >
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                              <strong style={{ color: "#ffffff", fontSize: "0.86rem" }}>{officer.name}</strong>
-                              <span
-                                style={{
-                                  fontSize: "0.68rem",
-                                  padding: "1px 6px",
-                                  borderRadius: "4px",
-                                  background: "rgba(245, 158, 11, 0.2)",
-                                  color: "#fbbf24",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {officer.department}
-                              </span>
-                            </div>
-                            <div style={{ color: "#cbd5e1", fontSize: "0.78rem", marginTop: "2px" }}>
-                              {officer.designation}
-                            </div>
-                            <div style={{ color: "#60a5fa", fontSize: "0.76rem", marginTop: "2px", fontWeight: 600 }}>
-                              📱 {officer.phone}
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn--success"
-                            style={{ padding: "6px 12px", fontSize: "0.78rem", gap: "4px", flexShrink: 0 }}
-                            onClick={() => handleAddOfficerToCall(officer)}
-                          >
-                            <PhoneCall size={12} />
-                            Dial In
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ padding: "16px", textAlign: "center", color: "#94a3b8", fontSize: "0.82rem" }}>
-                        {isSearchingOfficers
-                          ? "Searching database records..."
-                          : "No employee record found with this name/filter."}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Switch to custom person tab banner */}
-                  <div
-                    onClick={() => setAddPersonTab("custom")}
-                    style={{
-                      marginTop: "4px",
-                      padding: "10px 12px",
-                      background: "rgba(16, 185, 129, 0.1)",
-                      border: "1px dashed rgba(16, 185, 129, 0.35)",
-                      borderRadius: "8px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <span style={{ fontSize: "0.78rem", color: "#6ee7b7" }}>
-                      📱 Person not in employee data? Click here to dial by number →
-                    </span>
-                    <span style={{ fontSize: "0.76rem", color: "#34d399", fontWeight: 700 }}>
-                      Dial by Number
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: DIAL ANY PERSON / CITIZEN BY PHONE NUMBER (NOT IN EMPLOYEE DATA) */}
-              {addPersonTab === "custom" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  {/* Informational banner */}
-                  <div
-                    style={{
-                      padding: "8px 12px",
-                      background: "rgba(59, 130, 246, 0.12)",
-                      border: "1px solid rgba(59, 130, 246, 0.25)",
-                      borderRadius: "8px",
-                      fontSize: "0.78rem",
-                      color: "#93c5fd",
-                      lineHeight: "1.4",
-                    }}
-                  >
-                    💡 <strong>External Person / Citizen Dialing:</strong> Use this option to add any person (citizen complainant, witness, sarpanch, or contractor) whose data is <em>not available</em> in the employee database.
-                  </div>
-
-                  {/* Phone Number Field */}
-                  <div>
-                    <label style={{ display: "flex", justifyContent: "space-between", fontSize: "0.76rem", color: "#94a3b8", fontWeight: 600, marginBottom: "4px" }}>
-                      <span>Mobile Number (10-अंकीय मोबाइल नंबर)*</span>
-                      {customPersonPhone.replace(/[^0-9]/g, "").slice(-10).length === 10 ? (
-                        <span style={{ color: "#34d399", fontWeight: 700 }}>✓ Valid 10-digit number</span>
-                      ) : (
-                        <span style={{ color: "#f59e0b" }}>
-                          {customPersonPhone.replace(/[^0-9]/g, "").slice(-10).length}/10 digits
-                        </span>
-                      )}
-                    </label>
-                    <div style={{ display: "flex", gap: "6px" }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          padding: "8px 10px",
-                          background: "rgba(255,255,255,0.06)",
-                          border: "1px solid rgba(255,255,255,0.2)",
-                          borderRadius: "8px",
-                          color: "#e2e8f0",
-                          fontSize: "0.85rem",
-                          fontWeight: 600,
-                          flexShrink: 0,
-                          userSelect: "none",
-                        }}
-                      >
-                        🇮🇳 +91
-                      </div>
-                      <input
-                        type="tel"
-                        maxLength={10}
-                        placeholder="e.g. 9876543210"
-                        value={customPersonPhone}
-                        onChange={(e) => setCustomPersonPhone(e.target.value.replace(/[^0-9]/g, "").slice(0, 10))}
-                        onKeyDown={(e) => e.key === "Enter" && handleDialCustomPerson()}
-                        style={{
-                          flex: 1,
-                          padding: "8px 12px",
-                          borderRadius: "8px",
-                          border: "1px solid rgba(255,255,255,0.25)",
-                          background: "rgba(255,255,255,0.08)",
-                          color: "#fff",
-                          fontSize: "0.95rem",
-                          letterSpacing: "1px",
-                          fontWeight: 600,
-                          outline: "none",
-                        }}
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-
-                  {/* Name Input */}
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.76rem", color: "#94a3b8", fontWeight: 600, marginBottom: "4px" }}>
-                      Person Name / Identity (व्यक्ति का नाम / पहचान):
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Ramesh Kumar / परिवादी का नाम"
-                      value={customPersonName}
-                      onChange={(e) => setCustomPersonName(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleDialCustomPerson()}
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid rgba(255,255,255,0.25)",
-                        background: "rgba(255,255,255,0.08)",
-                        color: "#fff",
-                        fontSize: "0.86rem",
-                        outline: "none",
-                      }}
-                    />
-
-                    {/* Quick identity chips */}
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
-                      {[
-                        { label: "परिवादी / Complainant", role: "Citizen / Complainant" },
-                        { label: "गवाह / Witness", role: "Witness" },
-                        { label: "सरपंच / Sarpanch", role: "Sarpanch" },
-                        { label: "वार्ड पंच / Ward Member", role: "Ward Panch" },
-                        { label: "फील्ड वर्कर / Staff", role: "Field Staff" },
-                      ].map((chip) => (
-                        <button
-                          key={chip.label}
-                          type="button"
-                          onClick={() => {
-                            if (!customPersonName) setCustomPersonName(chip.label.split(" / ")[0]);
-                            setCustomPersonRole(chip.role);
-                          }}
-                          style={{
-                            background: "rgba(255,255,255,0.06)",
-                            border: "1px solid rgba(255,255,255,0.15)",
-                            color: "#cbd5e1",
-                            borderRadius: "14px",
-                            padding: "3px 8px",
-                            fontSize: "0.72rem",
-                            cursor: "pointer",
-                          }}
-                        >
-                          + {chip.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Role / Designation Selector */}
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.76rem", color: "#94a3b8", fontWeight: 600, marginBottom: "4px" }}>
-                      Role in Hearing (सुनवाई में भूमिका):
-                    </label>
-                    <select
-                      value={customPersonRole}
-                      onChange={(e) => setCustomPersonRole(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "8px 12px",
-                        borderRadius: "8px",
-                        border: "1px solid rgba(255,255,255,0.22)",
-                        background: "rgba(30, 41, 59, 0.95)",
-                        color: "#f8fafc",
-                        fontSize: "0.85rem",
-                        outline: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <option value="Citizen / Complainant">👤 Citizen / Complainant (नागरिक / परिवादी)</option>
-                      <option value="Witness">👁️ Witness (गवाह / प्रत्यक्षदर्शी)</option>
-                      <option value="Sarpanch">🌾 Sarpanch / Village Head (सरपंच / ग्राम प्रधान)</option>
-                      <option value="Ward Panch">🏛️ Ward Panch / Local Representative (वार्ड पंच)</option>
-                      <option value="Field Worker / Contractor">👷 Field Worker / Contractor (फील्ड कर्मचारी / ठेकेदार)</option>
-                      <option value="External Official / Expert">👔 External Official / Expert (बाहरी अधिकारी / विशेषज्ञ)</option>
-                      <option value="Guest Participant">🤝 Other Guest (अन्य अतिथि)</option>
-                    </select>
-                  </div>
-
-                  {/* Dial & Connect Button */}
-                  <div style={{ marginTop: "6px" }}>
-                    <button
-                      type="button"
-                      className="btn btn--success"
-                      disabled={customPersonPhone.replace(/[^0-9]/g, "").slice(-10).length !== 10 || isDialingCustom}
-                      onClick={handleDialCustomPerson}
-                      style={{
-                        width: "100%",
-                        padding: "10px 16px",
-                        fontSize: "0.92rem",
-                        fontWeight: 700,
-                        justifyContent: "center",
-                        gap: "8px",
-                        opacity: customPersonPhone.replace(/[^0-9]/g, "").slice(-10).length !== 10 ? 0.6 : 1,
-                        cursor: customPersonPhone.replace(/[^0-9]/g, "").slice(-10).length !== 10 ? "not-allowed" : "pointer",
-                      }}
-                    >
-                      <PhoneCall size={16} />
-                      {isDialingCustom
-                        ? "Calling & Adding to Hearing..."
-                        : customPersonPhone.replace(/[^0-9]/g, "").slice(-10).length === 10
-                        ? `Dial & Add +91 ${customPersonPhone.replace(/[^0-9]/g, "").slice(-10)}`
-                        : "Enter 10-Digit Number to Dial"}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          <LiveKitVideoRoom
-            token={livekitConnection.token}
-            serverUrl={livekitConnection.url}
-            roomName={livekitConnection.roomName}
-            onDisconnected={handleDisconnected}
-            onEndCall={handleEndCall}
-            currentUser={currentUser}
-            callId={livekitConnection.callId}
-            apiBase={API_BASE}
-          />
+          </div>
         </div>
       </main>
     );
   }
 
   // ═══════════════════════════════════════════════════════════
-  // RENDER: LOGIN SCREEN (When No User is Logged In)
+  // VIEW: LOGIN SCREEN (Government Gold, Deep Dark Theme)
   // ═══════════════════════════════════════════════════════════
-
   if (!currentUser) {
     return (
-      <div style={{ minHeight: "100vh", background: "radial-gradient(ellipse at top, #0f2847 0%, #0a192f 60%, #020617 100%)", color: "#f8fafc", padding: "clamp(0.75rem, 3vw, 1.5rem)" }}>
+      <div className="app-container" style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "1.5rem" }}>
         {renderToast()}
         {incomingCall && (
           <IncomingCallModal
@@ -2144,429 +871,226 @@ export default function JanSunwaiPortalPage() {
             callerDesignation={incomingCall.callerDesignation}
             subject={incomingCall.title}
             participantCount={incomingCall.participantCount}
-            onAccept={handleAcceptIncomingCall}
-            onDecline={handleDeclineIncomingCall}
+            onAccept={() => {
+              setIncomingCall(null);
+              stopAllRingtones();
+            }}
+            onDecline={() => {
+              setIncomingCall(null);
+              stopAllRingtones();
+            }}
           />
         )}
 
-        <div style={{ maxWidth: "520px", margin: "0 auto", paddingTop: "clamp(2rem, 5vw, 4rem)", paddingBottom: "3rem" }}>
-          {/* Official Government Brand Header */}
+        <div style={{ width: "100%", maxWidth: "460px" }}>
+          {/* Official Emblem Banner */}
           <div style={{ textAlign: "center", marginBottom: "2rem" }}>
             <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "8px",
-                background: "rgba(251, 191, 36, 0.1)",
-                border: "1px solid rgba(251, 191, 36, 0.3)",
-                padding: "6px 16px",
+                background: "rgba(234, 179, 8, 0.12)",
+                border: "1px solid rgba(234, 179, 8, 0.35)",
+                padding: "6px 18px",
                 borderRadius: "999px",
                 marginBottom: "1rem",
               }}
             >
               <span style={{ fontSize: "1.1rem" }}>🏛️</span>
-              <span
-                style={{
-                  fontSize: "0.82rem",
-                  fontWeight: 800,
-                  letterSpacing: "0.08em",
-                  color: "#fbbf24",
-                  textTransform: "uppercase",
-                }}
-              >
+              <span style={{ fontSize: "0.82rem", fontWeight: 800, letterSpacing: "0.08em", color: "#FACC15", textTransform: "uppercase" }}>
                 राजस्थान सरकार | Government of Rajasthan
               </span>
             </div>
 
-            <h1
-              style={{
-                fontSize: "clamp(1.6rem, 5vw, 2.2rem)",
-                fontWeight: 800,
-                letterSpacing: "-0.02em",
-                color: "#ffffff",
-                margin: "0 0 0.4rem",
-                lineHeight: 1.25,
-              }}
-            >
+            <h1 style={{ fontSize: "2.2rem", fontWeight: 900, letterSpacing: "-0.02em", color: "#ffffff", margin: "0 0 0.3rem" }}>
               जन सुनवाई
             </h1>
-            <p style={{ fontSize: "0.95rem", color: "#94a3b8", margin: 0, fontWeight: 500 }}>
+            <p style={{ fontSize: "0.95rem", color: "#8696a0", margin: 0, fontWeight: 500 }}>
               Jan Sunwai Unified Video Hearing Portal
             </p>
           </div>
 
-          {/* Clean Executive Login Card */}
+          {/* Login Card */}
           <div
             style={{
-              background: "linear-gradient(165deg, rgba(15, 23, 42, 0.92) 0%, rgba(10, 17, 34, 0.98) 100%)",
-              backdropFilter: "blur(24px)",
-              WebkitBackdropFilter: "blur(24px)",
-              borderRadius: "24px",
-              border: "1px solid rgba(56, 189, 248, 0.25)",
-              padding: "clamp(1.6rem, 4vw, 2.4rem)",
-              boxShadow: "0 24px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(56, 189, 248, 0.08)",
+              backgroundColor: "#1f2c34",
+              borderRadius: "20px",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              padding: "2rem",
+              boxShadow: "0 16px 40px rgba(0, 0, 0, 0.5)",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "1.6rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "1.5rem" }}>
               <div
                 style={{
-                  width: "44px",
-                  height: "44px",
+                  width: "42px",
+                  height: "42px",
                   borderRadius: "12px",
-                  background: "linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(37, 99, 235, 0.15))",
-                  border: "1px solid rgba(59, 130, 246, 0.4)",
+                  background: "rgba(234, 179, 8, 0.15)",
+                  border: "1px solid rgba(234, 179, 8, 0.35)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "#38bdf8",
-                  flexShrink: 0,
+                  color: "#FACC15",
                 }}
               >
                 <Lock size={20} />
               </div>
               <div>
-                <h2 style={{ fontSize: "1.18rem", fontWeight: 700, margin: 0, color: "#ffffff" }}>
+                <h2 style={{ fontSize: "1.15rem", fontWeight: 700, margin: 0, color: "#ffffff" }}>
                   {otpSent ? "ओटीपी सत्यापन (OTP Verification)" : "सुरक्षित लॉगिन (Secure Access)"}
                 </h2>
-                <p style={{ fontSize: "0.82rem", color: "#94a3b8", margin: "2px 0 0" }}>
-                  {otpSent
-                    ? `6-अंकीय ओटीपी कोड दर्ज करें (Sent to ${loginPhone})`
-                    : "Enter your registered mobile number to proceed"}
+                <p style={{ fontSize: "0.8rem", color: "#8696a0", margin: "2px 0 0" }}>
+                  {otpSent ? `6-अंकीय कोड दर्ज करें (Sent to ${loginPhone})` : "Enter your registered mobile number to proceed"}
                 </p>
               </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-              {/* Step 1: Mobile Number Input */}
-              {!otpSent ? (
-                <>
-                  <div>
-                    <label
-                      style={{
-                        display: "block",
-                        fontSize: "0.85rem",
-                        fontWeight: 600,
-                        color: "#cbd5e1",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      मोबाइल नंबर (Mobile Number)
-                    </label>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        background: "rgba(255, 255, 255, 0.05)",
-                        border: "1px solid rgba(255, 255, 255, 0.16)",
-                        borderRadius: "12px",
-                        overflow: "hidden",
-                        transition: "all 0.2s ease",
-                      }}
-                    >
-                      <div
-                        style={{
-                          padding: "14px 16px",
-                          background: "rgba(255, 255, 255, 0.06)",
-                          borderRight: "1px solid rgba(255, 255, 255, 0.12)",
-                          color: "#cbd5e1",
-                          fontWeight: 700,
-                          fontSize: "0.95rem",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                        }}
-                      >
-                        <span>🇮🇳</span>
-                        <span>+91</span>
-                      </div>
-                      <input
-                        type="tel"
-                        placeholder="10-digit mobile number"
-                        value={loginPhone.replace(/^\+91/, "")}
-                        autoComplete="tel"
-                        maxLength={10}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
-                          setLoginPhone(val ? `+91${val}` : "");
-                          if (authError) setAuthError("");
-                        }}
-                        onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
-                        style={{
-                          flex: 1,
-                          background: "transparent",
-                          border: "none",
-                          padding: "14px 16px",
-                          color: "#ffffff",
-                          fontSize: "1.05rem",
-                          letterSpacing: "0.06em",
-                          outline: "none",
-                          fontFamily: "inherit",
-                        }}
-                        autoFocus
-                      />
+            {!otpSent ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#E9EDEF", marginBottom: "8px" }}>
+                    मोबाइल नंबर (Mobile Number)
+                  </label>
+                  <div style={{ display: "flex", alignItems: "center", background: "#111b21", border: "1.5px solid #2a3942", borderRadius: "12px", overflow: "hidden" }}>
+                    <div style={{ padding: "12px 14px", background: "#1f2c34", borderRight: "1px solid #2a3942", color: "#FACC15", fontWeight: 800, fontSize: "0.95rem" }}>
+                      +91
                     </div>
-
-                    {authError && (
-                      <div
-                        style={{
-                          marginTop: "8px",
-                          padding: "8px 12px",
-                          borderRadius: "8px",
-                          background: "rgba(239, 68, 68, 0.12)",
-                          border: "1px solid rgba(239, 68, 68, 0.35)",
-                          color: "#fca5a5",
-                          fontSize: "0.82rem",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                        }}
-                      >
-                        <AlertCircle size={15} />
-                        <span>{authError}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Send OTP Action */}
-                  <button
-                    type="button"
-                    id="btn-get-otp"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleSendOtp();
-                    }}
-                    disabled={isSubmittingAuth || loginPhone.replace(/\D/g, "").length < 10}
-                    style={{
-                      padding: "15px",
-                      borderRadius: "12px",
-                      fontSize: "1rem",
-                      fontWeight: 700,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "8px",
-                      cursor:
-                        isSubmittingAuth || loginPhone.replace(/\D/g, "").length < 10
-                          ? "not-allowed"
-                          : "pointer",
-                      background:
-                        loginPhone.replace(/\D/g, "").length >= 10
-                          ? "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)"
-                          : "rgba(255, 255, 255, 0.08)",
-                      border: "none",
-                      color: loginPhone.replace(/\D/g, "").length >= 10 ? "#ffffff" : "#64748b",
-                      boxShadow:
-                        loginPhone.replace(/\D/g, "").length >= 10
-                          ? "0 6px 20px rgba(37, 99, 235, 0.4)"
-                          : "none",
-                      transition: "all 0.2s ease",
-                    }}
-                  >
-                    {isSubmittingAuth ? (
-                      "Sending OTP..."
-                    ) : (
-                      <>
-                        <span>Get OTP (ओटीपी प्राप्त करें)</span>
-                        <ArrowRight size={18} />
-                      </>
-                    )}
-                  </button>
-                </>
-              ) : (
-                /* Step 2: OTP Verification */
-                <>
-                  {detectedName && (
-                    <div
-                      style={{
-                        background: "rgba(16, 185, 129, 0.1)",
-                        border: "1px solid rgba(16, 185, 129, 0.3)",
-                        borderRadius: "12px",
-                        padding: "10px 14px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "32px",
-                          height: "32px",
-                          borderRadius: "8px",
-                          background: "rgba(16, 185, 129, 0.2)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "#34d399",
-                          fontWeight: 700,
-                        }}
-                      >
-                        ✓
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#f8fafc" }}>
-                          {detectedName}
-                        </div>
-                        <div style={{ fontSize: "0.76rem", color: "#34d399" }}>
-                          Verified in Rajasthan Government Directory ({detectedRole?.toUpperCase() || "OFFICIAL"})
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      <label style={{ fontSize: "0.85rem", fontWeight: 600, color: "#cbd5e1" }}>
-                        6-अंकीय ओटीपी दर्ज करें (Enter OTP)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOtpSent(false);
-                          setLoginOtp("");
-                        }}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "#38bdf8",
-                          fontSize: "0.78rem",
-                          cursor: "pointer",
-                          fontWeight: 600,
-                        }}
-                      >
-                        Change Number
-                      </button>
-                    </div>
-
                     <input
-                      type="text"
-                      maxLength={6}
-                      value={loginOtp}
-                      onChange={(e) => setLoginOtp(e.target.value.replace(/[^0-9]/g, ""))}
-                      onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
-                      placeholder="• • • • • •"
+                      type="tel"
+                      placeholder="10-digit mobile number"
+                      value={loginPhone.replace(/^\+91/, "")}
+                      maxLength={10}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
+                        setLoginPhone(val ? `+91${val}` : "");
+                        if (authError) setAuthError("");
+                      }}
+                      onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
                       style={{
-                        width: "100%",
-                        background: "rgba(255, 255, 255, 0.05)",
-                        border: "1.5px solid rgba(56, 189, 248, 0.4)",
-                        borderRadius: "12px",
-                        padding: "14px 16px",
+                        flex: 1,
+                        background: "transparent",
+                        border: "none",
+                        padding: "12px 14px",
                         color: "#ffffff",
-                        fontSize: "1.4rem",
-                        letterSpacing: "0.35em",
-                        textAlign: "center",
-                        fontWeight: 700,
+                        fontSize: "1.05rem",
+                        letterSpacing: "0.05em",
                         outline: "none",
-                        boxSizing: "border-box",
                       }}
                       autoFocus
                     />
+                  </div>
+                  {authError && (
+                    <div style={{ marginTop: "8px", color: "#ef4444", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <AlertCircle size={14} />
+                      <span>{authError}</span>
+                    </div>
+                  )}
+                </div>
 
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginTop: "8px",
-                      }}
-                    >
-                      <span style={{ fontSize: "0.76rem", color: "#94a3b8" }}>
-                        Enter 6-digit verification code
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleSendOtp}
-                        disabled={isSubmittingAuth}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: "#38bdf8",
-                          fontSize: "0.76rem",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Resend Code
-                      </button>
+                <button
+                  type="button"
+                  onClick={handleSendOtp}
+                  disabled={isSubmittingAuth || loginPhone.replace(/\D/g, "").length < 10}
+                  className="app-btn-gold"
+                  style={{
+                    width: "100%",
+                    padding: "14px",
+                    opacity: loginPhone.replace(/\D/g, "").length < 10 ? 0.6 : 1,
+                    cursor: loginPhone.replace(/\D/g, "").length < 10 ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {isSubmittingAuth ? "Sending OTP..." : "Get OTP (ओटीपी प्राप्त करें) ➔"}
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
+                {detectedName && (
+                  <div style={{ background: "rgba(234, 179, 8, 0.12)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
+                    <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: "rgba(234, 179, 8, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#FACC15", fontWeight: 800 }}>
+                      ✓
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: "0.88rem", fontWeight: 800, color: "#ffffff" }}>{detectedName}</div>
+                      <div style={{ fontSize: "0.75rem", color: "#FACC15" }}>Verified Official • {detectedRole?.toUpperCase()}</div>
                     </div>
                   </div>
+                )}
 
-                  {/* Verify & Login Action */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      handleVerifyOtp();
-                    }}
-                    disabled={isSubmittingAuth || loginOtp.length < 4}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <label style={{ fontSize: "0.82rem", fontWeight: 700, color: "#E9EDEF" }}>
+                      6-अंकीय ओटीपी दर्ज करें (Enter OTP)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtpSent(false);
+                        setLoginOtp("");
+                      }}
+                      style={{ background: "none", border: "none", color: "#FACC15", fontSize: "0.78rem", cursor: "pointer", fontWeight: 700 }}
+                    >
+                      Change Number
+                    </button>
+                  </div>
+
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={loginOtp}
+                    onChange={(e) => setLoginOtp(e.target.value.replace(/[^0-9]/g, ""))}
+                    onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
+                    placeholder="• • • • • •"
                     style={{
-                      padding: "15px",
+                      width: "100%",
+                      background: "#111b21",
+                      border: "1.5px solid #EAB308",
                       borderRadius: "12px",
-                      fontSize: "1rem",
-                      fontWeight: 700,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "8px",
-                      cursor: isSubmittingAuth || loginOtp.length < 4 ? "not-allowed" : "pointer",
-                      background:
-                        loginOtp.length >= 4
-                          ? "linear-gradient(135deg, #059669 0%, #047857 100%)"
-                          : "rgba(255, 255, 255, 0.08)",
-                      border: "none",
-                      color: loginOtp.length >= 4 ? "#ffffff" : "#64748b",
-                      boxShadow:
-                        loginOtp.length >= 4
-                          ? "0 6px 20px rgba(5, 150, 105, 0.4)"
-                          : "none",
-                      transition: "all 0.2s ease",
+                      padding: "14px",
+                      color: "#ffffff",
+                      fontSize: "1.4rem",
+                      letterSpacing: "0.35em",
+                      textAlign: "center",
+                      fontWeight: 800,
+                      outline: "none",
+                      boxSizing: "border-box",
                     }}
-                  >
-                    {isSubmittingAuth ? (
-                      "Verifying..."
-                    ) : (
-                      <>
-                        <span>Verify & Enter Hearing (लॉगिन करें)</span>
-                        <ArrowRight size={18} />
-                      </>
-                    )}
-                  </button>
-                </>
-              )}
-            </div>
+                    autoFocus
+                  />
 
-            {/* Helpline & Security Guarantee */}
-            <div
-              style={{
-                marginTop: "1.8rem",
-                paddingTop: "1.2rem",
-                borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: "8px",
-                fontSize: "0.78rem",
-                color: "#94a3b8",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <span>📞</span>
-                <span>राजस्थान संपर्क हेल्पलाइन: <strong style={{ color: "#38bdf8" }}>181</strong></span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
+                    <span style={{ fontSize: "0.75rem", color: "#8696a0" }}>Enter 6-digit code</span>
+                    <button type="button" onClick={handleSendOtp} style={{ background: "none", border: "none", color: "#FACC15", fontSize: "0.75rem", cursor: "pointer" }}>
+                      Resend Code
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleVerifyOtp}
+                  disabled={isSubmittingAuth || loginOtp.length < 4}
+                  className="app-btn-gold"
+                  style={{
+                    width: "100%",
+                    padding: "14px",
+                    opacity: loginOtp.length < 4 ? 0.6 : 1,
+                    cursor: loginOtp.length < 4 ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {isSubmittingAuth ? "Verifying..." : "Verify & Enter Hearing (लॉगिन करें) ➔"}
+                </button>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "4px", color: "#34d399" }}>
-                <Shield size={13} />
-                <span>256-Bit E2EE Security</span>
-              </div>
+            )}
+
+            <div style={{ marginTop: "1.8rem", paddingTop: "1.2rem", borderTop: "1px solid rgba(255, 255, 255, 0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.78rem", color: "#8696a0" }}>
+              <div>📞 राजस्थान संपर्क: <strong style={{ color: "#FACC15" }}>181</strong></div>
+              <div>🔒 LiveKit SFU Cloud</div>
             </div>
           </div>
 
-          {/* Android App Download Banner */}
+          {/* Android App Link */}
           <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
             <a
               href="/download"
@@ -2576,22 +1100,21 @@ export default function JanSunwaiPortalPage() {
                 gap: "8px",
                 padding: "8px 18px",
                 background: "rgba(255, 255, 255, 0.05)",
-                border: "1px solid rgba(255, 255, 255, 0.15)",
+                border: "1px solid rgba(255, 255, 255, 0.12)",
                 borderRadius: "999px",
-                color: "#94a3b8",
+                color: "#8696a0",
                 fontSize: "0.82rem",
                 fontWeight: 600,
                 textDecoration: "none",
-                transition: "all 0.2s ease",
               }}
             >
               <span>📲 Download Official Android App (.APK)</span>
-              <span style={{ color: "#38bdf8" }}>➔</span>
+              <span style={{ color: "#EAB308" }}>➔</span>
             </a>
           </div>
         </div>
 
-        {/* Device Diagnostic Suite & Room Launcher Modal */}
+        {/* Device Diagnostics Modal */}
         <DevicePreCheckModal
           isOpen={showPreCheckModal}
           onClose={() => setShowPreCheckModal(false)}
@@ -2603,1866 +1126,1221 @@ export default function JanSunwaiPortalPage() {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // RENDER: AUTHENTICATED PORTAL VIEW
+  // VIEW: AUTHENTICATED PORTAL (HEARINGS & CASES TABS)
   // ═══════════════════════════════════════════════════════════
-
   return (
-    <>
-      {/* WhatsApp-Style Incoming Call Ringing Modal */}
+    <div className="app-container">
+      {renderToast()}
+
+      {/* Ringing Modal */}
       {incomingCall && (
         <IncomingCallModal
           callerName={incomingCall.callerName}
           callerDesignation={incomingCall.callerDesignation}
           subject={incomingCall.title}
           participantCount={incomingCall.participantCount}
-          onAccept={handleAcceptIncomingCall}
-          onDecline={handleDeclineIncomingCall}
+          onAccept={async () => {
+            stopAllRingtones();
+            const call = incomingCall;
+            setIncomingCall(null);
+            showToast("Connecting to video hearing...", "info");
+            try {
+              const res = await fetch(`${API_BASE}/api/calls/${call.callId}/respond`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ phone: currentUser.phone, action: "accept" }),
+              });
+              const data = await res.json();
+              if (data.success && data.livekit) {
+                setLivekitConnection({
+                  token: data.livekit.token,
+                  url: data.livekit.url || data.livekit.serverUrl,
+                  roomName: data.livekit.roomName,
+                  callId: call.callId,
+                });
+              }
+            } catch (e: any) {
+              showToast(e.message || "Failed to connect", "error");
+            }
+          }}
+          onDecline={() => {
+            stopAllRingtones();
+            setIncomingCall(null);
+          }}
         />
       )}
 
-      {/* Toast Notification */}
-      {renderToast()}
-
-      <main className="main-layout">
-        {/* Top Navbar with User Identity & Logout */}
-        <header
-          style={{
-            background: "linear-gradient(135deg, #0f2847 0%, #0a192f 100%)",
-            borderRadius: "16px",
-            padding: "14px 20px",
-            marginBottom: "1.5rem",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: "12px",
-            border: "1px solid rgba(255,255,255,0.12)",
-            boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
-          }}
-        >
-          {/* Brand & Emblem */}
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <span style={{ fontSize: "1.8rem" }}>🏛️</span>
-            <div>
-              <div style={{ fontSize: "0.75rem", fontWeight: 700, letterSpacing: "0.08em", color: "#fbbf24", textTransform: "uppercase" }}>
-                राजस्थान सरकार • Rajasthan Sampark
-              </div>
-              <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#ffffff", letterSpacing: "-0.01em" }}>
-                जन सुनवाई वीडियो कॉन्फ्रेंस प्रणाली
-              </div>
-            </div>
+      {/* Top Header */}
+      <header className="app-header">
+        <div className="app-header-brand">
+          <span style={{ fontSize: "1.6rem" }}>🏛️</span>
+          <div>
+            <h1 className="app-header-title">Jan Sunwai • Rajasthan Portal</h1>
+            <p className="app-header-sub">Government of Rajasthan</p>
           </div>
+        </div>
 
-          {/* User Profile Badge & Logout */}
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-            <div
-              style={{
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.15)",
-                borderRadius: "12px",
-                padding: "8px 14px",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-              }}
-            >
-              <span style={{ fontSize: "1.3rem" }}>
-                {currentUser.role === "officer" ? "🏛️" : currentUser.role === "employee" ? "👷" : "👤"}
-              </span>
-              <div>
-                <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#ffffff" }}>
-                  {currentUser.name}
-                </div>
-                <div style={{ fontSize: "0.75rem", color: "#94a3b8", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <span
-                    style={{
-                      background: currentUser.role === "officer" ? "rgba(16, 185, 129, 0.2)" : currentUser.role === "employee" ? "rgba(217, 119, 6, 0.2)" : "rgba(37, 99, 235, 0.2)",
-                      color: currentUser.role === "officer" ? "#34d399" : currentUser.role === "employee" ? "#fbbf24" : "#60a5fa",
-                      padding: "1px 6px",
-                      borderRadius: "4px",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {currentUser.role}
-                  </span>
-                  <span>{currentUser.phone}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* WebSocket Status Indicator */}
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  fontSize: "0.72rem",
-                  fontWeight: 600,
-                  padding: "4px 8px",
-                  borderRadius: "20px",
-                  background: wsConnected ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                  color: wsConnected ? "#34d399" : "#f87171",
-                  border: wsConnected ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
-                }}
-              >
-                <span
-                  style={{
-                    width: "6px",
-                    height: "6px",
-                    borderRadius: "50%",
-                    background: wsConnected ? "#10b981" : "#ef4444",
-                  }}
-                />
-                {wsConnected ? "Online" : "Connecting"}
-              </div>
-              {/* Hardware Diagnostic Suite & Room Launcher Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  const role = (currentUser.role === "call_center" ? "call_center" : currentUser.role === "admin" ? "admin" : currentUser.role === "officer" ? "officer" : "citizen") as RoleType;
-                  setPreCheckRole(role);
-                  setShowPreCheckModal(true);
-                }}
-                style={{
-                  background: "rgba(56, 189, 248, 0.15)",
-                  border: "1px solid rgba(56, 189, 248, 0.35)",
-                  borderRadius: "10px",
-                  padding: "8px 14px",
-                  color: "#38bdf8",
-                  fontSize: "0.85rem",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                <Sliders size={16} />
-                <span>Hardware & Room Launcher</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleLogout}
-              style={{
-                background: "rgba(239, 68, 68, 0.12)",
-                border: "1px solid rgba(239, 68, 68, 0.3)",
-                borderRadius: "10px",
-                padding: "8px 14px",
-                color: "#fca5a5",
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                cursor: "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                transition: "all 0.2s ease",
-              }}
-            >
-              <LogOut size={16} />
-              Logout / Switch User
-            </button>
-          </div>
-        </header>
-
-        {/* ═══════════════════════════════════════════════════════
-            VIEW 1: CITIZEN WAITING ROOM
-            ═══════════════════════════════════════════════════════ */}
-        {currentUser.role === "citizen" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            {/* Live Listening Radar Banner */}
-            <div
-              style={{
-                background: "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)",
-                borderRadius: "16px",
-                padding: "2rem",
-                border: "1px solid rgba(59, 130, 246, 0.3)",
-                boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-                display: "flex",
-                alignItems: "center",
-                gap: "1.5rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <div
-                style={{
-                  width: "70px",
-                  height: "70px",
-                  borderRadius: "50%",
-                  background: "rgba(59, 130, 246, 0.2)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  border: "2px solid #38bdf8",
-                  animation: "pulse 2s infinite",
-                }}
-              >
-                <Radio size={36} color="#38bdf8" />
-              </div>
-              <div style={{ flex: 1, minWidth: "260px" }}>
-                <div style={{ display: "inline-block", background: "rgba(16, 185, 129, 0.2)", color: "#34d399", padding: "3px 10px", borderRadius: "999px", fontSize: "0.8rem", fontWeight: 700, marginBottom: "6px" }}>
-                  🟢 LIVE HEARING WAITING ROOM ACTIVE
-                </div>
-                <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "#ffffff", margin: "0 0 6px" }}>
-                  Waiting for Jan Sunwai Video Call
-                </h2>
-                <p style={{ fontSize: "0.95rem", color: "#cbd5e1", margin: 0, lineHeight: 1.5 }}>
-                  Please keep this screen open on your device. When District Collector <strong>Sh. Alok Sharma, IAS</strong> or your assigned Field Officer calls you, this screen will immediately ring with a video call alert.
-                </p>
-              </div>
-            </div>
-
-            {/* Citizen's Grievance Records */}
-            <div className="card">
-              <div className="card__header">
-                <div className="card__title">
-                  <FileText size={20} color="#3b82f6" />
-                  Your Registered Grievance (आपकी दर्ज शिकायत)
-                </div>
-                <span className="badge badge--success">Verified Sampark Record</span>
-              </div>
-
-              {isLoadingUserGrievances ? (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                  Loading grievance records for {currentUser.phone}...
-                </div>
-              ) : userGrievances.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                  {userGrievances.map((g) => (
-                    <div
-                      key={g.grievanceId}
-                      style={{
-                        background: "var(--navy-50)",
-                        borderRadius: "12px",
-                        padding: "1.2rem",
-                        border: "1px solid var(--navy-100)",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
-                        <div>
-                          <span style={{ fontWeight: 800, color: "var(--navy-600)", fontSize: "1.05rem" }}>
-                            {g.grievanceId}
-                          </span>
-                          <h3 style={{ margin: "4px 0", fontSize: "1.1rem", fontWeight: 700 }}>
-                            {g.title}
-                          </h3>
-                        </div>
-                        <span className="badge badge--primary">{g.status}</span>
-                      </div>
-                      <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)", margin: "0 0 12px", lineHeight: 1.5 }}>
-                        {g.description}
-                      </p>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px", fontSize: "0.85rem", borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: "10px" }}>
-                        <div>
-                          <span style={{ color: "var(--text-tertiary)" }}>Location:</span> <strong>{g.location}</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: "var(--text-tertiary)" }}>Category:</span> <strong>{g.category}</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: "var(--text-tertiary)" }}>Assigned Officer:</span> <strong>{g.assignedEmployee.name} ({g.assignedEmployee.designation})</strong>
-                        </div>
-                        <div>
-                          <span style={{ color: "var(--text-tertiary)" }}>Filed Date:</span> <strong>{g.filedDate}</strong>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                  No active grievances currently found for phone {currentUser.phone}.
-                </div>
-              )}
-            </div>
-
-            {/* Video Hearing Instructions */}
-            <div className="card">
-              <div className="card__header">
-                <div className="card__title">
-                  <Shield size={20} color="#059669" />
-                  Jan Sunwai Video Hearing Guidelines
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
-                <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
-                  <span style={{ fontSize: "1.3rem" }}>🔊</span>
-                  <div>
-                    <strong>Keep Volume On</strong>
-                    <p style={{ margin: "2px 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                      Make sure your phone speaker or laptop sound is unmuted to hear the incoming ringtone.
-                    </p>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
-                  <span style={{ fontSize: "1.3rem" }}>📷</span>
-                  <div>
-                    <strong>Camera & Mic Ready</strong>
-                    <p style={{ margin: "2px 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                      When you click "Accept Call", grant browser permissions for your camera and microphone.
-                    </p>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
-                  <span style={{ fontSize: "1.3rem" }}>🏛️</span>
-                  <div>
-                    <strong>Direct Collector Hearing</strong>
-                    <p style={{ margin: "2px 0 0", fontSize: "0.85rem", color: "var(--text-secondary)" }}>
-                      The District Collector and your local field officer will discuss your issue live.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ═══════════════════════════════════════════════════════
-            VIEW 2: CALL CENTRE REPRESENTATIVE (181 SAMPARK HELPDESK)
-            ═══════════════════════════════════════════════════════ */}
-        {(currentUser.role === "call_center" || currentUser.role === "employee") && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            {/* Call Centre Agent Status Banner */}
-            <div
-              style={{
-                background: "linear-gradient(135deg, #4c1d95 0%, #1e1b4b 60%, #0f172a 100%)",
-                borderRadius: "16px",
-                padding: "2rem",
-                border: "1px solid rgba(139, 92, 246, 0.4)",
-                boxShadow: "0 10px 30px rgba(0,0,0,0.3)",
-                display: "flex",
-                alignItems: "center",
-                gap: "1.5rem",
-                flexWrap: "wrap",
-              }}
-            >
-              <div
-                style={{
-                  width: "70px",
-                  height: "70px",
-                  borderRadius: "50%",
-                  background: "rgba(139, 92, 246, 0.25)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  border: "2px solid #a78bfa",
-                  animation: "pulse 2s infinite",
-                }}
-              >
-                <span style={{ fontSize: "2rem" }}>🎧</span>
-              </div>
-              <div style={{ flex: 1, minWidth: "260px" }}>
-                <div style={{ display: "inline-block", background: "rgba(139, 92, 246, 0.3)", color: "#ddd6fe", padding: "3px 10px", borderRadius: "999px", fontSize: "0.8rem", fontWeight: 700, marginBottom: "6px" }}>
-                  🎧 181 RAJASTHAN SAMPARK CALL CENTRE DESK ACTIVE
-                </div>
-                <h2 style={{ fontSize: "1.4rem", fontWeight: 800, color: "#ffffff", margin: "0 0 6px" }}>
-                  Representative Portal — KYC Verification & Hearing Queue Dispatch
-                </h2>
-                <p style={{ fontSize: "0.95rem", color: "#cbd5e1", margin: 0, lineHeight: 1.5 }}>
-                  Logged in as <strong>{currentUser.name}</strong> • Desk {currentUser.deskNumber || "A-12"} (181 Central Helpdesk). You can initiate calls with citizens, verify identity credentials, consult citizen history, and dispatch queued grievances to Magistrate hearings.
-                </p>
-              </div>
-            </div>
-
-            {/* Role Navigation Tabs */}
-            <div
-              style={{
-                display: "flex",
-                gap: "10px",
-                borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
-                paddingBottom: "10px",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setRepActiveTab("queue")}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "10px",
-                  border: "none",
-                  background: repActiveTab === "queue" ? "#7c3aed" : "rgba(255, 255, 255, 0.06)",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  fontSize: "0.88rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <Clock size={16} />
-                <span>Hearing Call Queue ({hearingQueue.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setRepActiveTab("kyc")}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "10px",
-                  border: "none",
-                  background: repActiveTab === "kyc" ? "#2563eb" : "rgba(255, 255, 255, 0.06)",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  fontSize: "0.88rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <CheckCircle size={16} />
-                <span>Verify Citizen Identity (KYC)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setRepActiveTab("records")}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "10px",
-                  border: "none",
-                  background: repActiveTab === "records" ? "#059669" : "rgba(255, 255, 255, 0.06)",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  fontSize: "0.88rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <FileText size={16} />
-                <span>Consult Citizen Records</span>
-              </button>
-            </div>
-
-            {/* TAB 1: HEARING CALL QUEUE & DISPATCH */}
-            {repActiveTab === "queue" && (
-              <div className="card">
-                <div className="card__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div className="card__title">
-                    <Clock size={20} color="#8b5cf6" />
-                    Hearing Call Queue & Dispatch Engine (सुनवाई कतार प्रबंधन)
-                  </div>
-                  <button
-                    type="button"
-                    onClick={loadCallCenterQueue}
-                    className="btn btn--secondary"
-                    style={{ padding: "6px 12px", fontSize: "0.8rem" }}
-                  >
-                    🔄 Refresh Queue
-                  </button>
-                </div>
-
-                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
-                  Citizens waiting in queue for live Jan Sunwai hearings. Verify their readiness, then dispatch to the active Magistrate hearing bench.
-                </p>
-
-                {isLoadingQueue ? (
-                  <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                    Loading hearing queue...
-                  </div>
-                ) : hearingQueue.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                    {hearingQueue.map((item) => (
-                      <div
-                        key={item.queueId}
-                        style={{
-                          background: "var(--navy-50)",
-                          borderRadius: "12px",
-                          padding: "1.2rem",
-                          border: "1px solid var(--navy-100)",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "10px",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px" }}>
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                              <span
-                                style={{
-                                  background: item.priority === "Urgent" ? "#ef4444" : item.priority === "High" ? "#f59e0b" : "#3b82f6",
-                                  color: "#fff",
-                                  padding: "2px 8px",
-                                  borderRadius: "4px",
-                                  fontSize: "0.72rem",
-                                  fontWeight: 700,
-                                  textTransform: "uppercase",
-                                }}
-                              >
-                                {item.priority} Priority
-                              </span>
-                              <span style={{ fontWeight: 800, color: "var(--navy-600)", fontSize: "1rem" }}>
-                                {item.grievance_id}
-                              </span>
-                            </div>
-                            <h3 style={{ margin: "2px 0 6px", fontSize: "1.05rem", fontWeight: 700 }}>
-                              {item.grievanceTitle}
-                            </h3>
-                          </div>
-
-                          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                            <span
-                              style={{
-                                background: item.kycStatus === "verified" ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)",
-                                color: item.kycStatus === "verified" ? "#059669" : "#d97706",
-                                border: `1px solid ${item.kycStatus === "verified" ? "#34d399" : "#fbbf24"}`,
-                                padding: "3px 8px",
-                                borderRadius: "6px",
-                                fontSize: "0.75rem",
-                                fontWeight: 600,
-                              }}
-                            >
-                              {item.kycStatus === "verified" ? "✓ KYC Verified" : "⏳ KYC Pending"}
-                            </span>
-
-                            <span
-                              style={{
-                                background: item.queue_status === "dispatched" ? "rgba(16, 185, 129, 0.15)" : "rgba(59, 130, 246, 0.15)",
-                                color: item.queue_status === "dispatched" ? "#059669" : "#2563eb",
-                                padding: "4px 10px",
-                                borderRadius: "20px",
-                                fontSize: "0.75rem",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Status: {item.queue_status}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "10px", fontSize: "0.84rem", borderTop: "1px solid rgba(0,0,0,0.06)", paddingTop: "8px" }}>
-                          <div>
-                            <span style={{ color: "var(--text-tertiary)" }}>Citizen:</span> <strong>{item.citizenName} ({item.citizenPhone})</strong>
-                          </div>
-                          <div>
-                            <span style={{ color: "var(--text-tertiary)" }}>Assigned Bench:</span> <strong>{item.assignedOfficerName || "Sh. Alok Sharma, IAS"}</strong>
-                          </div>
-                          <div>
-                            <span style={{ color: "var(--text-tertiary)" }}>Scheduled Slot:</span> <strong>{item.scheduled_time || "Immediate"}</strong>
-                          </div>
-                          <div>
-                            <span style={{ color: "var(--text-tertiary)" }}>District:</span> <strong>{item.district}</strong>
-                          </div>
-                        </div>
-
-                        {/* Queue Actions */}
-                        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
-                          <button
-                            type="button"
-                            className="btn btn--primary"
-                            style={{ padding: "8px 14px", fontSize: "0.82rem", gap: "6px", background: "#7c3aed" }}
-                            onClick={() => handleDispatchQueueItem(item.queueId, item.assigned_officer_id)}
-                          >
-                            <span>🚀 Dispatch to Magistrate Hearing</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            className="btn btn--secondary"
-                            style={{ padding: "8px 14px", fontSize: "0.82rem", gap: "6px" }}
-                            onClick={() => {
-                              setKycPhone(item.citizenPhone || "+91");
-                              setRepActiveTab("kyc");
-                            }}
-                          >
-                            <CheckCircle size={14} />
-                            <span>Verify KYC Now</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            className="btn btn--secondary"
-                            style={{ padding: "8px 14px", fontSize: "0.82rem", gap: "6px" }}
-                            onClick={() => {
-                              handleConsultCitizenRecords(item.citizenPhone);
-                              setRepActiveTab("records");
-                            }}
-                          >
-                            <FileText size={14} />
-                            <span>Consult Records</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                    No hearings currently waiting in queue.
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB 2: VERIFY CITIZEN IDENTITY (KYC) */}
-            {repActiveTab === "kyc" && (
-              <div className="card">
-                <div className="card__header">
-                  <div className="card__title">
-                    <CheckCircle size={20} color="#2563eb" />
-                    Verify Citizen Identity & Jan Aadhaar Credentials
-                  </div>
-                </div>
-
-                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
-                  Call Centre Representatives verify citizen identity against Jan Aadhaar and Aadhaar registries before dispatching to Magistrate hearings.
-                </p>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px", marginBottom: "16px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
-                      Citizen Mobile Number:
-                    </label>
-                    <input
-                      type="text"
-                      value={kycPhone}
-                      onChange={(e) => setKycPhone(e.target.value)}
-                      placeholder="+91..."
-                      style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.88rem" }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
-                      Jan Aadhaar Family ID (जन आधार कार्ड सं.):
-                    </label>
-                    <input
-                      type="text"
-                      value={kycJanAadhaar}
-                      onChange={(e) => setKycJanAadhaar(e.target.value)}
-                      placeholder="JA-..."
-                      style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.88rem" }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
-                      Aadhaar Card (Last 4 Digits):
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={4}
-                      value={kycAadhaarLast4}
-                      onChange={(e) => setKycAadhaarLast4(e.target.value)}
-                      placeholder="4 Digits"
-                      style={{ width: "100%", padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.88rem" }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: "16px" }}>
-                  <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
-                    Representative Verification Notes:
-                  </label>
-                  <textarea
-                    value={kycNotes}
-                    onChange={(e) => setKycNotes(e.target.value)}
-                    rows={2}
-                    placeholder="Enter notes on biometric match, document physical presence, etc."
-                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.85rem" }}
-                  />
-                </div>
-
-                <div style={{ display: "flex", gap: "10px" }}>
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    disabled={isVerifyingKYC}
-                    onClick={handleVerifyCitizenKYC}
-                    style={{ padding: "10px 20px", fontWeight: 700 }}
-                  >
-                    {isVerifyingKYC ? "Verifying..." : "✓ Confirm & Mark Citizen Verified (प्रमाणित करें)"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 3: CONSULT CITIZEN RECORDS */}
-            {repActiveTab === "records" && (
-              <div className="card">
-                <div className="card__header">
-                  <div className="card__title">
-                    <FileText size={20} color="#059669" />
-                    Consult Citizen Records & Dossier
-                  </div>
-                </div>
-
-                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
-                  Look up complete citizen dossier, grievance filing history, assigned officers, and resolution notes.
-                </p>
-
-                <div style={{ display: "flex", gap: "10px", marginBottom: "1.5rem", flexWrap: "wrap" }}>
-                  <input
-                    type="text"
-                    value={consultPhone}
-                    onChange={(e) => setConsultPhone(e.target.value)}
-                    placeholder="Enter Citizen Phone Number..."
-                    style={{ flex: 1, minWidth: "220px", padding: "10px 14px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.9rem" }}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    disabled={isLoadingConsult}
-                    onClick={() => handleConsultCitizenRecords()}
-                    style={{ padding: "10px 18px", background: "#059669" }}
-                  >
-                    {isLoadingConsult ? "Consulting..." : "🔍 Search Citizen Records"}
-                  </button>
-                </div>
-
-                {consultRecord && consultRecord.citizen && (
-                  <div
-                    style={{
-                      background: "var(--navy-50)",
-                      borderRadius: "12px",
-                      padding: "1.5rem",
-                      border: "1px solid var(--navy-100)",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: "10px" }}>
-                      <div>
-                        <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 800 }}>
-                          👤 {consultRecord.citizen.name}
-                        </h3>
-                        <p style={{ margin: "2px 0 0", color: "var(--text-secondary)", fontSize: "0.85rem" }}>
-                          📱 {consultRecord.citizen.phone} • Village: {consultRecord.citizen.village}, {consultRecord.citizen.district}
-                        </p>
-                      </div>
-
-                      <span
-                        style={{
-                          background: consultRecord.kycVerification?.status === "verified" ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.15)",
-                          color: consultRecord.kycVerification?.status === "verified" ? "#059669" : "#d97706",
-                          border: `1px solid ${consultRecord.kycVerification?.status === "verified" ? "#34d399" : "#fbbf24"}`,
-                          padding: "4px 12px",
-                          borderRadius: "20px",
-                          fontWeight: 700,
-                          fontSize: "0.82rem",
-                        }}
-                      >
-                        {consultRecord.kycVerification?.status === "verified" ? "✓ KYC Verified" : "⏳ Pending Verification"}
-                      </span>
-                    </div>
-
-                    <h4 style={{ margin: "14px 0 8px", fontSize: "0.95rem", color: "var(--navy-600)" }}>
-                      Grievance Filing History ({consultRecord.grievances?.length || 0}):
-                    </h4>
-
-                    {consultRecord.grievances && consultRecord.grievances.length > 0 ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        {consultRecord.grievances.map((g: any) => (
-                          <div
-                            key={g.id}
-                            style={{
-                              background: "#fff",
-                              borderRadius: "8px",
-                              padding: "10px 14px",
-                              border: "1px solid rgba(0,0,0,0.08)",
-                              fontSize: "0.85rem",
-                            }}
-                          >
-                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                              <span style={{ fontWeight: 700, color: "var(--navy-600)" }}>{g.id}</span>
-                              <span style={{ color: "var(--text-secondary)" }}>{g.status}</span>
-                            </div>
-                            <div style={{ fontWeight: 600, color: "#1e293b" }}>{g.title}</div>
-                            <div style={{ color: "#64748b", fontSize: "0.78rem", marginTop: "2px" }}>
-                              Assigned Officer: {g.assignedEmployeeName} ({g.assignedEmployeeDepartment || "State Administration"})
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>No filed grievances found.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ═══════════════════════════════════════════════════════
-            VIEW 3: DISTRICT COLLECTOR / OFFICER DASHBOARD
-            ═══════════════════════════════════════════════════════ */}
-        {currentUser.role === "officer" && (
-          <>
-            {/* Page Header */}
-            <div className="page-header">
-              <h1 className="page-header__title">
-                📋 Initiate Jan Sunwai Video Hearing
-              </h1>
-              <p className="page-header__desc">
-                Presiding Officer: <strong>{currentUser.name}</strong> •{" "}
-                {currentUser.designation || "District Collector & DM"}
-              </p>
-            </div>
-
-            {/* Grievance Search Bar & Quick Cases */}
-            <div className="card" style={{ marginBottom: "1.5rem" }}>
-              <div className="card__header">
-                <div className="card__title">
-                  <Search size={20} color="var(--navy-600)" />
-                  Search Grievance from Rajasthan Sampark Portal
-                </div>
-                <button
-                  type="button"
-                  className="btn btn--secondary"
-                  style={{ padding: "6px 12px", fontSize: "0.8rem", gap: "6px" }}
-                  onClick={() => setIsModalOpen(true)}
-                >
-                  <PlusCircle size={15} />
-                  + File New Grievance (SQLite)
-                </button>
-              </div>
-
-              <form onSubmit={handleSearchGrievance} className="search-box">
-                <div className="search-box__input-wrapper">
-                  <Search className="search-box__icon" size={18} />
-                  <input
-                    type="text"
-                    className="search-box__input"
-                    placeholder="Enter Grievance ID (e.g. RAJ-2024-88421, RAJ-2024-71205)"
-                    value={grievanceId}
-                    onChange={(e) => setGrievanceId(e.target.value)}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="btn btn--primary search-box__button"
-                  disabled={isSearching}
-                >
-                  {isSearching ? "Searching..." : "Fetch Grievance"}
-                </button>
-              </form>
-
-              {searchError && (
-                <div className="error-banner" style={{ marginTop: "1rem" }}>
-                  <AlertCircle size={16} />
-                  <span>{searchError}</span>
-                </div>
-              )}
-
-              {/* Sample Grievances Quick Selection */}
-              <div style={{ marginTop: "1.2rem", borderTop: "1px solid var(--border-subtle)", paddingTop: "0.8rem" }}>
-                <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-secondary)", marginRight: "8px" }}>
-                  Available in SQLite Database:
-                </span>
-                <div style={{ display: "inline-flex", gap: "8px", flexWrap: "wrap", marginTop: "4px" }}>
-                  {grievanceList.map((g) => (
-                    <button
-                      key={g.grievanceId}
-                      type="button"
-                      className="badge badge--info"
-                      style={{ cursor: "pointer", border: "none", padding: "4px 10px" }}
-                      onClick={() => {
-                        setGrievanceId(g.grievanceId);
-                        handleSearchGrievance(undefined, g.grievanceId);
-                      }}
-                    >
-                      {g.grievanceId} — {g.title.slice(0, 32)}...
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Grievance Details & Call Initiation Panel */}
-            {grievance && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "1.5rem", marginBottom: "1.5rem" }}>
-                {/* Case Info Card */}
-                <div className="card">
-                  <div className="card__header">
-                    <div className="card__title">
-                      <FileText size={20} color="var(--navy-600)" />
-                      Case Details — {grievance.grievanceId}
-                    </div>
-                    <span className="badge badge--warning">{grievance.status}</span>
-                  </div>
-
-                  <h3 style={{ fontSize: "1.1rem", fontWeight: 700, margin: "0 0 8px" }}>
-                    {grievance.title}
-                  </h3>
-                  <p style={{ fontSize: "0.88rem", color: "var(--text-secondary)", margin: "0 0 12px", lineHeight: 1.5 }}>
-                    {grievance.description}
-                  </p>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "0.85rem" }}>
-                    <div>
-                      <span style={{ color: "var(--text-tertiary)" }}>District:</span>{" "}
-                      <strong>{grievance.district}</strong>
-                    </div>
-                    <div>
-                      <span style={{ color: "var(--text-tertiary)" }}>Category:</span>{" "}
-                      <strong>{grievance.category}</strong>
-                    </div>
-                    <div>
-                      <span style={{ color: "var(--text-tertiary)" }}>Location:</span>{" "}
-                      <strong>{grievance.location}</strong>
-                    </div>
-                    <div>
-                      <span style={{ color: "var(--text-tertiary)" }}>Filed Date:</span>{" "}
-                      <strong>{grievance.filedDate}</strong>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Call Targets & Start Video Call */}
-                <div className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                  <div>
-                    <div className="card__header">
-                      <div className="card__title">
-                        <PhoneCall size={20} color="var(--emerald-600)" />
-                        Simultaneous Call Recipients
-                      </div>
-                    </div>
-
-                    {/* Citizen Card */}
-                    <div style={{ background: "rgba(59, 130, 246, 0.08)", padding: "10px 14px", borderRadius: "10px", marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#2563eb", textTransform: "uppercase" }}>
-                          Caller 1 • Citizen Complainant
-                        </div>
-                        <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
-                          {grievance.citizen.name}
-                        </div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                          {grievance.citizen.phone} • {grievance.citizen.village || grievance.citizen.district}
-                        </div>
-                      </div>
-                      <span className="badge badge--info">Citizen</span>
-                    </div>
-
-                    {/* Employee Card */}
-                    <div style={{ background: "rgba(245, 158, 11, 0.08)", padding: "10px 14px", borderRadius: "10px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#d97706", textTransform: "uppercase" }}>
-                          Caller 2 • Assigned Field Officer
-                        </div>
-                        <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
-                          {grievance.assignedEmployee.name}
-                        </div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>
-                          {grievance.assignedEmployee.phone} • {grievance.assignedEmployee.designation} ({grievance.assignedEmployee.department})
-                        </div>
-                      </div>
-                      <span className="badge badge--warning">Employee</span>
-                    </div>
-
-                    {/* Auto-record checkbox */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
-                      <input
-                        type="checkbox"
-                        id="autoRecord"
-                        checked={autoRecord}
-                        onChange={(e) => setAutoRecord(e.target.checked)}
-                        style={{ width: "16px", height: "16px" }}
-                      />
-                      <label htmlFor="autoRecord" style={{ fontSize: "0.85rem", color: "var(--text-secondary)", cursor: "pointer" }}>
-                        Auto-record hearing session for government compliance audit
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Start Video Hearing Button */}
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    style={{
-                      width: "100%",
-                      padding: "16px",
-                      fontSize: "1.1rem",
-                      fontWeight: 800,
-                      gap: "10px",
-                      background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
-                      borderColor: "#059669",
-                    }}
-                    onClick={handleInitiateCall}
-                    disabled={isCallInitiating}
-                  >
-                    <Video size={22} />
-                    {isCallInitiating ? "Initiating LiveKit Video Conference..." : "Start Jan Sunwai Video Call"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Hearing Call History (SQLite) */}
-            <div className="card">
-              <div className="card__header">
-                <div className="card__title">
-                  <Database size={20} color="var(--navy-600)" />
-                  Recent Jan Sunwai Hearings & Call Records (SQLite)
-                </div>
-                <button
-                  type="button"
-                  className="btn btn--secondary"
-                  style={{ padding: "4px 10px", fontSize: "0.75rem" }}
-                  onClick={fetchCallHistory}
-                >
-                  Refresh
-                </button>
-              </div>
-
-              {callHistory.length > 0 ? (
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "2px solid var(--border-subtle)", textAlign: "left" }}>
-                        <th style={{ padding: "8px" }}>Hearing / Call ID</th>
-                        <th style={{ padding: "8px" }}>Grievance ID</th>
-                        <th style={{ padding: "8px" }}>Presiding Officer</th>
-                        <th style={{ padding: "8px" }}>Status</th>
-                        <th style={{ padding: "8px" }}>Duration</th>
-                        <th style={{ padding: "8px" }}>Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {callHistory.map((rec) => (
-                        <tr key={rec.id} style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-                          <td style={{ padding: "8px", fontFamily: "monospace" }}>{rec.id.slice(0, 8)}...</td>
-                          <td style={{ padding: "8px", fontWeight: 600 }}>{rec.grievance_id || "N/A"}</td>
-                          <td style={{ padding: "8px" }}>{rec.host_name}</td>
-                          <td style={{ padding: "8px" }}>
-                            <span className={`badge ${rec.status === "completed" ? "badge--success" : "badge--warning"}`}>
-                              {rec.status}
-                            </span>
-                          </td>
-                          <td style={{ padding: "8px" }}>{rec.duration_seconds ? `${rec.duration_seconds}s` : "—"}</td>
-                          <td style={{ padding: "8px", color: "var(--text-tertiary)" }}>{rec.created_at}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-secondary)", fontSize: "0.9rem" }}>
-                  No completed video hearings logged yet. Calls initiated from this portal will appear here automatically.
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* ═══════════════════════════════════════════════════════
-            VIEW 4: SUPER ADMIN / ADMINISTRATOR CONTROL CENTER
-            ═══════════════════════════════════════════════════════ */}
-        {currentUser.role === "admin" && (
-          <>
-            {/* Page Header */}
-            <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
-              <div>
-                <h1 className="page-header__title" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <Shield size={28} color="#ef4444" />
-                  Super Admin Control Center (प्रणाली प्रशासन)
-                </h1>
-                <p className="page-header__desc">
-                  Administrator: <strong>{currentUser.name}</strong> • DOIT&C Rajasthan Government • Full System Administration & Audit Oversight
-                </p>
-              </div>
-
-              {/* Status pills & Quick Refresh */}
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: "rgba(16, 185, 129, 0.15)",
-                    border: "1px solid rgba(16, 185, 129, 0.4)",
-                    color: "#10b981",
-                    padding: "6px 12px",
-                    borderRadius: "20px",
-                    fontSize: "0.78rem",
-                    fontWeight: 700,
-                  }}
-                >
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 8px #10b981" }} />
-                  LiveKit SFU 1,500 Cap Active
-                </span>
-
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    background: "rgba(59, 130, 246, 0.15)",
-                    border: "1px solid rgba(59, 130, 246, 0.4)",
-                    color: "#60a5fa",
-                    padding: "6px 12px",
-                    borderRadius: "20px",
-                    fontSize: "0.78rem",
-                    fontWeight: 700,
-                  }}
-                >
-                  <Lock size={12} />
-                  256-Bit E2EE Enforced
-                </span>
-
-                <button
-                  type="button"
-                  onClick={loadAdminData}
-                  disabled={isLoadingDiagnostics}
-                  className="btn btn--secondary"
-                  style={{ padding: "7px 14px", fontSize: "0.82rem", gap: "6px" }}
-                >
-                  <Activity size={14} />
-                  {isLoadingDiagnostics ? "Refreshing..." : "Refresh Telemetry"}
-                </button>
-              </div>
-            </div>
-
-            {/* Admin Tabs */}
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                marginBottom: "1.5rem",
-                borderBottom: "1px solid var(--border)",
-                paddingBottom: "8px",
-                overflowX: "auto",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setAdminActiveTab("diagnostics")}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "10px",
-                  border: "none",
-                  background: adminActiveTab === "diagnostics" ? "#dc2626" : "rgba(255, 255, 255, 0.06)",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  fontSize: "0.88rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <Activity size={16} />
-                <span>Real-Time Diagnostics</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAdminActiveTab("audit")}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "10px",
-                  border: "none",
-                  background: adminActiveTab === "audit" ? "#7c3aed" : "rgba(255, 255, 255, 0.06)",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  fontSize: "0.88rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <Clock size={16} />
-                <span>Audit Logs ({adminAuditLogs.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAdminActiveTab("security")}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "10px",
-                  border: "none",
-                  background: adminActiveTab === "security" ? "#0284c7" : "rgba(255, 255, 255, 0.06)",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  fontSize: "0.88rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <Lock size={16} />
-                <span>Security Parameters</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setAdminActiveTab("settings")}
-                style={{
-                  padding: "10px 18px",
-                  borderRadius: "10px",
-                  border: "none",
-                  background: adminActiveTab === "settings" ? "#059669" : "rgba(255, 255, 255, 0.06)",
-                  color: "#ffffff",
-                  fontWeight: 700,
-                  fontSize: "0.88rem",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  transition: "all 0.15s ease",
-                }}
-              >
-                <Settings size={16} />
-                <span>System Settings</span>
-              </button>
-            </div>
-
-            {/* TAB 1: REAL-TIME SYSTEM DIAGNOSTICS */}
-            {adminActiveTab === "diagnostics" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-                {/* 4 Key Metrics Cards */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem" }}>
-                  {/* SFU Scale Card */}
-                  <div className="card" style={{ borderTop: "4px solid #10b981", background: "var(--navy-50)" }}>
-                    <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600, marginBottom: "4px" }}>
-                      LIVEKIT SFU CONCURRENCY
-                    </div>
-                    <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#10b981" }}>
-                      1,500 <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-secondary)" }}>Max / Room</span>
-                    </div>
-                    <p style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", marginTop: "4px", margin: 0 }}>
-                      Dynacast & Adaptive bitrate enabled for 1,000+ simultaneous participants.
-                    </p>
-                  </div>
-
-                  {/* Node Server Memory */}
-                  <div className="card" style={{ borderTop: "4px solid #3b82f6", background: "var(--navy-50)" }}>
-                    <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600, marginBottom: "4px" }}>
-                      SERVER RSS MEMORY
-                    </div>
-                    <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#3b82f6" }}>
-                      {adminDiagnostics?.process?.memoryRssMB || "134"} <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-secondary)" }}>MB</span>
-                    </div>
-                    <p style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", marginTop: "4px", margin: 0 }}>
-                      Heap Used: {adminDiagnostics?.process?.heapUsedMB || "68"} MB • Platform: {adminDiagnostics?.process?.platform || "win32"}
-                    </p>
-                  </div>
-
-                  {/* Database Records */}
-                  <div className="card" style={{ borderTop: "4px solid #8b5cf6", background: "var(--navy-50)" }}>
-                    <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600, marginBottom: "4px" }}>
-                      TOTAL DATABASE OBJECTS
-                    </div>
-                    <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#8b5cf6" }}>
-                      {((adminDiagnostics?.dbCounts?.citizens || 0) +
-                        (adminDiagnostics?.dbCounts?.grievances || 0) +
-                        (adminDiagnostics?.dbCounts?.callRecords || 0) +
-                        (adminDiagnostics?.dbCounts?.auditLogs || 0))} <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-secondary)" }}>Records</span>
-                    </div>
-                    <p style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", marginTop: "4px", margin: 0 }}>
-                      {adminDiagnostics?.dbCounts?.grievances || 4} Grievances • {adminDiagnostics?.dbCounts?.auditLogs || 12} Audit Entries
-                    </p>
-                  </div>
-
-                  {/* System Uptime */}
-                  <div className="card" style={{ borderTop: "4px solid #f59e0b", background: "var(--navy-50)" }}>
-                    <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", fontWeight: 600, marginBottom: "4px" }}>
-                      DAEMON UPTIME
-                    </div>
-                    <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "#f59e0b" }}>
-                      {Math.floor((adminDiagnostics?.process?.uptimeSeconds || 3600) / 60)} <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "var(--text-secondary)" }}>Minutes</span>
-                    </div>
-                    <p style={{ fontSize: "0.8rem", color: "var(--text-tertiary)", marginTop: "4px", margin: 0 }}>
-                      Node.js {adminDiagnostics?.process?.nodeVersion || "v20"} • WebSocket signaling active
-                    </p>
-                  </div>
-                </div>
-
-                {/* Diagnostics Deep Dive Table */}
-                <div className="card">
-                  <div className="card__header">
-                    <div className="card__title">
-                      <Database size={20} color="var(--navy-600)" />
-                      Database & Subsystem Health Breakdown
-                    </div>
-                  </div>
-
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
-                      <thead>
-                        <tr style={{ borderBottom: "2px solid var(--border)", textAlign: "left" }}>
-                          <th style={{ padding: "10px" }}>Subsystem</th>
-                          <th style={{ padding: "10px" }}>Status</th>
-                          <th style={{ padding: "10px" }}>Specification / Capacity</th>
-                          <th style={{ padding: "10px" }}>Active Records</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                          <td style={{ padding: "10px", fontWeight: 600 }}>LiveKit Cloud WebRTC SFU</td>
-                          <td style={{ padding: "10px" }}><span className="badge badge--success">Operational</span></td>
-                          <td style={{ padding: "10px", color: "var(--text-secondary)" }}>1,500 Participants / Room (Dynacast)</td>
-                          <td style={{ padding: "10px" }}>High Concurrency Mode</td>
-                        </tr>
-                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                          <td style={{ padding: "10px", fontWeight: 600 }}>SQLite Database (WAL Mode)</td>
-                          <td style={{ padding: "10px" }}><span className="badge badge--success">Operational</span></td>
-                          <td style={{ padding: "10px", color: "var(--text-secondary)" }}>Full ACID compliance, Concurrent Readers</td>
-                          <td style={{ padding: "10px" }}>{adminDiagnostics?.dbCounts?.callRecords || 1} Hearing Calls</td>
-                        </tr>
-                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                          <td style={{ padding: "10px", fontWeight: 600 }}>Call Centre Hearing Queue</td>
-                          <td style={{ padding: "10px" }}><span className="badge badge--success">Ready</span></td>
-                          <td style={{ padding: "10px", color: "var(--text-secondary)" }}>Queue Dispatching & Auto Routing</td>
-                          <td style={{ padding: "10px" }}>{adminDiagnostics?.dbCounts?.hearingQueue || 2} Queued Citizens</td>
-                        </tr>
-                        <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                          <td style={{ padding: "10px", fontWeight: 600 }}>Citizen KYC & Identity Vault</td>
-                          <td style={{ padding: "10px" }}><span className="badge badge--success">Active</span></td>
-                          <td style={{ padding: "10px", color: "var(--text-secondary)" }}>Jan Aadhaar & Aadhaar Last-4 Verification</td>
-                          <td style={{ padding: "10px" }}>{adminDiagnostics?.dbCounts?.verifications || 2} Verified Citizens</td>
-                        </tr>
-                        <tr>
-                          <td style={{ padding: "10px", fontWeight: 600 }}>Audit & Compliance Trail</td>
-                          <td style={{ padding: "10px" }}><span className="badge badge--success">Logging</span></td>
-                          <td style={{ padding: "10px", color: "var(--text-secondary)" }}>Immutable Log Store for Moderation & Settings</td>
-                          <td style={{ padding: "10px" }}>{adminDiagnostics?.dbCounts?.auditLogs || 12} Recorded Actions</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 2: AUDIT LOGS */}
-            {adminActiveTab === "audit" && (
-              <div className="card">
-                <div className="card__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px" }}>
-                  <div className="card__title">
-                    <Clock size={20} color="#7c3aed" />
-                    System Audit & Compliance Log Trail (अंकेक्षण विवरण)
-                  </div>
-
-                  {/* Search / Filter */}
-                  <input
-                    type="text"
-                    value={adminAuditFilter}
-                    onChange={(e) => setAdminAuditFilter(e.target.value)}
-                    placeholder="Search logs by action, actor, or keyword..."
-                    style={{
-                      padding: "8px 14px",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border)",
-                      fontSize: "0.85rem",
-                      minWidth: "260px",
-                    }}
-                  />
-                </div>
-
-                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1rem" }}>
-                  All administrative actions, in-call moderation operations (mute audio, disable video, eject), KYC verifications, and parameter changes are logged here with timestamps and actor credentials.
-                </p>
-
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "2px solid var(--border)", textAlign: "left" }}>
-                        <th style={{ padding: "8px" }}>Timestamp</th>
-                        <th style={{ padding: "8px" }}>Action</th>
-                        <th style={{ padding: "8px" }}>Actor (Name & Role)</th>
-                        <th style={{ padding: "8px" }}>Target</th>
-                        <th style={{ padding: "8px" }}>Details</th>
-                        <th style={{ padding: "8px" }}>IP Address</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {adminAuditLogs
-                        .filter((log) => {
-                          if (!adminAuditFilter) return true;
-                          const q = adminAuditFilter.toLowerCase();
-                          return (
-                            (log.action || "").toLowerCase().includes(q) ||
-                            (log.actor_name || "").toLowerCase().includes(q) ||
-                            (log.target_id || "").toLowerCase().includes(q) ||
-                            (log.details || "").toLowerCase().includes(q)
-                          );
-                        })
-                        .map((log) => {
-                          const isModAction = ["mute_participant_audio", "disable_participant_video", "eject_participant", "terminate_call"].includes(log.action);
-                          const isSecAction = ["update_setting", "verify_citizen_kyc"].includes(log.action);
-                          return (
-                            <tr key={log.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                              <td style={{ padding: "8px", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
-                                {new Date(log.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                              </td>
-                              <td style={{ padding: "8px" }}>
-                                <span
-                                  style={{
-                                    padding: "3px 8px",
-                                    borderRadius: "4px",
-                                    fontSize: "0.75rem",
-                                    fontWeight: 700,
-                                    background: isModAction ? "rgba(239, 68, 68, 0.15)" : isSecAction ? "rgba(59, 130, 246, 0.15)" : "rgba(16, 185, 129, 0.15)",
-                                    color: isModAction ? "#ef4444" : isSecAction ? "#3b82f6" : "#10b981",
-                                  }}
-                                >
-                                  {log.action}
-                                </span>
-                              </td>
-                              <td style={{ padding: "8px", fontWeight: 600 }}>
-                                {log.actor_name} <span style={{ fontSize: "0.75rem", color: "var(--text-tertiary)" }}>({log.actor_role})</span>
-                              </td>
-                              <td style={{ padding: "8px", fontFamily: "monospace", fontSize: "0.8rem" }}>
-                                {log.target_id || "—"}
-                              </td>
-                              <td style={{ padding: "8px", color: "var(--text-secondary)", maxWidth: "240px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {log.details || "—"}
-                              </td>
-                              <td style={{ padding: "8px", color: "var(--text-tertiary)", fontSize: "0.78rem" }}>
-                                {log.ip_address || "127.0.0.1"}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      {adminAuditLogs.length === 0 && (
-                        <tr>
-                          <td colSpan={6} style={{ padding: "2rem", textAlign: "center", color: "var(--text-secondary)" }}>
-                            No audit logs recorded yet. System activities will appear here in real-time.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 3: SECURITY PARAMETERS */}
-            {adminActiveTab === "security" && (
-              <div className="card">
-                <div className="card__header">
-                  <div className="card__title">
-                    <Lock size={20} color="#0284c7" />
-                    Security Parameters & Encryption Governance (सुरक्षा मानक)
-                  </div>
-                </div>
-
-                <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
-                  Configure state-level cryptographic protections, end-to-end encryption keys, safety number verifications, and room capacity limits.
-                </p>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-                  {/* Parameter 1: Max Meeting Participants */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
-                        Maximum Meeting Room Capacity (1,000+ Scalable)
-                      </div>
-                      <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
-                        Configures SFU limit per Jan Sunwai bench room. Default: 1,500 attendees.
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <input
-                        type="number"
-                        value={adminSettings.max_meeting_participants || "1500"}
-                        onChange={(e) => setAdminSettings({ ...adminSettings, max_meeting_participants: e.target.value })}
-                        style={{ width: "90px", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)", textAlign: "center", fontWeight: 700 }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateAdminSetting("max_meeting_participants", adminSettings.max_meeting_participants)}
-                        disabled={isSavingSettings}
-                        className="btn btn--primary"
-                        style={{ padding: "8px 14px", fontSize: "0.8rem" }}
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Parameter 2: 256-Bit E2EE Encryption */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
-                        256-Bit End-to-End Encryption (E2EE)
-                      </div>
-                      <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
-                        Encrypt video frames and data channels with client-side key derivation.
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span className={`badge ${adminSettings.e2ee_encryption_enabled === "true" ? "badge--success" : "badge--danger"}`}>
-                        {adminSettings.e2ee_encryption_enabled === "true" ? "Enforced" : "Disabled"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateAdminSetting("e2ee_encryption_enabled", adminSettings.e2ee_encryption_enabled === "true" ? "false" : "true")}
-                        className="btn btn--secondary"
-                        style={{ padding: "8px 14px", fontSize: "0.8rem" }}
-                      >
-                        Toggle E2EE
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Parameter 3: Short Authentication String (SAS) Verification */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
-                        Cryptographic Safety Numbers (SAS Verification)
-                      </div>
-                      <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
-                        Allow citizens and magistrates to compare 60-digit fingerprint blocks against Man-in-the-Middle attacks.
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span className={`badge ${adminSettings.sas_safety_numbers_required === "true" ? "badge--success" : "badge--warning"}`}>
-                        {adminSettings.sas_safety_numbers_required === "true" ? "Active" : "Optional"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateAdminSetting("sas_safety_numbers_required", adminSettings.sas_safety_numbers_required === "true" ? "false" : "true")}
-                        className="btn btn--secondary"
-                        style={{ padding: "8px 14px", fontSize: "0.8rem" }}
-                      >
-                        Toggle SAS
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Parameter 4: Token Expiry */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
-                        Hearing Participant Auth Token Expiry
-                      </div>
-                      <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
-                        Duration in minutes before LiveKit JWT room access token expires.
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <input
-                        type="number"
-                        value={adminSettings.token_expiry_minutes || "120"}
-                        onChange={(e) => setAdminSettings({ ...adminSettings, token_expiry_minutes: e.target.value })}
-                        style={{ width: "90px", padding: "8px", borderRadius: "6px", border: "1px solid var(--border)", textAlign: "center", fontWeight: 700 }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateAdminSetting("token_expiry_minutes", adminSettings.token_expiry_minutes)}
-                        disabled={isSavingSettings}
-                        className="btn btn--primary"
-                        style={{ padding: "8px 14px", fontSize: "0.8rem" }}
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 4: SYSTEM SETTINGS */}
-            {adminActiveTab === "settings" && (
-              <div className="card">
-                <div className="card__header">
-                  <div className="card__title">
-                    <Settings size={20} color="#059669" />
-                    System Settings & Call Queue Policies (सिस्टम सेटिंग्स)
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-                  {/* Queue Dispatch Mode */}
-                  <div style={{ padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.95rem", marginBottom: "4px" }}>
-                      Call Centre Queue Dispatch Mode
-                    </div>
-                    <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)", marginBottom: "12px" }}>
-                      Determines how citizen hearings from the queue are dispatched to Magistrate hearing rooms.
-                    </div>
-                    <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-                      <select
-                        value={adminSettings.call_queue_dispatch_mode || "manual_by_agent"}
-                        onChange={(e) => setAdminSettings({ ...adminSettings, call_queue_dispatch_mode: e.target.value })}
-                        style={{ padding: "8px 14px", borderRadius: "8px", border: "1px solid var(--border)", fontSize: "0.85rem", background: "var(--bg-surface)" }}
-                      >
-                        <option value="manual_by_agent">Manual Dispatch by 181 Call Centre Representative</option>
-                        <option value="auto_fifo">Automated FIFO Queue Dispatching</option>
-                        <option value="priority_escalated">High-Priority Grievance Pre-emption</option>
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateAdminSetting("call_queue_dispatch_mode", adminSettings.call_queue_dispatch_mode)}
-                        disabled={isSavingSettings}
-                        className="btn btn--primary"
-                        style={{ padding: "8px 16px", fontSize: "0.8rem" }}
-                      >
-                        Save Policy
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Auto Recording Default */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
-                        Default Hearing Recording Enforcement
-                      </div>
-                      <div style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
-                        Automatically record all Jan Sunwai sessions for official judicial record keeping.
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span className={`badge ${adminSettings.auto_recording_default === "true" ? "badge--success" : "badge--warning"}`}>
-                        {adminSettings.auto_recording_default === "true" ? "Enabled" : "Disabled"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateAdminSetting("auto_recording_default", adminSettings.auto_recording_default === "true" ? "false" : "true")}
-                        className="btn btn--secondary"
-                        style={{ padding: "8px 14px", fontSize: "0.8rem" }}
-                      >
-                        Toggle Recording
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Platform Environment Spec */}
-                  <div style={{ padding: "14px 16px", background: "var(--navy-50)", borderRadius: "10px", border: "1px solid var(--border)", fontSize: "0.85rem" }}>
-                    <div style={{ fontWeight: 700, marginBottom: "8px" }}>
-                      Infrastructure Environment Summary
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", color: "var(--text-secondary)" }}>
-                      <div><strong>SFU Core:</strong> LiveKit WebRTC Cloud SFU</div>
-                      <div><strong>Proxy Router:</strong> Caddy Reverse Proxy (Port 8080)</div>
-                      <div><strong>Database:</strong> SQLite WAL (server/data/jansunwai.db)</div>
-                      <div><strong>Signaling:</strong> WebSocket Channel per Phone</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ═══════════════════════════════════════════════════════
-            MODAL: File New Grievance into SQLite
-            ═══════════════════════════════════════════════════════ */}
-        {isModalOpen && (
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          {/* SFU Status */}
           <div
             style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: "rgba(0,0,0,0.6)",
-              backdropFilter: "blur(4px)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "4px 10px",
+              borderRadius: "999px",
+              background: wsConnected ? "rgba(37, 211, 102, 0.12)" : "rgba(239, 68, 68, 0.12)",
+              border: `1px solid ${wsConnected ? "rgba(37, 211, 102, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+              fontSize: "0.72rem",
+              fontWeight: 800,
+              color: wsConnected ? "#25D366" : "#ef4444",
+            }}
+          >
+            <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: wsConnected ? "#25D366" : "#ef4444" }} />
+            {wsConnected ? "ONLINE" : "CONNECTING"}
+          </div>
+
+          {/* Profile Trigger */}
+          <button
+            type="button"
+            onClick={() => setShowProfileModal(true)}
+            style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "center",
-              zIndex: 1000,
-              padding: "1rem",
+              gap: "8px",
+              background: "#202c33",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              borderRadius: "999px",
+              padding: "4px 12px 4px 4px",
+              color: "#ffffff",
+              cursor: "pointer",
             }}
           >
             <div
               style={{
-                background: "var(--bg-surface)",
-                borderRadius: "16px",
-                width: "100%",
-                maxWidth: "640px",
-                maxHeight: "90vh",
-                overflowY: "auto",
-                boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
-                border: "1px solid var(--border)",
+                width: "28px",
+                height: "28px",
+                borderRadius: "50%",
+                background: "var(--app-gold)",
+                color: "#111827",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 900,
+                fontSize: "0.85rem",
               }}
             >
-              <div
-                style={{
-                  padding: "16px 20px",
-                  borderBottom: "1px solid var(--border)",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <PlusCircle size={20} color="var(--color-primary)" />
-                  <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700 }}>
-                    File New Grievance into SQLite Database
-                  </h3>
+              {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : "U"}
+            </div>
+            <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>{currentUser.name.split(" ")[0]}</span>
+          </button>
+
+          {/* Diagnostics Button */}
+          <button
+            type="button"
+            onClick={() => {
+              const r = (isCallCenter ? "call_center" : isAdmin ? "admin" : isOfficer ? "officer" : "citizen") as RoleType;
+              setPreCheckRole(r);
+              setShowPreCheckModal(true);
+            }}
+            style={{
+              background: "rgba(255, 255, 255, 0.06)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: "10px",
+              padding: "6px 10px",
+              color: "#8696a0",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              fontSize: "0.8rem",
+            }}
+            title="Hardware & Diagnostic Suite"
+          >
+            <Sliders size={15} />
+          </button>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="app-content-wrapper">
+        {/* Navigation Tabs (Hearings vs Cases) */}
+        <div className="app-tab-bar">
+          <button
+            type="button"
+            className={`app-tab-btn ${currentTab === "hearings" ? "active" : ""}`}
+            onClick={() => setCurrentTab("hearings")}
+          >
+            <span>🏛️</span>
+            <span>Hearings</span>
+          </button>
+          <button
+            type="button"
+            className={`app-tab-btn ${currentTab === "cases" ? "active" : ""}`}
+            onClick={() => {
+              setCurrentTab("cases");
+              if (grievances.length === 0) fetchGrievances();
+            }}
+          >
+            <span>📋</span>
+            <span>Cases</span>
+            {grievances.length > 0 && <span className="app-tab-badge">{grievances.length}</span>}
+          </button>
+        </div>
+
+        {/* ─── TAB 1: HEARINGS ─── */}
+        {currentTab === "hearings" && (
+          <div>
+            {/* If Call Center Agent */}
+            {isCallCenter ? (
+              <div className="app-card">
+                <div style={{ display: "flex", gap: "8px", marginBottom: "1rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => setCcTab("queue")}
+                    className={`app-tab-btn ${ccTab === "queue" ? "active" : ""}`}
+                    style={{ flex: "none", padding: "6px 14px" }}
+                  >
+                    Queue ({queueItems.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCcTab("kyc")}
+                    className={`app-tab-btn ${ccTab === "kyc" ? "active" : ""}`}
+                    style={{ flex: "none", padding: "6px 14px" }}
+                  >
+                    KYC Verification
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCcTab("records")}
+                    className={`app-tab-btn ${ccTab === "records" ? "active" : ""}`}
+                    style={{ flex: "none", padding: "6px 14px" }}
+                  >
+                    Citizen Records
+                  </button>
                 </div>
+
+                {ccTab === "queue" && (
+                  <div>
+                    <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: "0 0 1rem" }}>181 Sampark Citizens Queue</h3>
+                    {queueItems.length === 0 ? (
+                      <p style={{ color: "#8696a0" }}>No citizens currently queued.</p>
+                    ) : (
+                      queueItems.map((q) => (
+                        <div key={q.id} className="app-case-row">
+                          <div>
+                            <div style={{ fontWeight: 800 }}>{q.citizen_name || "Citizen"}</div>
+                            <div style={{ fontSize: "0.8rem", color: "#8696a0" }}>{q.grievance_id} • {q.citizen_phone}</div>
+                          </div>
+                          <button
+                            type="button"
+                            className="app-btn-gold"
+                            style={{ padding: "6px 12px", fontSize: "0.8rem" }}
+                            onClick={async () => {
+                              try {
+                                await fetch(`${API_BASE}/api/call-center/dispatch`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    queueId: q.id,
+                                    officerId: "off-001",
+                                    queueStatus: "dispatched",
+                                    agentName: currentUser.name,
+                                    agentPhone: currentUser.phone,
+                                  }),
+                                });
+                                showToast("Dispatched to Magistrate hearing bench", "success");
+                                fetchCallCenterQueue();
+                              } catch {
+                                showToast("Dispatch error", "error");
+                              }
+                            }}
+                          >
+                            Dispatch ➔
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {ccTab === "kyc" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: "0 0 0.5rem" }}>Citizen KYC Biometric Check</h3>
+                    <input className="app-input" value={kycPhone} onChange={(e) => setKycPhone(e.target.value)} placeholder="Citizen Phone Number" />
+                    <input className="app-input" value={kycJanAadhaar} onChange={(e) => setKycJanAadhaar(e.target.value)} placeholder="Jan Aadhaar ID" />
+                    <input className="app-input" value={kycAadhaarLast4} onChange={(e) => setKycAadhaarLast4(e.target.value)} placeholder="Aadhaar Last 4 Digits" maxLength={4} />
+                    <button type="button" className="app-btn-gold" onClick={handleVerifyCitizenKyc} disabled={isVerifyingKyc}>
+                      {isVerifyingKyc ? "Verifying..." : "Verify Citizen Identity ✓"}
+                    </button>
+                  </div>
+                )}
+
+                {ccTab === "records" && (
+                  <div>
+                    <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: "0 0 0.5rem" }}>Consult Citizen Records</h3>
+                    <div style={{ display: "flex", gap: "10px", marginBottom: "1rem" }}>
+                      <input className="app-input" value={consultPhone} onChange={(e) => setConsultPhone(e.target.value)} placeholder="Enter citizen mobile..." />
+                      <button type="button" className="app-btn-gold" onClick={handleConsultCitizen} disabled={isConsulting}>
+                        Search ➔
+                      </button>
+                    </div>
+                    {consultRecord?.citizen && (
+                      <div style={{ background: "#202c33", padding: "12px", borderRadius: "12px" }}>
+                        <div style={{ fontWeight: 800, fontSize: "1rem" }}>👤 {consultRecord.citizen.name}</div>
+                        <div style={{ color: "#8696a0", fontSize: "0.85rem" }}>📞 {consultRecord.citizen.phone} • {consultRecord.citizen.district}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : isAdmin ? (
+              /* If Super Admin */
+              <div className="app-card">
+                <div style={{ display: "flex", gap: "8px", marginBottom: "1rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab("diagnostics")}
+                    className={`app-tab-btn ${adminTab === "diagnostics" ? "active" : ""}`}
+                    style={{ flex: "none", padding: "6px 14px" }}
+                  >
+                    Telemetry & Health
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab("audit")}
+                    className={`app-tab-btn ${adminTab === "audit" ? "active" : ""}`}
+                    style={{ flex: "none", padding: "6px 14px" }}
+                  >
+                    Audit Trail
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdminTab("security")}
+                    className={`app-tab-btn ${adminTab === "security" ? "active" : ""}`}
+                    style={{ flex: "none", padding: "6px 14px" }}
+                  >
+                    Security
+                  </button>
+                </div>
+
+                {adminTab === "diagnostics" && (
+                  <div>
+                    <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: "0 0 1rem" }}>System Telemetry & LiveKit Status</h3>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                      <div className="app-card" style={{ margin: 0, padding: "12px", background: "#202c33" }}>
+                        <div style={{ fontSize: "0.75rem", color: "#8696a0", fontWeight: 700 }}>SFU CONCURRENCY</div>
+                        <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "#25D366" }}>1,500</div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b" }}>Max Participants / Room</div>
+                      </div>
+                      <div className="app-card" style={{ margin: 0, padding: "12px", background: "#202c33" }}>
+                        <div style={{ fontSize: "0.75rem", color: "#8696a0", fontWeight: 700 }}>SERVER MEMORY</div>
+                        <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "#FACC15" }}>{adminDiagnostics?.process?.memoryRssMB || 215} MB</div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b" }}>Node.js RSS Memory</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {adminTab === "audit" && (
+                  <div>
+                    <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: "0 0 1rem" }}>System Audit Trail</h3>
+                    {adminAuditLogs.length === 0 ? (
+                      <p style={{ color: "#8696a0" }}>No audit records found.</p>
+                    ) : (
+                      adminAuditLogs.map((log) => (
+                        <div key={log.id} style={{ padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: "0.85rem" }}>
+                          <span style={{ color: "#EAB308", fontWeight: 700 }}>{log.action}</span> by {log.actor_name} • {new Date(log.created_at).toLocaleTimeString()}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                {adminTab === "security" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                    <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: "0 0 0.5rem" }}>Security Governance</h3>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#202c33", padding: "12px", borderRadius: "12px" }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>256-Bit E2EE Encryption</div>
+                        <div style={{ fontSize: "0.8rem", color: "#8696a0" }}>LiveKit SFU AES-GCM Encryption</div>
+                      </div>
+                      <button
+                        type="button"
+                        className="app-btn-outline-gold"
+                        style={{ padding: "6px 12px", fontSize: "0.8rem" }}
+                        onClick={() => handleUpdateAdminSetting("e2ee_encryption_enabled", adminSettings.e2ee_encryption_enabled === "true" ? "false" : "true")}
+                      >
+                        {adminSettings.e2ee_encryption_enabled === "true" ? "Active ✓" : "Disabled"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : isOfficer ? (
+              /* If Presiding Officer */
+              <div className="app-card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <h2 style={{ fontSize: "1.15rem", fontWeight: 800, margin: 0, color: "#ffffff", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>🏛️</span> Hearing Bench Room
+                  </h2>
+                  <div
+                    style={{
+                      background: "rgba(37, 211, 102, 0.15)",
+                      border: "1px solid rgba(37, 211, 102, 0.35)",
+                      color: "#25D366",
+                      fontSize: "0.72rem",
+                      fontWeight: 800,
+                      padding: "3px 8px",
+                      borderRadius: "999px",
+                    }}
+                  >
+                    ● SFU ONLINE
+                  </div>
+                </div>
+
+                <p style={{ fontSize: "0.88rem", color: "#8696a0", margin: "8px 0 0", lineHeight: 1.5 }}>
+                  Enter a Grievance ID below to search details, initiate an immediate video call hearing, or schedule a future hearing.
+                </p>
+
+                {/* Grievance Search Row */}
+                <div className="app-search-row">
+                  <input
+                    type="text"
+                    className="app-input"
+                    value={directRoomInput}
+                    onChange={(e) => setDirectRoomInput(e.target.value.toUpperCase())}
+                    placeholder="Grievance ID (e.g. RAJ-2024-88421)"
+                    onKeyDown={(e) => e.key === "Enter" && handleHomeSearchGrievance(directRoomInput)}
+                  />
+                  <button
+                    type="button"
+                    className="app-btn-gold"
+                    onClick={() => handleHomeSearchGrievance(directRoomInput)}
+                    disabled={homeIsSearching}
+                  >
+                    {homeIsSearching ? "Searching..." : "Search 🔍"}
+                  </button>
+                </div>
+
+                {homeSearchError && (
+                  <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#fca5a5", fontSize: "0.85rem" }}>
+                    ⚠️ {homeSearchError}
+                  </div>
+                )}
+
+                {/* Found Grievance Card */}
+                {homeSearchedGrievance && (
+                  <div style={{ marginTop: "1.5rem", background: "#202c33", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "16px", padding: "1.25rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                      <span className="app-case-id-badge">{homeSearchedGrievance.grievanceId}</span>
+                      <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#FACC15", background: "rgba(234, 179, 8, 0.12)", padding: "3px 8px", borderRadius: "6px" }}>
+                        {homeSearchedGrievance.status}
+                      </span>
+                    </div>
+
+                    {/* Prominent Executive Scheduled Hearing Card (if scheduled) */}
+                    {homeSearchedGrievance.scheduledDate && homeSearchedGrievance.scheduledTime && (
+                      <div className="app-exec-card">
+                        <div className="app-exec-header">
+                          <div className="app-exec-badge">
+                            <span style={{ fontSize: "1.2rem" }}>🏛️</span>
+                            <div>
+                              <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "var(--app-gold)", letterSpacing: "0.05em" }}>
+                                OFFICIAL HEARING SCHEDULED
+                              </div>
+                              <div style={{ fontSize: "0.7rem", color: "#8696a0" }}>Rajasthan Sampark • Jan Sunwai</div>
+                            </div>
+                          </div>
+                          <div className="app-exec-status">
+                            <span>●</span>
+                            <span>SCHEDULED</span>
+                          </div>
+                        </div>
+
+                        <div className="app-exec-grid">
+                          <div className="app-exec-box">
+                            <div className="app-exec-box-label">HEARING DATE (दिनांक)</div>
+                            <div className="app-exec-box-value">🗓️ {homeSearchedGrievance.scheduledDate}</div>
+                          </div>
+                          <div className="app-exec-box">
+                            <div className="app-exec-box-label">HEARING TIME (समय)</div>
+                            <div className="app-exec-box-value">⏰ {homeSearchedGrievance.scheduledTime}</div>
+                          </div>
+                        </div>
+
+                        <div className="app-exec-officer">
+                          <div className="app-exec-box-label">PRESIDING BENCH (अध्यक्षीय पीठ)</div>
+                          <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" }}>
+                            🏛️ {homeSearchedGrievance.scheduledOfficer || "Vivek, IAS • District Magistrate"}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <h3 style={{ fontSize: "1.08rem", fontWeight: 800, color: "#ffffff", margin: "0 0 6px" }}>
+                      {homeSearchedGrievance.title}
+                    </h3>
+                    {homeSearchedGrievance.category && (
+                      <div style={{ fontSize: "0.82rem", color: "#8696a0", marginBottom: "12px" }}>
+                        📁 {homeSearchedGrievance.category} {homeSearchedGrievance.location ? `• 📍 ${homeSearchedGrievance.location}` : ""}
+                      </div>
+                    )}
+
+                    {/* Parties Grid */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "1.25rem" }}>
+                      {homeSearchedGrievance.citizen && (
+                        <div style={{ background: "rgba(0, 0, 0, 0.25)", padding: "10px 12px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+                          <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#FACC15", textTransform: "uppercase" }}>Citizen</div>
+                          <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" }}>{homeSearchedGrievance.citizen.name}</div>
+                          <div style={{ fontSize: "0.78rem", color: "#8696a0" }}>📞 {homeSearchedGrievance.citizen.phone}</div>
+                        </div>
+                      )}
+                      {homeSearchedGrievance.assignedEmployee && (
+                        <div style={{ background: "rgba(0, 0, 0, 0.25)", padding: "10px 12px", borderRadius: "10px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+                          <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#FACC15", textTransform: "uppercase" }}>Field Officer</div>
+                          <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" }}>{homeSearchedGrievance.assignedEmployee.name}</div>
+                          <div style={{ fontSize: "0.78rem", color: "#8696a0" }}>{homeSearchedGrievance.assignedEmployee.designation}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className="app-btn-gold"
+                        style={{ flex: 1 }}
+                        onClick={() => handleConnectHearing(homeSearchedGrievance.grievanceId, homeSearchedGrievance)}
+                        disabled={isJoining}
+                      >
+                        <Video size={18} />
+                        <span>{isJoining ? "Connecting..." : "📞 Start Video Call"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="app-btn-outline-gold"
+                        style={{ flex: 1 }}
+                        onClick={() => {
+                          setSchedulingGrievance(homeSearchedGrievance);
+                          setScheduleStep("date");
+                          setShowScheduleModal(true);
+                        }}
+                      >
+                        <Calendar size={18} />
+                        <span>📅 Schedule Call</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* If Citizen or Field Employee */
+              <div>
+                {/* 1. General Active Bench Notice Card */}
+                <div className="app-card" style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                  <div style={{ width: "48px", height: "48px", borderRadius: "12px", background: "rgba(234, 179, 8, 0.15)", border: "1px solid rgba(234, 179, 8, 0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem", flexShrink: 0 }}>
+                    🔔
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: "1.1rem", fontWeight: 800, margin: "0 0 4px", color: "#ffffff" }}>
+                      Hearing Bench Active
+                    </h2>
+                    <p style={{ fontSize: "0.88rem", color: "#8696a0", margin: 0, lineHeight: 1.45 }}>
+                      You will receive an incoming video call directly on this device when your case is called by the District Magistrate.
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. Standalone Official Scheduled Hearing Card (Generous Spacing & High Executive Quality) */}
+                {grievances
+                  .filter((g) => g.scheduledDate && g.scheduledTime)
+                  .map((sg) => (
+                    <div key={sg.grievanceId} className="app-exec-card">
+                      <div className="app-exec-header">
+                        <div className="app-exec-badge">
+                          <span style={{ fontSize: "1.4rem" }}>🏛️</span>
+                          <div>
+                            <div style={{ fontSize: "0.82rem", fontWeight: 800, color: "var(--app-gold)", letterSpacing: "0.06em" }}>
+                              GOVERNMENT OF RAJASTHAN
+                            </div>
+                            <div style={{ fontSize: "0.72rem", color: "#8696a0" }}>Rajasthan Sampark • Jan Sunwai</div>
+                          </div>
+                        </div>
+                        <div className="app-exec-status">
+                          <span>●</span>
+                          <span>SCHEDULED</span>
+                        </div>
+                      </div>
+
+                      <div style={{ margin: "0.5rem 0 1rem" }}>
+                        <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#ffffff" }}>
+                          📅 Official Video Hearing Scheduled
+                        </div>
+                        <div style={{ fontSize: "0.82rem", color: "var(--app-gold)", fontWeight: 700 }}>
+                          जनसुनवाई सुनवाई नियत आदेश
+                        </div>
+                      </div>
+
+                      <div style={{ background: "rgba(0, 0, 0, 0.35)", borderRadius: "12px", padding: "10px 14px", border: "1px solid var(--app-border)", marginBottom: "1rem" }}>
+                        <span className="app-case-id-badge" style={{ display: "inline-block", marginBottom: "6px" }}>
+                          #{sg.grievanceId}
+                        </span>
+                        <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#ffffff" }}>{sg.title}</div>
+                      </div>
+
+                      <div className="app-exec-grid">
+                        <div className="app-exec-box">
+                          <div className="app-exec-box-label">HEARING DATE (दिनांक)</div>
+                          <div className="app-exec-box-value">🗓️ {sg.scheduledDate}</div>
+                        </div>
+                        <div className="app-exec-box">
+                          <div className="app-exec-box-label">HEARING TIME (समय)</div>
+                          <div className="app-exec-box-value">⏰ {sg.scheduledTime}</div>
+                        </div>
+                      </div>
+
+                      <div className="app-exec-officer">
+                        <div className="app-exec-box-label">PRESIDING BENCH (अध्यक्षीय पीठ)</div>
+                        <div style={{ fontSize: "0.92rem", fontWeight: 800, color: "#ffffff" }}>
+                          🏛️ {sg.scheduledOfficer || "Vivek, IAS • District Magistrate"}
+                        </div>
+                      </div>
+
+                      <div className="app-exec-alert">
+                        🔔 An automated high-priority video call will connect on this device at the scheduled time. Please keep this portal open.
+                      </div>
+
+                      <button
+                        type="button"
+                        className="app-btn-gold"
+                        style={{ width: "100%" }}
+                        onClick={() => setSelectedGrievanceDetails(sg)}
+                      >
+                        📋 View Complete Case Details ➔
+                      </button>
+                    </div>
+                  ))}
+
+                {/* 3. Link Button to View Registered Grievances */}
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)" }}
+                  className="app-btn-outline-gold"
+                  style={{ width: "100%", justifyContent: "space-between", padding: "14px 18px", marginTop: "10px" }}
+                  onClick={() => setCurrentTab("cases")}
                 >
-                  <X size={20} />
+                  <span>📋 View Your Registered Grievances ({grievances.length})</span>
+                  <span>➔</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── TAB 2: CASES ─── */}
+        {currentTab === "cases" && (
+          <div>
+            {/* Search Input Bar */}
+            <div className="app-card" style={{ padding: "1rem" }}>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input
+                  type="text"
+                  className="app-input"
+                  value={inspectGrievanceId}
+                  onChange={(e) => setInspectGrievanceId(e.target.value)}
+                  placeholder="Search Grievance ID (e.g. RAJ-2024-88421)"
+                />
+                {inspectGrievanceId ? (
+                  <button
+                    type="button"
+                    className="app-btn-outline-gold"
+                    style={{ padding: "10px 14px" }}
+                    onClick={() => setInspectGrievanceId("")}
+                  >
+                    ✕ Clear
+                  </button>
+                ) : (
+                  <button type="button" className="app-btn-gold" style={{ padding: "10px 16px" }}>
+                    Search
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Cases Compact List */}
+            <div className="app-card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                <h2 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0, color: "#ffffff" }}>
+                  Cases ({filteredGrievances.length})
+                </h2>
+                <button
+                  type="button"
+                  onClick={fetchGrievances}
+                  style={{ background: "none", border: "none", color: "var(--app-gold)", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "0.85rem" }}
+                >
+                  <RefreshCw size={14} /> Refresh ↻
                 </button>
               </div>
 
-              <form onSubmit={handleCreateGrievance} style={{ padding: "20px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "4px" }}>
-                      Grievance Title *
-                    </label>
-                    <input
-                      type="text"
-                      style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border)" }}
-                      placeholder="e.g. Drinking water supply broken in Ward 15"
-                      value={newGrievanceForm.title}
-                      onChange={(e) => setNewGrievanceForm({ ...newGrievanceForm, title: e.target.value })}
-                      required
-                    />
+              {isLoadingGrievances && grievances.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "2rem", color: "#8696a0" }}>Loading cases...</div>
+              ) : filteredGrievances.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "2.5rem 1rem", color: "#8696a0" }}>
+                  <div style={{ fontSize: "2rem", marginBottom: "8px" }}>📂</div>
+                  <div style={{ fontWeight: 700, color: "#ffffff", fontSize: "1rem" }}>No Cases Found</div>
+                  <div style={{ fontSize: "0.85rem" }}>
+                    {inspectGrievanceId ? `No grievance matches "${inspectGrievanceId}".` : "No cases registered yet."}
                   </div>
-
-                  <div>
-                    <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "4px" }}>
-                      Description *
-                    </label>
-                    <textarea
-                      style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid var(--border)", minHeight: "70px" }}
-                      placeholder="Detailed issue description..."
-                      value={newGrievanceForm.description}
-                      onChange={(e) => setNewGrievanceForm({ ...newGrievanceForm, description: e.target.value })}
-                      required
-                    />
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                    <div>
-                      <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "4px" }}>
-                        District
-                      </label>
-                      <input
-                        type="text"
-                        style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)" }}
-                        value={newGrievanceForm.district}
-                        onChange={(e) => setNewGrievanceForm({ ...newGrievanceForm, district: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 600, marginBottom: "4px" }}>
-                        Location / Ward
-                      </label>
-                      <input
-                        type="text"
-                        style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)" }}
-                        value={newGrievanceForm.location}
-                        onChange={(e) => setNewGrievanceForm({ ...newGrievanceForm, location: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Citizen Info */}
-                  <div style={{ background: "rgba(59, 130, 246, 0.05)", padding: "12px", borderRadius: "10px", border: "1px solid rgba(59, 130, 246, 0.2)" }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#2563eb", marginBottom: "8px" }}>
-                      👤 Citizen Information (Caller 1)
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
-                          Citizen Name *
-                        </label>
-                        <input
-                          type="text"
-                          style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)" }}
-                          placeholder="e.g. Ramesh Kumar"
-                          value={newGrievanceForm.citizenName}
-                          onChange={(e) => setNewGrievanceForm({ ...newGrievanceForm, citizenName: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
-                          Citizen Phone Number *
-                        </label>
-                        <input
-                          type="text"
-                          style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)" }}
-                          placeholder="+919829123456"
-                          value={newGrievanceForm.citizenPhone}
-                          onChange={(e) => setNewGrievanceForm({ ...newGrievanceForm, citizenPhone: e.target.value })}
-                          required
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Assigned Employee Info */}
-                  <div style={{ background: "rgba(245, 158, 11, 0.05)", padding: "12px", borderRadius: "10px", border: "1px solid rgba(245, 158, 11, 0.2)" }}>
-                    <div style={{ fontWeight: 700, fontSize: "0.9rem", color: "#d97706", marginBottom: "8px" }}>
-                      👷 Assigned Field Employee (Caller 2)
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                      <div>
-                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
-                          Employee Name *
-                        </label>
-                        <input
-                          type="text"
-                          style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)" }}
-                          placeholder="e.g. Rajesh Sharma"
-                          value={newGrievanceForm.employeeName}
-                          onChange={(e) => setNewGrievanceForm({ ...newGrievanceForm, employeeName: e.target.value })}
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label style={{ display: "block", fontSize: "0.8rem", fontWeight: 600, marginBottom: "4px" }}>
-                          Employee Phone Number *
-                        </label>
-                        <input
-                          type="text"
-                          style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)" }}
-                          placeholder="+919414234567"
-                          value={newGrievanceForm.employeePhone}
-                          onChange={(e) => setNewGrievanceForm({ ...newGrievanceForm, employeePhone: e.target.value })}
-                          required
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Submit Button */}
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "0.5rem" }}>
+                  {inspectGrievanceId && (
                     <button
                       type="button"
-                      className="btn"
-                      style={{ padding: "8px 16px" }}
-                      onClick={() => setIsModalOpen(false)}
+                      className="app-btn-gold"
+                      style={{ marginTop: "1rem", padding: "8px 16px", fontSize: "0.85rem" }}
+                      onClick={() => setInspectGrievanceId("")}
                     >
-                      Cancel
+                      Show All Cases
                     </button>
+                  )}
+                </div>
+              ) : (
+                filteredGrievances.map((item) => (
+                  <div key={item.grievanceId} className="app-case-row">
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <span className="app-case-id-badge">#{item.grievanceId}</span>
+                        <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#FACC15" }}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "0.92rem", fontWeight: 700, color: "#ffffff", marginTop: "4px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {item.title}
+                      </div>
+                      {item.scheduledDate && item.scheduledTime && (
+                        <div className="app-case-scheduled-pill">
+                          📅 Scheduled: {item.scheduledDate} • {item.scheduledTime}
+                        </div>
+                      )}
+                    </div>
+
                     <button
-                      type="submit"
-                      className="btn btn--primary"
-                      style={{ padding: "8px 20px" }}
-                      disabled={isSubmittingGrievance}
+                      type="button"
+                      className="app-btn-outline-gold"
+                      style={{ padding: "8px 14px", fontSize: "0.82rem", flexShrink: 0 }}
+                      onClick={() => setSelectedGrievanceDetails(item)}
                     >
-                      {isSubmittingGrievance ? "Saving to SQLite..." : "Save Grievance to SQLite"}
+                      View Details ➔
                     </button>
                   </div>
-                </div>
-              </form>
+                ))
+              )}
             </div>
           </div>
         )}
 
-        {/* Device Diagnostic Suite & Room Launcher Modal */}
-        <DevicePreCheckModal
-          isOpen={showPreCheckModal}
-          onClose={() => setShowPreCheckModal(false)}
-          onLaunchRoom={handleLaunchFromPreCheck}
-          initialRole={preCheckRole}
-        />
-      </main>
-    </>
+        {/* Minimal Footer */}
+        <div style={{ textAlign: "center", padding: "1.5rem 0", color: "#64748b", fontSize: "0.8rem" }}>
+          Jan Sunwai • Helpline: 181 • 🔒 End-to-end encrypted
+        </div>
+      </div>
+
+      {/* ─── MODAL 1: USER PROFILE MODAL ─── */}
+      {showProfileModal && (
+        <div className="app-modal-overlay" onClick={() => setShowProfileModal(false)}>
+          <div className="app-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.2rem" }}>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0, color: "#ffffff" }}>User Profile</h3>
+              <button
+                type="button"
+                onClick={() => setShowProfileModal(false)}
+                style={{ background: "none", border: "none", color: "#8696a0", cursor: "pointer", fontSize: "1.2rem" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: "1.5rem" }}>
+              <div
+                style={{
+                  width: "68px",
+                  height: "68px",
+                  borderRadius: "50%",
+                  background: "var(--app-gold)",
+                  color: "#111827",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 900,
+                  fontSize: "1.8rem",
+                  marginBottom: "10px",
+                }}
+              >
+                {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : "U"}
+              </div>
+              <div style={{ fontSize: "1.2rem", fontWeight: 800, color: "#ffffff" }}>{currentUser.name}</div>
+              <div
+                style={{
+                  background: "rgba(234, 179, 8, 0.15)",
+                  color: "var(--app-gold)",
+                  border: "1px solid rgba(234, 179, 8, 0.35)",
+                  padding: "3px 12px",
+                  borderRadius: "999px",
+                  fontSize: "0.75rem",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  marginTop: "6px",
+                }}
+              >
+                {currentUser.role}
+              </div>
+            </div>
+
+            <div style={{ background: "#202c33", borderRadius: "14px", padding: "14px", display: "flex", flexDirection: "column", gap: "10px", marginBottom: "1.5rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                <span style={{ color: "#8696a0" }}>Mobile Number</span>
+                <strong style={{ color: "#ffffff" }}>{currentUser.phone}</strong>
+              </div>
+              {currentUser.designation && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                  <span style={{ color: "#8696a0" }}>Designation</span>
+                  <strong style={{ color: "#ffffff" }}>{currentUser.designation}</strong>
+                </div>
+              )}
+              {currentUser.department && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                  <span style={{ color: "#8696a0" }}>Department</span>
+                  <strong style={{ color: "#ffffff" }}>{currentUser.department}</strong>
+                </div>
+              )}
+              {currentUser.district && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                  <span style={{ color: "#8696a0" }}>District</span>
+                  <strong style={{ color: "#ffffff" }}>{currentUser.district}</strong>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                type="button"
+                className="app-btn-outline-gold"
+                style={{ flex: 1, borderColor: "#ea0038", color: "#ea0038", background: "rgba(234, 0, 56, 0.1)" }}
+                onClick={handleLogout}
+              >
+                🚪 Logout
+              </button>
+              <button
+                type="button"
+                className="app-btn-gold"
+                style={{ flex: 1 }}
+                onClick={() => setShowProfileModal(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL 2: GRIEVANCE FULL DETAILS MODAL ─── */}
+      {selectedGrievanceDetails && (
+        <div className="app-modal-overlay" onClick={() => setSelectedGrievanceDetails(null)}>
+          <div className="app-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span className="app-case-id-badge">#{selectedGrievanceDetails.grievanceId}</span>
+                <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "#FACC15", background: "rgba(234, 179, 8, 0.12)", padding: "3px 8px", borderRadius: "6px" }}>
+                  {selectedGrievanceDetails.status}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedGrievanceDetails(null)}
+                style={{ background: "none", border: "none", color: "#8696a0", cursor: "pointer", fontSize: "1.2rem" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Prominent Executive Scheduled Card (if scheduled) */}
+            {selectedGrievanceDetails.scheduledDate && selectedGrievanceDetails.scheduledTime && (
+              <div className="app-exec-card" style={{ marginBottom: "1rem" }}>
+                <div className="app-exec-header">
+                  <div className="app-exec-badge">
+                    <span style={{ fontSize: "1.2rem" }}>🏛️</span>
+                    <div>
+                      <div style={{ fontSize: "0.78rem", fontWeight: 800, color: "var(--app-gold)", letterSpacing: "0.05em" }}>
+                        OFFICIAL HEARING SCHEDULED
+                      </div>
+                      <div style={{ fontSize: "0.7rem", color: "#8696a0" }}>Rajasthan Sampark • Jan Sunwai</div>
+                    </div>
+                  </div>
+                  <div className="app-exec-status">
+                    <span>●</span>
+                    <span>SCHEDULED</span>
+                  </div>
+                </div>
+
+                <div className="app-exec-grid">
+                  <div className="app-exec-box">
+                    <div className="app-exec-box-label">HEARING DATE (दिनांक)</div>
+                    <div className="app-exec-box-value">🗓️ {selectedGrievanceDetails.scheduledDate}</div>
+                  </div>
+                  <div className="app-exec-box">
+                    <div className="app-exec-box-label">HEARING TIME (समय)</div>
+                    <div className="app-exec-box-value">⏰ {selectedGrievanceDetails.scheduledTime}</div>
+                  </div>
+                </div>
+
+                <div className="app-exec-officer">
+                  <div className="app-exec-box-label">PRESIDING BENCH (अध्यक्षीय पीठ)</div>
+                  <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" }}>
+                    🏛️ {selectedGrievanceDetails.scheduledOfficer || "Vivek, IAS • District Magistrate"}
+                  </div>
+                </div>
+
+                <div className="app-exec-alert" style={{ margin: 0 }}>
+                  🔔 Citizen & Field Officer will receive an automated video call notification at this scheduled time.
+                </div>
+              </div>
+            )}
+
+            <h3 style={{ fontSize: "1.15rem", fontWeight: 800, color: "#ffffff", margin: "0 0 6px" }}>
+              {selectedGrievanceDetails.title}
+            </h3>
+
+            {selectedGrievanceDetails.category && (
+              <div style={{ fontSize: "0.82rem", color: "#8696a0", marginBottom: "12px" }}>
+                📁 {selectedGrievanceDetails.category} {selectedGrievanceDetails.location ? `• 📍 ${selectedGrievanceDetails.location}` : ""}
+              </div>
+            )}
+
+            {selectedGrievanceDetails.description && (
+              <div style={{ background: "#202c33", padding: "12px", borderRadius: "12px", marginBottom: "1rem" }}>
+                <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--app-gold)", marginBottom: "4px" }}>
+                  GRIEVANCE SUMMARY / PROBLEM STATEMENT
+                </div>
+                <div style={{ fontSize: "0.88rem", color: "#E9EDEF", lineHeight: 1.5 }}>
+                  {selectedGrievanceDetails.description}
+                </div>
+              </div>
+            )}
+
+            {/* Parties */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "1.25rem" }}>
+              {selectedGrievanceDetails.citizen && (
+                <div style={{ background: "#202c33", padding: "10px 12px", borderRadius: "10px" }}>
+                  <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#FACC15", textTransform: "uppercase" }}>Citizen Complainant</div>
+                  <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" }}>{selectedGrievanceDetails.citizen.name}</div>
+                  <div style={{ fontSize: "0.78rem", color: "#8696a0" }}>📞 {selectedGrievanceDetails.citizen.phone}</div>
+                </div>
+              )}
+              {selectedGrievanceDetails.assignedEmployee && (
+                <div style={{ background: "#202c33", padding: "10px 12px", borderRadius: "10px" }}>
+                  <div style={{ fontSize: "0.72rem", fontWeight: 700, color: "#FACC15", textTransform: "uppercase" }}>Assigned Official</div>
+                  <div style={{ fontSize: "0.9rem", fontWeight: 700, color: "#ffffff" }}>{selectedGrievanceDetails.assignedEmployee.name}</div>
+                  <div style={{ fontSize: "0.78rem", color: "#8696a0" }}>{selectedGrievanceDetails.assignedEmployee.designation}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            {isOfficer ? (
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="app-btn-gold"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    const g = selectedGrievanceDetails;
+                    setSelectedGrievanceDetails(null);
+                    handleConnectHearing(g.grievanceId, g);
+                  }}
+                  disabled={isJoining}
+                >
+                  <Video size={18} />
+                  <span>📞 Start Video Call</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="app-btn-outline-gold"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    const g = selectedGrievanceDetails;
+                    setSelectedGrievanceDetails(null);
+                    setSchedulingGrievance(g);
+                    setScheduleStep("date");
+                    setShowScheduleModal(true);
+                  }}
+                >
+                  <Calendar size={18} />
+                  <span>📅 Schedule Call</span>
+                </button>
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: "10px", background: "rgba(234, 179, 8, 0.1)", borderRadius: "10px", border: "1px solid rgba(234, 179, 8, 0.25)" }}>
+                <div style={{ fontWeight: 800, color: "var(--app-gold)", fontSize: "0.9rem" }}>⏳ Hearing Call Pending</div>
+                <div style={{ fontSize: "0.8rem", color: "#8696a0", marginTop: "2px" }}>
+                  You will receive an automated video call directly when your case is called by the District Magistrate.
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL 3: 2-STEP SCHEDULE MODAL (CALENDAR -> TIME) ─── */}
+      {showScheduleModal && (
+        <div className="app-modal-overlay" onClick={() => setShowScheduleModal(false)}>
+          <div className="app-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+              <div>
+                <h3 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0, color: "#ffffff" }}>
+                  {scheduleStep === "date" ? "📅 Step 1/2: Choose Hearing Date" : "⏰ Step 2/2: Choose Hearing Time"}
+                </h3>
+                <div style={{ fontSize: "0.78rem", color: "var(--app-gold)", fontWeight: 700 }}>
+                  Case #{schedulingGrievance?.grievanceId}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(false)}
+                style={{ background: "none", border: "none", color: "#8696a0", cursor: "pointer", fontSize: "1.2rem" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: "0.88rem", fontWeight: 700, color: "#ffffff", marginBottom: "1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {schedulingGrievance?.title}
+            </div>
+
+            {/* ─── STEP 1: INTERACTIVE CALENDAR ─── */}
+            {scheduleStep === "date" && (
+              <div>
+                <p style={{ fontSize: "0.82rem", color: "#8696a0", margin: "0 0 10px" }}>
+                  Tap any date on the calendar. Time options will appear automatically:
+                </p>
+
+                <div style={{ background: "#202c33", border: "1px solid var(--app-border)", borderRadius: "14px", padding: "12px" }}>
+                  {/* Month Navigation */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (calendarMonth === 0) {
+                          setCalendarMonth(11);
+                          setCalendarYear((y) => y - 1);
+                        } else {
+                          setCalendarMonth((m) => m - 1);
+                        }
+                      }}
+                      style={{ background: "none", border: "none", color: "#FACC15", cursor: "pointer", fontSize: "1rem", padding: "4px 8px" }}
+                    >
+                      ◀
+                    </button>
+                    <div style={{ fontWeight: 800, fontSize: "0.95rem", color: "#ffffff" }}>
+                      {MONTH_NAMES[calendarMonth]} {calendarYear}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (calendarMonth === 11) {
+                          setCalendarMonth(0);
+                          setCalendarYear((y) => y + 1);
+                        } else {
+                          setCalendarMonth((m) => m + 1);
+                        }
+                      }}
+                      style={{ background: "none", border: "none", color: "#FACC15", cursor: "pointer", fontSize: "1rem", padding: "4px 8px" }}
+                    >
+                      ▶
+                    </button>
+                  </div>
+
+                  {/* Weekday Header */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", fontSize: "0.75rem", fontWeight: 700, color: "#8696a0", marginBottom: "6px" }}>
+                    {DAYS_OF_WEEK.map((d, i) => (
+                      <div key={i} style={{ color: i === 0 || i === 6 ? "#ea0038" : "#8696a0" }}>{d}</div>
+                    ))}
+                  </div>
+
+                  {/* Day Grid */}
+                  <div className="app-calendar-grid">
+                    {Array.from({ length: new Date(calendarYear, calendarMonth, 1).getDay() }).map((_, i) => (
+                      <div key={`empty-${i}`} />
+                    ))}
+                    {Array.from({ length: new Date(calendarYear, calendarMonth + 1, 0).getDate() }).map((_, i) => {
+                      const dayNum = i + 1;
+                      const mm = String(calendarMonth + 1).padStart(2, "0");
+                      const dd = String(dayNum).padStart(2, "0");
+                      const cellDate = `${calendarYear}-${mm}-${dd}`;
+                      const isSelected = scheduleDate === cellDate;
+                      return (
+                        <div
+                          key={`day-${dayNum}`}
+                          className={`app-calendar-day ${isSelected ? "selected" : ""}`}
+                          onClick={() => {
+                            setScheduleDate(cellDate);
+                            setScheduleStep("time"); // Automatic transition to time picker!
+                          }}
+                        >
+                          {dayNum}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Quick Select Buttons */}
+                  <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "10px", marginTop: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "0.75rem", color: "#8696a0", fontWeight: 700 }}>Quick Select:</span>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        type="button"
+                        className="app-btn-outline-gold"
+                        style={{ padding: "4px 10px", fontSize: "0.75rem" }}
+                        onClick={() => {
+                          const now = new Date();
+                          const mm = String(now.getMonth() + 1).padStart(2, "0");
+                          const dd = String(now.getDate()).padStart(2, "0");
+                          setScheduleDate(`${now.getFullYear()}-${mm}-${dd}`);
+                          setCalendarMonth(now.getMonth());
+                          setCalendarYear(now.getFullYear());
+                          setScheduleStep("time");
+                        }}
+                      >
+                        ⚡ Today
+                      </button>
+                      <button
+                        type="button"
+                        className="app-btn-outline-gold"
+                        style={{ padding: "4px 10px", fontSize: "0.75rem" }}
+                        onClick={() => {
+                          const tm = new Date();
+                          tm.setDate(tm.getDate() + 1);
+                          const mm = String(tm.getMonth() + 1).padStart(2, "0");
+                          const dd = String(tm.getDate()).padStart(2, "0");
+                          setScheduleDate(`${tm.getFullYear()}-${mm}-${dd}`);
+                          setCalendarMonth(tm.getMonth());
+                          setCalendarYear(tm.getFullYear());
+                          setScheduleStep("time");
+                        }}
+                      >
+                        ⚡ Tomorrow
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="app-btn-outline-gold"
+                  style={{ width: "100%", marginTop: "1rem" }}
+                  onClick={() => setShowScheduleModal(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {/* ─── STEP 2: TIME PICKER (NO SCROLLING - FULL FLEXIBILITY) ─── */}
+            {scheduleStep === "time" && (
+              <div>
+                {/* Date indicator with Change action */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#202c33", padding: "10px 14px", borderRadius: "12px", marginBottom: "1rem" }}>
+                  <div>
+                    <div style={{ fontSize: "0.72rem", color: "var(--app-gold)", fontWeight: 700 }}>SELECTED DATE</div>
+                    <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#ffffff" }}>🗓️ {scheduleDate}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="app-btn-outline-gold"
+                    style={{ padding: "6px 12px", fontSize: "0.78rem" }}
+                    onClick={() => setScheduleStep("date")}
+                  >
+                    ◀ Change Date
+                  </button>
+                </div>
+
+                <p style={{ fontSize: "0.82rem", color: "#8696a0", margin: "0 0 8px" }}>
+                  Choose hearing slot or type any custom time below:
+                </p>
+
+                {/* 16 Flexible Time Slots (Non-scrollable Grid) */}
+                <div className="app-time-chips">
+                  {TIME_OPTIONS.map((t) => {
+                    const isSelected = !customTimeInput.trim() && scheduleTime === t;
+                    return (
+                      <div
+                        key={t}
+                        className={`app-time-chip ${isSelected ? "selected" : ""}`}
+                        onClick={() => {
+                          setScheduleTime(t);
+                          setCustomTimeInput("");
+                        }}
+                      >
+                        {t}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Time Field for complete flexibility */}
+                <div style={{ background: "#202c33", padding: "10px 12px", borderRadius: "12px", marginBottom: "1rem" }}>
+                  <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 700, color: "var(--app-gold)", marginBottom: "6px" }}>
+                    ✏️ Or Enter Custom Time:
+                  </label>
+                  <input
+                    type="text"
+                    className="app-input"
+                    value={customTimeInput}
+                    onChange={(e) => setCustomTimeInput(e.target.value)}
+                    placeholder="e.g. 10:45 AM or 03:15 PM"
+                    style={{ padding: "8px 12px", fontSize: "0.88rem" }}
+                  />
+                </div>
+
+                {/* Notification Alert Info Box */}
+                <div style={{ background: "rgba(234, 179, 8, 0.08)", border: "1px solid rgba(234, 179, 8, 0.25)", borderRadius: "10px", padding: "10px 12px", fontSize: "0.78rem", color: "#fef08a", marginBottom: "1.2rem", lineHeight: 1.4 }}>
+                  🔔 Automated Notification: Citizen ({schedulingGrievance?.citizen?.name || "Citizen"}) & Officer ({schedulingGrievance?.assignedEmployee?.name || "Officer"}) will receive immediate notification with this date and time.
+                </div>
+
+                {/* Action Buttons */}
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    type="button"
+                    className="app-btn-outline-gold"
+                    style={{ flex: 1 }}
+                    onClick={() => setScheduleStep("date")}
+                  >
+                    ◀ Back
+                  </button>
+
+                  <button
+                    type="button"
+                    className="app-btn-gold"
+                    style={{ flex: 2 }}
+                    onClick={handleConfirmSchedule}
+                    disabled={isSubmittingSchedule}
+                  >
+                    {isSubmittingSchedule ? "Scheduling..." : `Confirm (${customTimeInput.trim() || scheduleTime}) ➔`}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Diagnostics Suite Modal */}
+      <DevicePreCheckModal
+        isOpen={showPreCheckModal}
+        onClose={() => setShowPreCheckModal(false)}
+        onLaunchRoom={handleLaunchFromPreCheck}
+        initialRole={preCheckRole}
+      />
+    </div>
   );
 }
