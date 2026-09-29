@@ -32,6 +32,7 @@ import samparkRoutes from './routes/sampark';
 import callRoutes from './routes/calls';
 import adminRoutes from './routes/admin';
 import callCenterRoutes from './routes/callCenter';
+import externalApiRoutes from './routes/externalApi';
 import livekitService from './services/livekit';
 
 // Database
@@ -87,6 +88,7 @@ app.use('/api/sampark', samparkRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/call-center', callCenterRoutes);
+app.use('/api/v1/hearings', externalApiRoutes);
 
 // ─── LiveKit Token Endpoint (Web & Mobile Apps) ───────────────
 app.post('/api/livekit/token', async (req, res) => {

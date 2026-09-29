@@ -10,7 +10,7 @@
 
 import { Router, Request, Response } from 'express';
 import os from 'os';
-import db, { insertAuditLog } from '../db/database';
+import db, { insertAuditLog, getAllApiKeys, createNewApiKey, revokeApiKeyById } from '../db/database';
 import callManager from '../services/callManager';
 import livekitService from '../services/livekit';
 
@@ -317,6 +317,56 @@ router.put('/settings', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('[Admin] Error updating settings:', error);
     res.status(500).json({ error: 'Failed to update setting' });
+  }
+});
+
+/**
+ * GET /api/admin/api-keys
+ * List all generated API keys
+ */
+router.get('/api-keys', (_req: Request, res: Response) => {
+  try {
+    const keys = getAllApiKeys();
+    res.json({ success: true, keys });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to fetch API keys' });
+  }
+});
+
+/**
+ * POST /api/admin/api-keys
+ * Generate a new API key for an external team/app
+ */
+router.post('/api-keys', (req: Request, res: Response) => {
+  try {
+    const { name, createdBy } = req.body;
+    if (!name || typeof name !== 'string') {
+      res.status(400).json({ success: false, error: 'name is required (e.g. "Department of Education App")' });
+      return;
+    }
+    const newKey = createNewApiKey(name.trim(), createdBy || 'Super Admin');
+    res.json({ success: true, key: newKey });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to create API key' });
+  }
+});
+
+/**
+ * DELETE /api/admin/api-keys/:id
+ * Revoke an existing API key
+ */
+router.delete('/api-keys/:id', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const actorName = (req.body?.actorName as string) || 'Super Admin';
+    const revoked = revokeApiKeyById(id, actorName);
+    if (!revoked) {
+      res.status(404).json({ success: false, error: 'API key not found' });
+      return;
+    }
+    res.json({ success: true, message: 'API key revoked successfully' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to revoke API key' });
   }
 });
 

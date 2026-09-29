@@ -15,6 +15,7 @@
 const initSqlJs = require('sql.js');
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 
 // ─── Database Path ─────────────────────────────────────────────
 const DATA_DIR = path.resolve(__dirname, '../../data');
@@ -272,6 +273,16 @@ export async function initializeDatabase(): Promise<void> {
       ended_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      key TEXT UNIQUE NOT NULL,
+      status TEXT DEFAULT 'active',
+      created_by TEXT DEFAULT 'Super Admin',
+      created_at TEXT DEFAULT (datetime('now')),
+      last_used_at TEXT
+    );
   `);
 
   // Migrations for existing databases to ensure role column exists
@@ -487,10 +498,25 @@ function seedInitialData(): void {
     insertAudit.run('aud-001', 'SYSTEM_INITIALIZE', 'system', 'Jan Sunwai Core', 'system', null, null, 'Platform initialized with 4 roles and 1500 concurrent participant capacity.');
     insertAudit.run('aud-002', 'SECURITY_POLICY_SET', 'adm-001', 'Rajasthan DOIT&C Admin', 'admin', null, null, 'E2EE encryption enforced and safety numbers active.');
     insertAudit.run('aud-003', 'CITIZEN_KYC_VERIFIED', 'rep-001', 'Priya Sharma', 'call_center', 'cit-001', 'Janmejay Sethi', 'Citizen identity successfully verified against Jan Aadhaar JA-88492011.');
+
+    // ─── 9. Seed Default Master API Key for External Teams ────────
+    const checkApiKey = db.prepare('SELECT COUNT(*) as count FROM api_keys').get() as { count: number };
+    if (!checkApiKey || checkApiKey.count === 0) {
+      db.prepare(`
+        INSERT INTO api_keys (id, name, key, status, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+      `).run(
+        'key_raj_default_01',
+        'Rajasthan Sampark Mobile App',
+        'js_live_raj_sampark_88421b9c7e0f',
+        'active',
+        'Super Admin'
+      );
+    }
   });
 
   seedTransaction();
-  console.log('[SQLite] Database initialized and seeded successfully with 4 personas.');
+  console.log('[SQLite] Database initialized and seeded successfully with 4 personas and API key.');
 }
 
 // ─── Dynamic Database User & Designation Lookup ─────────────────
@@ -692,6 +718,92 @@ export function insertAuditLog(data: {
     );
   } catch (err) {
     console.error('[SQLite] Error inserting audit log:', err);
+  }
+}
+
+// ─── API Key Management Functions ───────────────────────────────
+export interface ApiKeyRecord {
+  id: string;
+  name: string;
+  key: string;
+  status: 'active' | 'revoked';
+  created_by: string;
+  created_at: string;
+  last_used_at?: string | null;
+}
+
+export function getAllApiKeys(): ApiKeyRecord[] {
+  try {
+    return db.prepare('SELECT * FROM api_keys ORDER BY created_at DESC').all() as ApiKeyRecord[];
+  } catch (err) {
+    console.error('[SQLite] Error fetching API keys:', err);
+    return [];
+  }
+}
+
+export function createNewApiKey(name: string, createdBy: string = 'Super Admin'): ApiKeyRecord {
+  const id = `key_${Date.now()}`;
+  const randomHex = crypto.randomBytes(16).toString('hex');
+  const key = `js_live_${randomHex}`;
+  
+  db.prepare(`
+    INSERT INTO api_keys (id, name, key, status, created_by, created_at)
+    VALUES (?, ?, ?, 'active', ?, datetime('now'))
+  `).run(id, name, key, createdBy);
+
+  insertAuditLog({
+    eventType: 'API_KEY_CREATED',
+    actorName: createdBy,
+    actorRole: 'admin',
+    details: `Generated API key for '${name}' (Prefix: ${key.substring(0, 16)}...)`,
+  });
+
+  return {
+    id,
+    name,
+    key,
+    status: 'active',
+    created_by: createdBy,
+    created_at: new Date().toISOString(),
+  };
+}
+
+export function revokeApiKeyById(id: string, actorName: string = 'Super Admin'): boolean {
+  try {
+    const existing = db.prepare('SELECT name, key FROM api_keys WHERE id = ?').get(id) as any;
+    if (!existing) return false;
+
+    db.prepare("UPDATE api_keys SET status = 'revoked' WHERE id = ?").run(id);
+
+    insertAuditLog({
+      eventType: 'API_KEY_REVOKED',
+      actorName,
+      actorRole: 'admin',
+      details: `Revoked API key '${existing.name}' (${existing.key.substring(0, 16)}...)`,
+    });
+
+    return true;
+  } catch (err) {
+    console.error('[SQLite] Error revoking API key:', err);
+    return false;
+  }
+}
+
+export function validateApiKey(key: string): ApiKeyRecord | null {
+  if (!key || typeof key !== 'string') return null;
+  try {
+    const record = db.prepare("SELECT * FROM api_keys WHERE key = ? AND status = 'active'").get(key.trim()) as ApiKeyRecord | undefined;
+    if (!record) return null;
+
+    // Update last_used_at timestamp
+    try {
+      db.prepare("UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?").run(record.id);
+    } catch (_) {}
+
+    return record;
+  } catch (err) {
+    console.error('[SQLite] Error validating API key:', err);
+    return null;
   }
 }
 
