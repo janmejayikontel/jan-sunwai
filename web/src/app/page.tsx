@@ -2081,44 +2081,74 @@ export default function JanSunwaiPortalPage() {
               </div>
             </div>
 
-            <div style={{ background: "#202c33", borderRadius: "14px", padding: "14px", display: "flex", flexDirection: "column", gap: "10px", marginBottom: "1.5rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-                <span style={{ color: "#8696a0" }}>Mobile Number</span>
-                <strong style={{ color: "#ffffff" }}>{currentUser.phone}</strong>
+            <div style={{ background: "#202c33", borderRadius: "14px", padding: "16px", display: "flex", flexDirection: "column", gap: "12px", marginBottom: "1.5rem", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.85rem", paddingBottom: "8px", borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
+                <span style={{ color: "#8696a0", fontWeight: 500 }}>Mobile Number</span>
+                <strong style={{ color: "#ffffff", fontWeight: 700, letterSpacing: "0.02em" }}>{currentUser.phone}</strong>
               </div>
               {currentUser.designation && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-                  <span style={{ color: "#8696a0" }}>Designation</span>
-                  <strong style={{ color: "#ffffff" }}>{currentUser.designation}</strong>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", fontSize: "0.85rem", paddingBottom: "8px", borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
+                  <span style={{ color: "#8696a0", fontWeight: 500, flexShrink: 0 }}>Designation</span>
+                  <strong style={{ color: "#ffffff", fontWeight: 700, textAlign: "right", wordBreak: "break-word", flex: 1 }}>{currentUser.designation}</strong>
                 </div>
               )}
               {currentUser.department && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-                  <span style={{ color: "#8696a0" }}>Department</span>
-                  <strong style={{ color: "#ffffff" }}>{currentUser.department}</strong>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px", paddingBottom: "8px", borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
+                  <span style={{ color: "#8696a0", fontSize: "0.8rem", fontWeight: 500 }}>Department</span>
+                  <strong style={{ color: "#ffffff", fontSize: "0.9rem", fontWeight: 700, lineHeight: 1.45, wordBreak: "break-word" }}>{currentUser.department}</strong>
                 </div>
               )}
               {currentUser.district && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-                  <span style={{ color: "#8696a0" }}>District</span>
-                  <strong style={{ color: "#ffffff" }}>{currentUser.district}</strong>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", fontSize: "0.85rem" }}>
+                  <span style={{ color: "#8696a0", fontWeight: 500, flexShrink: 0 }}>District</span>
+                  <strong style={{ color: "#ffffff", fontWeight: 700, textAlign: "right", wordBreak: "break-word", flex: 1 }}>{currentUser.district}</strong>
                 </div>
               )}
             </div>
 
-            <div style={{ display: "flex", gap: "10px" }}>
+            <div style={{ display: "flex", gap: "12px" }}>
               <button
                 type="button"
-                className="app-btn-outline-gold"
-                style={{ flex: 1, borderColor: "#ea0038", color: "#ea0038", background: "rgba(234, 0, 56, 0.1)" }}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "8px",
+                  background: "#dc2626",
+                  color: "#ffffff",
+                  border: "1px solid #ef4444",
+                  borderRadius: "12px",
+                  padding: "12px 18px",
+                  fontWeight: 700,
+                  fontSize: "0.95rem",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 14px rgba(220, 38, 38, 0.35)",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = "#b91c1c";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = "#dc2626";
+                  e.currentTarget.style.transform = "translateY(0)";
+                }}
                 onClick={handleLogout}
               >
-                🚪 Logout
+                <LogOut size={18} color="#ffffff" strokeWidth={2.5} />
+                <span>Logout</span>
               </button>
               <button
                 type="button"
                 className="app-btn-gold"
-                style={{ flex: 1 }}
+                style={{
+                  flex: 1,
+                  borderRadius: "12px",
+                  padding: "12px 18px",
+                  fontWeight: 700,
+                  fontSize: "0.95rem",
+                }}
                 onClick={() => setShowProfileModal(false)}
               >
                 Close
