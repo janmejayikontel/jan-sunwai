@@ -715,18 +715,31 @@ export default function JanSunwaiPortalPage() {
     }
   };
 
-  // Real-time poller for Super Admin (polls active meetings every 4 seconds)
+  // Real-time poller for Super Admin (polls active meetings & live diagnostics every 4 seconds)
   useEffect(() => {
     if (!isAdmin) return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/admin/active-meetings`, {
-          headers: { "Bypass-Tunnel-Reminder": "true" },
-        });
-        if (res.ok) {
-          const data = await res.json().catch(() => null);
+        const [meetingsRes, diagRes] = await Promise.all([
+          fetch(`${API_BASE}/api/admin/active-meetings`, {
+            headers: { "Bypass-Tunnel-Reminder": "true" },
+          }).catch(() => null),
+          fetch(`${API_BASE}/api/admin/diagnostics`, {
+            headers: { "Bypass-Tunnel-Reminder": "true" },
+          }).catch(() => null),
+        ]);
+
+        if (meetingsRes && meetingsRes.ok) {
+          const data = await meetingsRes.json().catch(() => null);
           if (data?.success && Array.isArray(data.meetings)) {
             setActiveMeetings(data.meetings);
+          }
+        }
+
+        if (diagRes && diagRes.ok) {
+          const diagData = await diagRes.json().catch(() => null);
+          if (diagData?.success) {
+            setAdminDiagnostics(diagData);
           }
         }
       } catch {
@@ -1539,14 +1552,24 @@ export default function JanSunwaiPortalPage() {
                     <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: "0 0 1rem" }}>System Telemetry & LiveKit Status</h3>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                       <div className="app-card" style={{ margin: 0, padding: "12px", background: "#202c33" }}>
-                        <div style={{ fontSize: "0.75rem", color: "#8696a0", fontWeight: 700 }}>SFU CONCURRENCY</div>
-                        <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "#25D366" }}>1,500</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ fontSize: "0.75rem", color: "#8696a0", fontWeight: 700 }}>SFU CONCURRENCY</div>
+                          <span style={{ fontSize: "0.65rem", background: "rgba(37, 211, 102, 0.15)", color: "#25D366", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>DYNAMIC</span>
+                        </div>
+                        <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "#25D366", margin: "4px 0" }}>
+                          {Number(adminSettings?.max_meeting_participants || adminDiagnostics?.livekit?.maxParticipants || 1500).toLocaleString()}
+                        </div>
                         <div style={{ fontSize: "0.75rem", color: "#64748b" }}>Max Participants / Room</div>
                       </div>
                       <div className="app-card" style={{ margin: 0, padding: "12px", background: "#202c33" }}>
-                        <div style={{ fontSize: "0.75rem", color: "#8696a0", fontWeight: 700 }}>SERVER MEMORY</div>
-                        <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "#FACC15" }}>{adminDiagnostics?.process?.memoryRssMB || 215} MB</div>
-                        <div style={{ fontSize: "0.75rem", color: "#64748b" }}>Node.js RSS Memory</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div style={{ fontSize: "0.75rem", color: "#8696a0", fontWeight: 700 }}>SERVER MEMORY</div>
+                          <span style={{ fontSize: "0.65rem", background: "rgba(250, 204, 21, 0.15)", color: "#FACC15", padding: "1px 6px", borderRadius: "4px", fontWeight: 700 }}>LIVE RSS</span>
+                        </div>
+                        <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "#FACC15", margin: "4px 0" }}>
+                          {adminDiagnostics?.process?.memoryRssMB || 215} MB
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "#64748b" }}>Node.js RAM (Updates every 4s)</div>
                       </div>
                     </div>
                   </div>

@@ -1029,7 +1029,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <View style={styles.metricsGrid}>
                   <View style={[styles.metricCard, { borderColor: '#10b981' }]}>
                     <Text style={styles.metricLabel}>SFU CONCURRENCY</Text>
-                    <Text style={[styles.metricValue, { color: '#10b981' }]}>1,500</Text>
+                    <Text style={[styles.metricValue, { color: '#10b981' }]}>
+                      {Number(adminSettings?.max_meeting_participants || adminDiagnostics?.livekit?.maxParticipants || 1500).toLocaleString()}
+                    </Text>
                     <Text style={styles.metricSub}>Max Participants / Room</Text>
                   </View>
 
