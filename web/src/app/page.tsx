@@ -351,13 +351,18 @@ export default function JanSunwaiPortalPage() {
   // Load Initial Data upon Login
   useEffect(() => {
     if (!currentUser) return;
-    fetchGrievances();
-    if (isOfficer) {
-      handleHomeSearchGrievance("RAJ-2024-88421");
-    } else if (isCallCenter) {
-      fetchCallCenterQueue();
-    } else if (isAdmin || isDeveloper) {
+    if (isDeveloper) {
+      setCurrentTab("hearings");
       fetchAdminData();
+    } else {
+      fetchGrievances();
+      if (isOfficer) {
+        handleHomeSearchGrievance("RAJ-2024-88421");
+      } else if (isCallCenter) {
+        fetchCallCenterQueue();
+      } else if (isAdmin) {
+        fetchAdminData();
+      }
     }
   }, [currentUser, isOfficer, isCallCenter, isAdmin, isDeveloper, fetchGrievances, handleHomeSearchGrievance]);
 
@@ -1318,6 +1323,27 @@ export default function JanSunwaiPortalPage() {
             {wsConnected ? "ONLINE" : "CONNECTING"}
           </div>
 
+          {/* Developer Badge */}
+          {isDeveloper && (
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 10px",
+                borderRadius: "999px",
+                background: "rgba(168, 85, 247, 0.15)",
+                border: "1px solid rgba(168, 85, 247, 0.4)",
+                fontSize: "0.72rem",
+                fontWeight: 800,
+                color: "#c084fc",
+              }}
+            >
+              <span>💻</span>
+              <span>DEV CONSOLE</span>
+            </div>
+          )}
+
           {/* Profile Trigger */}
           <button
             type="button"
@@ -1358,29 +1384,31 @@ export default function JanSunwaiPortalPage() {
 
       {/* Main Content */}
       <div className="app-content-wrapper">
-        {/* Navigation Tabs (Hearings vs Cases) */}
-        <div className="app-tab-bar">
-          <button
-            type="button"
-            className={`app-tab-btn ${currentTab === "hearings" ? "active" : ""}`}
-            onClick={() => setCurrentTab("hearings")}
-          >
-            <span>🏛️</span>
-            <span>Hearings</span>
-          </button>
-          <button
-            type="button"
-            className={`app-tab-btn ${currentTab === "cases" ? "active" : ""}`}
-            onClick={() => {
-              setCurrentTab("cases");
-              if (grievances.length === 0) fetchGrievances();
-            }}
-          >
-            <span>📋</span>
-            <span>Cases</span>
-            {grievances.length > 0 && <span className="app-tab-badge">{grievances.length}</span>}
-          </button>
-        </div>
+        {/* Navigation Tabs (Hearings vs Cases) - Not required for developer panel */}
+        {!isDeveloper && (
+          <div className="app-tab-bar">
+            <button
+              type="button"
+              className={`app-tab-btn ${currentTab === "hearings" ? "active" : ""}`}
+              onClick={() => setCurrentTab("hearings")}
+            >
+              <span>🏛️</span>
+              <span>Hearings</span>
+            </button>
+            <button
+              type="button"
+              className={`app-tab-btn ${currentTab === "cases" ? "active" : ""}`}
+              onClick={() => {
+                setCurrentTab("cases");
+                if (grievances.length === 0) fetchGrievances();
+              }}
+            >
+              <span>📋</span>
+              <span>Cases</span>
+              {grievances.length > 0 && <span className="app-tab-badge">{grievances.length}</span>}
+            </button>
+          </div>
+        )}
 
         {/* ─── TAB 1: HEARINGS ─── */}
         {currentTab === "hearings" && (
@@ -2192,8 +2220,8 @@ export default function JanSunwaiPortalPage() {
           </div>
         )}
 
-        {/* ─── TAB 2: CASES ─── */}
-        {currentTab === "cases" && (
+        {/* ─── TAB 2: CASES (Hidden for Developer) ─── */}
+        {!isDeveloper && currentTab === "cases" && (
           <div>
             {/* Search Input Bar */}
             <div className="app-card" style={{ padding: "1rem" }}>
