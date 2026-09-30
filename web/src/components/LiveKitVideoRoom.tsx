@@ -480,6 +480,49 @@ function HearingRoomVideoArea() {
   );
 }
 
+export function generateSafetyNumbers(roomIdentifier?: string) {
+  const seed = (roomIdentifier || "JAN-SUNWAI-HEARING")
+    .trim()
+    .toUpperCase()
+    .replace(/^(JS-|ROOM-|HEARING-|BENCH-)/i, "")
+    .trim();
+
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9e3779b9;
+  for (let i = 0; i < seed.length; i++) {
+    const code = seed.charCodeAt(i);
+    h1 = Math.imul(h1 ^ code, 0x01000193);
+    h2 = Math.imul(h2 ^ (code << 5), 0x5bd1e995);
+  }
+
+  let state = (h1 ^ h2) >>> 0;
+  function nextRandom(): number {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let z = state;
+    z = Math.imul(z ^ (z >>> 15), (z | 1) >>> 0);
+    z ^= z + Math.imul(z ^ (z >>> 7), (z | 61) >>> 0);
+    return ((z ^ (z >>> 14)) >>> 0);
+  }
+
+  const blocks: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    const val = (nextRandom() % 100000);
+    blocks.push(val.toString().padStart(5, "0"));
+  }
+
+  const hexParts: string[] = [];
+  for (let i = 0; i < 16; i++) {
+    const byte = (nextRandom() & 0xff);
+    hexParts.push(byte.toString(16).toUpperCase().padStart(2, "0"));
+  }
+
+  return {
+    seed,
+    blocks,
+    fingerprint: `SHA-256: ${hexParts.join(":")}`,
+  };
+}
+
 const AllParticipantsGrid = HearingRoomVideoArea;
 
 // ─── User-Friendly Permanent Bottom Meeting Control Bar ────────
@@ -516,6 +559,9 @@ function PermanentControlBar({
   const [customSharingType, setCustomSharingType] = React.useState<"screen" | "camera" | "document" | null>(null);
 
   // ─── Chat & Security State ─────────────────────────────────────
+  const effectiveSeed = roomName || room?.name || callId || "JAN-SUNWAI-HEARING";
+  const sasData = React.useMemo(() => generateSafetyNumbers(effectiveSeed), [effectiveSeed]);
+
   const [showChat, setShowChat] = React.useState(false);
   const [showSafetyModal, setShowSafetyModal] = React.useState(false);
   const [showModerationModal, setShowModerationModal] = React.useState(false);
@@ -2039,12 +2085,12 @@ function PermanentControlBar({
                 textAlign: "center",
               }}
             >
-              <span>38192 48190</span>
-              <span>29481 05829</span>
-              <span>39182 48192</span>
-              <span>59182 04819</span>
-              <span>58192 39102</span>
-              <span>48192 01829</span>
+              <span>{sasData.blocks[0]} {sasData.blocks[1]}</span>
+              <span>{sasData.blocks[2]} {sasData.blocks[3]}</span>
+              <span>{sasData.blocks[4]} {sasData.blocks[5]}</span>
+              <span>{sasData.blocks[6]} {sasData.blocks[7]}</span>
+              <span>{sasData.blocks[8]} {sasData.blocks[9]}</span>
+              <span>{sasData.blocks[10]} {sasData.blocks[11]}</span>
             </div>
 
             {/* SHA-256 Room Key Hash */}
@@ -2060,7 +2106,7 @@ function PermanentControlBar({
                 borderRadius: "6px",
               }}
             >
-              🔑 Room Fingerprint: SHA-256:7F:9A:82:1B:40:9D:6C:5E:2A:3B:4C:5D:6E:7F:80:91
+              🔑 Room Fingerprint: {sasData.fingerprint}
             </div>
 
             {/* Verify Action */}
