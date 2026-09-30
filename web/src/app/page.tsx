@@ -61,7 +61,7 @@ export interface AuthUser {
   id: string;
   phone: string;
   name: string;
-  role: "officer" | "call_center" | "citizen" | "admin" | "employee";
+  role: "officer" | "call_center" | "citizen" | "admin" | "employee" | "developer";
   designation?: string;
   department?: string;
   district?: string;
@@ -222,7 +222,7 @@ export default function JanSunwaiPortalPage() {
   const [isConsulting, setIsConsulting] = useState(false);
 
   // Super Admin
-  const [adminTab, setAdminTab] = useState<"diagnostics" | "audit" | "security" | "apikeys">("diagnostics");
+  const [adminTab, setAdminTab] = useState<"diagnostics" | "audit" | "security">("diagnostics");
   const [adminDiagnostics, setAdminDiagnostics] = useState<any | null>(null);
   const [adminAuditLogs, setAdminAuditLogs] = useState<any[]>([]);
   const [activeMeetings, setActiveMeetings] = useState<any[]>([]);
@@ -257,6 +257,7 @@ export default function JanSunwaiPortalPage() {
   const isOfficer = currentUser?.role === "officer";
   const isCallCenter = currentUser?.role === "call_center";
   const isAdmin = currentUser?.role === "admin";
+  const isDeveloper = currentUser?.role === "developer";
 
   // Check stored auth session
   useEffect(() => {
@@ -355,10 +356,10 @@ export default function JanSunwaiPortalPage() {
       handleHomeSearchGrievance("RAJ-2024-88421");
     } else if (isCallCenter) {
       fetchCallCenterQueue();
-    } else if (isAdmin) {
+    } else if (isAdmin || isDeveloper) {
       fetchAdminData();
     }
-  }, [currentUser, isOfficer, isCallCenter, isAdmin, fetchGrievances, handleHomeSearchGrievance]);
+  }, [currentUser, isOfficer, isCallCenter, isAdmin, isDeveloper, fetchGrievances, handleHomeSearchGrievance]);
 
   // WebSocket for Incoming Calls
   useEffect(() => {
@@ -736,7 +737,7 @@ export default function JanSunwaiPortalPage() {
       const res = await fetch(`${API_BASE}/api/admin/api-keys`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
-        body: JSON.stringify({ name: newKeyName.trim(), createdBy: currentUser?.name || "Super Admin" }),
+        body: JSON.stringify({ name: newKeyName.trim(), createdBy: currentUser?.name || "Lead Developer" }),
       });
       const data = await res.json();
       if (data.success && data.key) {
@@ -761,7 +762,7 @@ export default function JanSunwaiPortalPage() {
       const res = await fetch(`${API_BASE}/api/admin/api-keys/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
-        body: JSON.stringify({ actorName: currentUser?.name || "Super Admin" }),
+        body: JSON.stringify({ actorName: currentUser?.name || "Lead Developer" }),
       });
       const data = await res.json();
       if (data.success) {
@@ -782,9 +783,9 @@ export default function JanSunwaiPortalPage() {
     }
   };
 
-  // Real-time poller for Super Admin (polls active meetings & live diagnostics every 4 seconds)
+  // Real-time poller for Super Admin & Developer (polls active meetings & live diagnostics every 4 seconds)
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin && !isDeveloper) return;
     const interval = setInterval(async () => {
       try {
         const [meetingsRes, diagRes] = await Promise.all([
@@ -814,7 +815,7 @@ export default function JanSunwaiPortalPage() {
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [isAdmin]);
+  }, [isAdmin, isDeveloper]);
 
   const handleSuperAdminJoinMeeting = async (meeting: any) => {
     const targetRoom = meeting.roomName || meeting.id;
@@ -1107,13 +1108,37 @@ export default function JanSunwaiPortalPage() {
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "1.2rem" }}>
                 {detectedName && (
-                  <div style={{ background: "rgba(234, 179, 8, 0.12)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: "10px", padding: "10px 14px", display: "flex", alignItems: "center", gap: "10px" }}>
-                    <div style={{ width: "28px", height: "28px", borderRadius: "8px", background: "rgba(234, 179, 8, 0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#FACC15", fontWeight: 800 }}>
-                      ✓
+                  <div
+                    style={{
+                      background: detectedRole === "developer" ? "rgba(168, 85, 247, 0.15)" : "rgba(234, 179, 8, 0.12)",
+                      border: `1px solid ${detectedRole === "developer" ? "rgba(168, 85, 247, 0.4)" : "rgba(234, 179, 8, 0.3)"}`,
+                      borderRadius: "10px",
+                      padding: "10px 14px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "8px",
+                        background: detectedRole === "developer" ? "rgba(168, 85, 247, 0.25)" : "rgba(234, 179, 8, 0.2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: detectedRole === "developer" ? "#c084fc" : "#FACC15",
+                        fontWeight: 800,
+                      }}
+                    >
+                      {detectedRole === "developer" ? "💻" : "✓"}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: "0.88rem", fontWeight: 800, color: "#ffffff" }}>{detectedName}</div>
-                      <div style={{ fontSize: "0.75rem", color: "#FACC15" }}>Verified Official • {detectedRole?.toUpperCase()}</div>
+                      <div style={{ fontSize: "0.75rem", color: detectedRole === "developer" ? "#c084fc" : "#FACC15" }}>
+                        {detectedRole === "developer" ? "Principal Architect & Lead Developer" : `Verified Official • ${detectedRole?.toUpperCase()}`}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1464,6 +1489,235 @@ export default function JanSunwaiPortalPage() {
                   </div>
                 )}
               </div>
+            ) : isDeveloper ? (
+              /* 💻 Developer API Console & Key Manager (Exclusive for +917777777777) */
+              <div className="app-card" style={{ border: "1.5px solid rgba(168, 85, 247, 0.4)", boxShadow: "0 8px 32px rgba(168, 85, 247, 0.15)" }}>
+                {/* Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem", flexWrap: "wrap", gap: "12px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: "1.2rem" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+                      <span style={{ fontSize: "1.5rem" }}>💻</span>
+                      <h2 style={{ fontSize: "1.25rem", fontWeight: 800, margin: 0, color: "#ffffff" }}>
+                        Developer API Console & Access Control
+                      </h2>
+                      <span style={{ background: "rgba(168, 85, 247, 0.2)", color: "#c084fc", border: "1px solid rgba(168, 85, 247, 0.5)", padding: "3px 12px", borderRadius: "999px", fontSize: "0.72rem", fontWeight: 800, letterSpacing: "0.05em" }}>
+                        EXCLUSIVE ACCESS
+                      </span>
+                    </div>
+                    <p style={{ fontSize: "0.85rem", color: "#8696a0", margin: 0, lineHeight: 1.5 }}>
+                      Lead Developer Workspace (Authorized: <strong style={{ color: "#FACC15" }}>{currentUser.phone}</strong>). Generate, monitor, and revoke API keys for external applications. Super Admins do not have access to this console.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <button
+                      type="button"
+                      onClick={fetchAdminData}
+                      disabled={isLoadingAdmin}
+                      style={{ background: "#202c33", border: "1px solid rgba(255,255,255,0.12)", color: "#ffffff", padding: "8px 16px", borderRadius: "8px", cursor: "pointer", fontSize: "0.82rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}
+                    >
+                      <span>🔄</span>
+                      <span>{isLoadingAdmin ? "Refreshing..." : "Refresh"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Developer Telemetry Bar */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "1.5rem" }}>
+                  <div style={{ background: "#202c33", border: "1px solid rgba(168, 85, 247, 0.25)", borderRadius: "12px", padding: "12px 16px" }}>
+                    <div style={{ fontSize: "0.75rem", color: "#a855f7", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px" }}>🔑 Active API Keys</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#ffffff" }}>
+                      {apiKeys.filter((k) => k.status === "active").length} <span style={{ fontSize: "0.8rem", color: "#8696a0", fontWeight: 400 }}>/ {apiKeys.length} total</span>
+                    </div>
+                  </div>
+                  <div style={{ background: "#202c33", border: "1px solid rgba(37, 211, 102, 0.25)", borderRadius: "12px", padding: "12px 16px" }}>
+                    <div style={{ fontSize: "0.75rem", color: "#25D366", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px" }}>📡 SFU Active Benches</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#ffffff" }}>
+                      {activeMeetings.length} <span style={{ fontSize: "0.8rem", color: "#8696a0", fontWeight: 400 }}>live</span>
+                    </div>
+                  </div>
+                  <div style={{ background: "#202c33", border: "1px solid rgba(250, 204, 21, 0.25)", borderRadius: "12px", padding: "12px 16px" }}>
+                    <div style={{ fontSize: "0.75rem", color: "#FACC15", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px" }}>⚡ SFU Concurrency</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#ffffff" }}>
+                      {adminDiagnostics?.systemStatus?.sfuConcurrency ?? 0} <span style={{ fontSize: "0.8rem", color: "#8696a0", fontWeight: 400 }}>streams</span>
+                    </div>
+                  </div>
+                  <div style={{ background: "#202c33", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: "12px", padding: "12px 16px" }}>
+                    <div style={{ fontSize: "0.75rem", color: "#38bdf8", fontWeight: 700, textTransform: "uppercase", marginBottom: "4px" }}>💾 Server Memory</div>
+                    <div style={{ fontSize: "1.5rem", fontWeight: 800, color: "#ffffff" }}>
+                      {adminDiagnostics?.systemStatus?.memoryUsage ?? "42 MB"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Generate New API Key Card */}
+                <div style={{ background: "linear-gradient(145deg, #1f1b2e 0%, #151022 100%)", padding: "1.25rem", borderRadius: "14px", marginBottom: "1.5rem", border: "1.5px solid rgba(168, 85, 247, 0.35)", boxShadow: "0 4px 20px rgba(168, 85, 247, 0.12)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                    <span style={{ fontSize: "1.1rem" }}>⚡</span>
+                    <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#c084fc" }}>
+                      Generate New API Key for External Team
+                    </div>
+                  </div>
+                  <p style={{ fontSize: "0.8rem", color: "#94a3b8", margin: "0 0 12px" }}>
+                    Specify the application, division, or partner team name. An authorized cryptographic bearer token will be generated instantly.
+                  </p>
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                    <input
+                      type="text"
+                      value={newKeyName}
+                      onChange={(e) => setNewKeyName(e.target.value)}
+                      placeholder="e.g. Rajasthan Sampark Mobile App, Revenue Dept Portal, Citizen App"
+                      style={{
+                        flex: 1,
+                        minWidth: "260px",
+                        background: "#0c0817",
+                        border: "1px solid rgba(168, 85, 247, 0.3)",
+                        borderRadius: "10px",
+                        padding: "11px 14px",
+                        color: "#ffffff",
+                        fontSize: "0.9rem",
+                        outline: "none",
+                      }}
+                      onKeyDown={(e) => e.key === "Enter" && handleCreateApiKey()}
+                    />
+                    <button
+                      type="button"
+                      style={{
+                        background: "linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)",
+                        border: "none",
+                        color: "#ffffff",
+                        padding: "11px 22px",
+                        borderRadius: "10px",
+                        fontWeight: 700,
+                        fontSize: "0.9rem",
+                        whiteSpace: "nowrap",
+                        cursor: isGeneratingKey || !newKeyName.trim() ? "not-allowed" : "pointer",
+                        opacity: isGeneratingKey || !newKeyName.trim() ? 0.6 : 1,
+                        boxShadow: "0 4px 12px rgba(168, 85, 247, 0.35)",
+                      }}
+                      onClick={handleCreateApiKey}
+                      disabled={isGeneratingKey || !newKeyName.trim()}
+                    >
+                      {isGeneratingKey ? "Generating..." : "+ Generate API Key"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Keys List */}
+                <div style={{ marginBottom: "1.8rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                    <h3 style={{ fontSize: "1rem", fontWeight: 800, margin: 0, color: "#ffffff", display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span>🔑</span>
+                      <span>Registered External Keys ({apiKeys.length})</span>
+                    </h3>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {apiKeys.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "2.5rem 1rem", background: "#202c33", borderRadius: "12px", color: "#8696a0", border: "1px dashed rgba(255,255,255,0.1)" }}>
+                        No API keys generated yet. Enter a name above to generate your first developer key.
+                      </div>
+                    ) : (
+                      apiKeys.map((k) => (
+                        <div
+                          key={k.id}
+                          style={{
+                            background: "#202c33",
+                            padding: "14px 16px",
+                            borderRadius: "12px",
+                            border: `1.5px solid ${k.status === "active" ? "rgba(37, 211, 102, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            flexWrap: "wrap",
+                            gap: "12px",
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: "260px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                              <strong style={{ color: "#ffffff", fontSize: "0.98rem" }}>{k.name}</strong>
+                              <span
+                                style={{
+                                  fontSize: "0.68rem",
+                                  padding: "2px 8px",
+                                  borderRadius: "999px",
+                                  fontWeight: 800,
+                                  textTransform: "uppercase",
+                                  background: k.status === "active" ? "rgba(37, 211, 102, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                                  color: k.status === "active" ? "#25D366" : "#ef4444",
+                                }}
+                              >
+                                {k.status}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", fontFamily: "monospace", fontSize: "0.85rem", color: "#FACC15", background: "#111b21", padding: "6px 12px", borderRadius: "8px", width: "fit-content", border: "1px solid rgba(250, 204, 21, 0.2)" }}>
+                              <span>{k.key}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyKey(k.key, k.id)}
+                                style={{ background: "none", border: "none", color: copiedKeyId === k.id ? "#25D366" : "#8696a0", cursor: "pointer", fontSize: "0.85rem", padding: "0 0 0 6px", fontWeight: 700 }}
+                                title="Copy API Key"
+                              >
+                                {copiedKeyId === k.id ? "✓ Copied" : "📋 Copy"}
+                              </button>
+                            </div>
+                            <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: "6px" }}>
+                              Created: {new Date(k.created_at).toLocaleString()} • Created by: {k.created_by}
+                              {k.last_used_at && ` • Last active: ${new Date(k.last_used_at).toLocaleTimeString()}`}
+                            </div>
+                          </div>
+
+                          {k.status === "active" && (
+                            <button
+                              type="button"
+                              style={{
+                                background: "rgba(239, 68, 68, 0.15)",
+                                border: "1px solid rgba(239, 68, 68, 0.4)",
+                                color: "#ef4444",
+                                padding: "8px 16px",
+                                borderRadius: "8px",
+                                fontWeight: 700,
+                                fontSize: "0.82rem",
+                                cursor: "pointer",
+                              }}
+                              onClick={() => handleRevokeApiKey(k.id, k.name)}
+                            >
+                              Revoke Key
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Developer Implementation & cURL Testing Guide */}
+                <div style={{ background: "#182229", padding: "18px", borderRadius: "14px", border: "1px solid rgba(168, 85, 247, 0.3)" }}>
+                  <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "#c084fc", marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>📖</span>
+                    <span>External Team Integration Guide & Live Endpoints</span>
+                  </div>
+                  <p style={{ fontSize: "0.82rem", color: "#8696a0", margin: "0 0 12px", lineHeight: 1.5 }}>
+                    Give the API key generated above to the external mobile or web engineering team. They can call the following endpoints to initiate hearings, check incoming rings, and stream video:
+                  </p>
+                  <div style={{ background: "#111b21", padding: "14px", borderRadius: "10px", fontSize: "0.78rem", fontFamily: "monospace", color: "#94a3b8", overflowX: "auto", lineHeight: 1.6, border: "1px solid rgba(255,255,255,0.08)" }}>
+                    <div style={{ color: "#c084fc", fontWeight: 700 }}># 1. Verification & Status Healthcheck:</div>
+                    <div style={{ color: "#FACC15" }}>GET /api/v1/health</div>
+                    <div>Header: X-API-Key: {apiKeys.find((k) => k.status === "active")?.key || "js_live_your_key_here"}</div>
+                    <br />
+                    <div style={{ color: "#c084fc", fontWeight: 700 }}># 2. Initiate Hearing (Rings Citizen + Field Officer):</div>
+                    <div style={{ color: "#FACC15" }}>POST /api/v1/hearings/create</div>
+                    <div>Header: X-API-Key: {apiKeys.find((k) => k.status === "active")?.key || "js_live_your_key_here"}</div>
+                    <div>Body: &#123; "grievanceId": "RAJ-2024-88421", "officer": &#123; "name": "Shri Rajesh Sharma", "phone": "+919876543210" &#125; &#125;</div>
+                    <br />
+                    <div style={{ color: "#c084fc", fontWeight: 700 }}># 3. Check Incoming Ringing Call on Citizen Phone:</div>
+                    <div style={{ color: "#FACC15" }}>GET /api/v1/hearings/incoming?phone=+917735807328</div>
+                    <div>Header: X-API-Key: {apiKeys.find((k) => k.status === "active")?.key || "js_live_your_key_here"}</div>
+                    <br />
+                    <div style={{ color: "#c084fc", fontWeight: 700 }}># 4. Connect Mobile Video Room:</div>
+                    <div>Use LiveKit SDK (`@livekit/react-native` or Android LiveKit SDK) passing `livekitUrl` and the participant `token` received in Step 2.</div>
+                  </div>
+                </div>
+              </div>
             ) : isAdmin ? (
               /* If Super Admin */
               <div className="app-card">
@@ -1494,15 +1748,6 @@ export default function JanSunwaiPortalPage() {
                   >
                     <span>🔐</span>
                     <span>Security</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAdminTab("apikeys")}
-                    className={`app-tab-btn ${adminTab === "apikeys" ? "active" : ""}`}
-                    style={{ flex: "none", padding: "8px 16px" }}
-                  >
-                    <span>🔑</span>
-                    <span>API Keys & Integrations ({apiKeys.length})</span>
                   </button>
                 </div>
 
@@ -1682,158 +1927,6 @@ export default function JanSunwaiPortalPage() {
                       >
                         {adminSettings.e2ee_encryption_enabled === "true" ? "Active ✓" : "Disabled"}
                       </button>
-                    </div>
-                  </div>
-                )}
-
-                {adminTab === "apikeys" && (
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem", flexWrap: "wrap", gap: "12px" }}>
-                      <div>
-                        <h3 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0, color: "#ffffff" }}>🔑 External Developer API Keys</h3>
-                        <p style={{ fontSize: "0.82rem", color: "#8696a0", margin: "4px 0 0" }}>
-                          Generate secure API keys for other government teams to embed Jan Sunwai video hearings directly into their mobile apps and portals.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Generate Key Input */}
-                    <div style={{ background: "#202c33", padding: "16px", borderRadius: "14px", marginBottom: "1.2rem", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
-                      <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--app-gold)", marginBottom: "8px" }}>
-                        ⚡ Generate New API Key for External Team
-                      </div>
-                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                        <input
-                          type="text"
-                          value={newKeyName}
-                          onChange={(e) => setNewKeyName(e.target.value)}
-                          placeholder="e.g. Rajasthan Sampark App, Revenue Dept Portal, Citizen App"
-                          style={{
-                            flex: 1,
-                            minWidth: "260px",
-                            background: "#111b21",
-                            border: "1px solid rgba(255, 255, 255, 0.15)",
-                            borderRadius: "10px",
-                            padding: "10px 14px",
-                            color: "#ffffff",
-                            fontSize: "0.88rem",
-                            outline: "none",
-                          }}
-                          onKeyDown={(e) => e.key === "Enter" && handleCreateApiKey()}
-                        />
-                        <button
-                          type="button"
-                          className="app-btn-gold"
-                          style={{ padding: "10px 20px", fontWeight: 700, fontSize: "0.88rem", whiteSpace: "nowrap" }}
-                          onClick={handleCreateApiKey}
-                          disabled={isGeneratingKey || !newKeyName.trim()}
-                        >
-                          {isGeneratingKey ? "Generating..." : "+ Generate API Key"}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Keys Table / Cards */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "1.5rem" }}>
-                      {apiKeys.length === 0 ? (
-                        <div style={{ textAlign: "center", padding: "2rem", color: "#8696a0" }}>
-                          No API keys generated yet. Click above to generate your first key.
-                        </div>
-                      ) : (
-                        apiKeys.map((k) => (
-                          <div
-                            key={k.id}
-                            style={{
-                              background: "#202c33",
-                              padding: "14px",
-                              borderRadius: "12px",
-                              border: `1px solid ${k.status === "active" ? "rgba(37, 211, 102, 0.25)" : "rgba(239, 68, 68, 0.25)"}`,
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              flexWrap: "wrap",
-                              gap: "12px",
-                            }}
-                          >
-                            <div style={{ flex: 1, minWidth: "240px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                                <strong style={{ color: "#ffffff", fontSize: "0.95rem" }}>{k.name}</strong>
-                                <span
-                                  style={{
-                                    fontSize: "0.68rem",
-                                    padding: "2px 8px",
-                                    borderRadius: "999px",
-                                    fontWeight: 800,
-                                    textTransform: "uppercase",
-                                    background: k.status === "active" ? "rgba(37, 211, 102, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                                    color: k.status === "active" ? "#25D366" : "#ef4444",
-                                  }}
-                                >
-                                  {k.status}
-                                </span>
-                              </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontFamily: "monospace", fontSize: "0.85rem", color: "#FACC15", background: "#111b21", padding: "6px 10px", borderRadius: "8px", width: "fit-content" }}>
-                                <span>{k.key}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyKey(k.key, k.id)}
-                                  style={{ background: "none", border: "none", color: copiedKeyId === k.id ? "#25D366" : "#8696a0", cursor: "pointer", fontSize: "0.85rem", padding: 0 }}
-                                  title="Copy API Key"
-                                >
-                                  {copiedKeyId === k.id ? "✓ Copied" : "📋 Copy"}
-                                </button>
-                              </div>
-                              <div style={{ fontSize: "0.72rem", color: "#64748b", marginTop: "6px" }}>
-                                Created: {new Date(k.created_at).toLocaleDateString()} • By: {k.created_by}
-                                {k.last_used_at && ` • Last used: ${new Date(k.last_used_at).toLocaleTimeString()}`}
-                              </div>
-                            </div>
-
-                            {k.status === "active" && (
-                              <button
-                                type="button"
-                                style={{
-                                  background: "rgba(239, 68, 68, 0.15)",
-                                  border: "1px solid rgba(239, 68, 68, 0.4)",
-                                  color: "#ef4444",
-                                  padding: "8px 14px",
-                                  borderRadius: "8px",
-                                  fontWeight: 700,
-                                  fontSize: "0.8rem",
-                                  cursor: "pointer",
-                                }}
-                                onClick={() => handleRevokeApiKey(k.id, k.name)}
-                              >
-                                Revoke Key
-                              </button>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    {/* Developer Integration Quick Reference */}
-                    <div style={{ background: "#182229", padding: "16px", borderRadius: "14px", border: "1px solid rgba(250, 204, 21, 0.25)" }}>
-                      <div style={{ fontSize: "0.9rem", fontWeight: 800, color: "#FACC15", marginBottom: "8px" }}>
-                        📖 External Team Mobile Integration (Cheat Sheet)
-                      </div>
-                      <p style={{ fontSize: "0.82rem", color: "#8696a0", margin: "0 0 10px", lineHeight: 1.5 }}>
-                        Provide the API key above to the other mobile team. They can use the following endpoints to initiate hearings and embed the video room:
-                      </p>
-                      <div style={{ background: "#111b21", padding: "12px", borderRadius: "8px", fontSize: "0.78rem", fontFamily: "monospace", color: "#94a3b8", overflowX: "auto", lineHeight: 1.6 }}>
-                        <div style={{ color: "#25D366" }}># 1. Header required in all requests:</div>
-                        <div>X-API-Key: js_live_...</div>
-                        <br />
-                        <div style={{ color: "#25D366" }}># 2. Initiate Hearing (Rings Citizen + Field Officer):</div>
-                        <div>POST /api/v1/hearings/create</div>
-                        <div>Body: &#123; "grievanceId": "RAJ-2024-88421", "officer": &#123; "name": "...", "phone": "..." &#125; &#125;</div>
-                        <br />
-                        <div style={{ color: "#25D366" }}># 3. Check Incoming Ringing Call on Citizen Phone:</div>
-                        <div>GET /api/v1/hearings/incoming?phone=+917735807328</div>
-                        <br />
-                        <div style={{ color: "#25D366" }}># 4. Connect Mobile Video:</div>
-                        <div>Use LiveKit SDK (`@livekit/react-native` or Android LiveKit SDK) with `livekitUrl` and `token` from Step 2.</div>
-                      </div>
                     </div>
                   </div>
                 )}

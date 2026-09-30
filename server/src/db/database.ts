@@ -295,6 +295,17 @@ export async function initializeDatabase(): Promise<void> {
   try { db.exec("ALTER TABLE grievances ADD COLUMN scheduled_time TEXT;"); } catch (_) {}
   try { db.exec("ALTER TABLE grievances ADD COLUMN scheduled_officer TEXT;"); } catch (_) {}
 
+  // Ensure Developer Persona exists for phone 7777777777
+  try {
+    const existingDev = db.prepare("SELECT id FROM admins WHERE phone LIKE '%7777777777%'").get();
+    if (!existingDev) {
+      db.prepare(`
+        INSERT OR REPLACE INTO admins (id, name, phone, designation, department, role_level, role)
+        VALUES ('dev-001', 'Jan Sunwai Lead Developer', '+917777777777', 'Principal Architect & API Developer', 'DOIT&C Core Technology Division', 'developer', 'developer')
+      `).run();
+    }
+  } catch (_) {}
+
   // Seed initial records if database is empty
   seedInitialData();
 }
@@ -352,13 +363,14 @@ function seedInitialData(): void {
   `);
 
   const seedTransaction = db.transaction(() => {
-    // ─── 1. Super Admins ──────────────────────────────────────────
+    // ─── 1. Super Admins & Developer ─────────────────────────────
     const adminsSeed = [
-      { id: 'adm-001', name: 'Rajasthan DOIT&C Admin', phone: '+919999999999', designation: 'Chief System Administrator', department: 'Department of Information Technology & Communication (DOIT&C)', role_level: 'super_admin' },
-      { id: 'adm-002', name: 'State IT Operations Admin', phone: '+919888888888', designation: 'IT Operations Lead', department: 'DOIT&C State Data Center, Jaipur', role_level: 'super_admin' },
+      { id: 'adm-001', name: 'Rajasthan DOIT&C Admin', phone: '+919999999999', designation: 'Chief System Administrator', department: 'Department of Information Technology & Communication (DOIT&C)', role_level: 'super_admin', role: 'admin' },
+      { id: 'adm-002', name: 'State IT Operations Admin', phone: '+919888888888', designation: 'IT Operations Lead', department: 'DOIT&C State Data Center, Jaipur', role_level: 'super_admin', role: 'admin' },
+      { id: 'dev-001', name: 'Jan Sunwai Lead Developer', phone: '+917777777777', designation: 'Principal Architect & API Developer', department: 'DOIT&C Core Technology Division', role_level: 'developer', role: 'developer' },
     ];
     for (const adm of adminsSeed) {
-      insertAdmin.run(adm.id, adm.name, adm.phone, adm.designation, adm.department, adm.role_level, 'admin');
+      insertAdmin.run(adm.id, adm.name, adm.phone, adm.designation, adm.department, adm.role_level, adm.role || 'admin');
     }
 
     // ─── 2. Call Centre Representatives (181 Sampark Helpdesk) ───
@@ -524,7 +536,7 @@ export interface DatabaseUserRecord {
   id: string;
   name: string;
   phone: string;
-  role: 'officer' | 'call_center' | 'citizen' | 'admin' | 'employee';
+  role: 'officer' | 'call_center' | 'citizen' | 'admin' | 'employee' | 'developer';
   designation: string;
   department?: string;
   district?: string;

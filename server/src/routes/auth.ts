@@ -25,7 +25,7 @@ export interface UserProfile {
   id: string;
   phone: string;
   name: string;
-  role: 'officer' | 'call_center' | 'citizen' | 'admin' | 'employee';
+  role: 'officer' | 'call_center' | 'citizen' | 'admin' | 'employee' | 'developer';
   designation?: string;
   department?: string;
   district?: string;
