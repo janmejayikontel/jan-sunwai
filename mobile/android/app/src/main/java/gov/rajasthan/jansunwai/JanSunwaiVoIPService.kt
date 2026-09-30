@@ -166,9 +166,18 @@ class JanSunwaiVoIPService : Service() {
             }
             return checkId(callId) || checkId(grievanceId)
         }
+
+        val sharedHttpClient: OkHttpClient by lazy {
+            OkHttpClient.Builder()
+                .connectTimeout(8, TimeUnit.SECONDS)
+                .readTimeout(0, TimeUnit.MILLISECONDS)
+                .pingInterval(20, TimeUnit.SECONDS)
+                .connectionPool(okhttp3.ConnectionPool(4, 2, TimeUnit.MINUTES))
+                .retryOnConnectionFailure(true)
+                .build()
+        }
     }
 
-    private var okHttpClient: OkHttpClient? = null
     private var webSocket: WebSocket? = null
     private var userPhone: String = ""
     private var serverUrl: String = ""
@@ -179,6 +188,11 @@ class JanSunwaiVoIPService : Service() {
     private var standbyWakeLock: PowerManager.WakeLock? = null
 
     private val handler = Handler(Looper.getMainLooper())
+    private val reconnectRunnable = Runnable {
+        if (isServiceRunning && !isWebSocketConnected) {
+            connectWebSocket()
+        }
+    }
     private var pollRunnable: Runnable? = null
     private var isWebSocketConnected = false
     @Volatile private var isPollingActive = false
@@ -512,6 +526,11 @@ class JanSunwaiVoIPService : Service() {
         if (userPhone.isEmpty() || serverUrl.isEmpty()) return
 
         try {
+            try {
+                webSocket?.cancel()
+            } catch (_: Exception) {}
+            webSocket = null
+
             val cleanBase = serverUrl.trim().trimEnd('/')
             val wsProto = if (cleanBase.startsWith("https")) "wss://" else "ws://"
             val cleanHost = cleanBase.replace(Regex("^https?://"), "")
@@ -520,17 +539,12 @@ class JanSunwaiVoIPService : Service() {
 
             Log.i(TAG, "Connecting native WebSocket: $wsUrl")
 
-            okHttpClient?.dispatcher?.executorService?.shutdown()
-            okHttpClient = OkHttpClient.Builder()
-                .readTimeout(0, TimeUnit.MILLISECONDS)
-                .pingInterval(15, TimeUnit.SECONDS)
-                .build()
-
             val request = Request.Builder()
                 .url(wsUrl)
                 .addHeader("Bypass-Tunnel-Reminder", "true")
                 .build()
-            webSocket = okHttpClient!!.newWebSocket(request, object : WebSocketListener() {
+
+            webSocket = sharedHttpClient.newWebSocket(request, object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     Log.i(TAG, "Native WebSocket connected as $userPhone")
                     isWebSocketConnected = true
@@ -582,12 +596,8 @@ class JanSunwaiVoIPService : Service() {
     }
 
     private fun scheduleReconnect() {
-        handler.removeCallbacksAndMessages("reconnect")
-        handler.postDelayed({
-            if (isServiceRunning) {
-                connectWebSocket()
-            }
-        }, 5000)
+        handler.removeCallbacks(reconnectRunnable)
+        handler.postDelayed(reconnectRunnable, 5000)
     }
 
     private fun startPersistentPolling() {
@@ -639,15 +649,11 @@ class JanSunwaiVoIPService : Service() {
 
     private fun fetchLatestServerUrl() {
         try {
-            val client = OkHttpClient.Builder()
-                .connectTimeout(4, TimeUnit.SECONDS)
-                .readTimeout(4, TimeUnit.SECONDS)
-                .build()
             val req = Request.Builder()
                 .url("https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=" + System.currentTimeMillis())
                 .header("Cache-Control", "no-cache")
                 .build()
-            val res = client.newCall(req).execute()
+            val res = sharedHttpClient.newCall(req).execute()
             if (res.isSuccessful) {
                 val newUrl = res.body?.string()?.trim() ?: ""
                 if (newUrl.startsWith("http") && newUrl != serverUrl) {
@@ -673,15 +679,11 @@ class JanSunwaiVoIPService : Service() {
             val cleanBase = serverUrl.trim().trimEnd('/')
             val encodedPhone = java.net.URLEncoder.encode(userPhone, "UTF-8")
             val checkUrl = "${cleanBase}/api/calls/check-incoming/${encodedPhone}"
-            val client = OkHttpClient.Builder()
-                .connectTimeout(2500, TimeUnit.MILLISECONDS)
-                .readTimeout(2500, TimeUnit.MILLISECONDS)
-                .build()
             val req = Request.Builder()
                 .url(checkUrl)
                 .addHeader("Bypass-Tunnel-Reminder", "true")
                 .build()
-            val res = client.newCall(req).execute()
+            val res = sharedHttpClient.newCall(req).execute()
             if (res.code == 429) {
                 Log.w(TAG, "Cloudflare tunnel rate limit (429) hit, pausing background polling for 60s")
                 rateLimitBackoffUntil = System.currentTimeMillis() + 60000L
@@ -1079,13 +1081,12 @@ class JanSunwaiVoIPService : Service() {
                     put("action", "decline")
                 }.toString()
 
-                val client = OkHttpClient()
                 val req = Request.Builder()
                     .url(url)
                     .addHeader("Bypass-Tunnel-Reminder", "true")
                     .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
                     .build()
-                client.newCall(req).execute().close()
+                sharedHttpClient.newCall(req).execute().close()
                 Log.i(TAG, "Declined call $callId on server")
             } catch (e: Exception) {
                 Log.w(TAG, "Error sending decline to server", e)

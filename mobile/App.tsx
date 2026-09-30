@@ -596,8 +596,22 @@ export default function App() {
     const cleanHost = base.replace(/^https?:\/\//, '');
     const wsUrl = `${wsProto}${cleanHost}/ws?phone=${encodeURIComponent(currentUser.phone)}`;
 
+    let reconnectTimer: any = null;
+
     const connectWebSocket = () => {
       if (!isSubscribed) return;
+      if (wsRef.current) {
+        try {
+          wsRef.current.onopen = null;
+          wsRef.current.onmessage = null;
+          wsRef.current.onerror = null;
+          wsRef.current.onclose = null;
+          wsRef.current.close();
+        } catch (_) {}
+        wsRef.current = null;
+      }
+      clearTimeout(reconnectTimer);
+
       console.log(`[Mobile/WS] Connecting to ${wsUrl}`);
       try {
         const ws = new WebSocket(wsUrl);
@@ -638,20 +652,21 @@ export default function App() {
         };
 
         ws.onclose = () => {
-          console.log('[Mobile/WS] Disconnected. Reconnecting in 3s...');
+          console.log('[Mobile/WS] Disconnected. Reconnecting in 5s...');
           if (isSubscribed) {
-            setTimeout(connectWebSocket, 3000);
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(connectWebSocket, 5000);
           }
         };
 
         ws.onerror = (err) => {
           console.log('[Mobile/WS] Connection error:', err);
-          ws.close();
         };
       } catch (err) {
         console.warn('[Mobile/WS] Init error:', err);
         if (isSubscribed) {
-          setTimeout(connectWebSocket, 3000);
+          clearTimeout(reconnectTimer);
+          reconnectTimer = setTimeout(connectWebSocket, 5000);
         }
       }
     };
@@ -704,13 +719,20 @@ export default function App() {
       } catch (err) {
         // network polling silent
       }
-    }, 2000);
+    }, 5000);
 
     return () => {
       isSubscribed = false;
+      clearTimeout(reconnectTimer);
       clearInterval(pollInterval);
       if (wsRef.current) {
-        wsRef.current.close();
+        try {
+          wsRef.current.onopen = null;
+          wsRef.current.onmessage = null;
+          wsRef.current.onerror = null;
+          wsRef.current.onclose = null;
+          wsRef.current.close();
+        } catch (_) {}
         wsRef.current = null;
       }
     };
