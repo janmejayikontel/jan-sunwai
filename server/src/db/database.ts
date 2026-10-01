@@ -801,6 +801,48 @@ export function revokeApiKeyById(id: string, actorName: string = 'Super Admin'):
   }
 }
 
+export function reactivateApiKeyById(id: string, actorName: string = 'Super Admin'): boolean {
+  try {
+    const existing = db.prepare('SELECT name, key FROM api_keys WHERE id = ?').get(id) as any;
+    if (!existing) return false;
+
+    db.prepare("UPDATE api_keys SET status = 'active' WHERE id = ?").run(id);
+
+    insertAuditLog({
+      eventType: 'API_KEY_REACTIVATED',
+      actorName,
+      actorRole: 'admin',
+      details: `Reactivated/Reused API key '${existing.name}' (${existing.key.substring(0, 16)}...)`,
+    });
+
+    return true;
+  } catch (err) {
+    console.error('[SQLite] Error reactivating API key:', err);
+    return false;
+  }
+}
+
+export function deleteApiKeyById(id: string, actorName: string = 'Super Admin'): boolean {
+  try {
+    const existing = db.prepare('SELECT name, key FROM api_keys WHERE id = ?').get(id) as any;
+    if (!existing) return false;
+
+    db.prepare("DELETE FROM api_keys WHERE id = ?").run(id);
+
+    insertAuditLog({
+      eventType: 'API_KEY_DELETED',
+      actorName,
+      actorRole: 'admin',
+      details: `Permanently deleted API key '${existing.name}' (${existing.key.substring(0, 16)}...)`,
+    });
+
+    return true;
+  } catch (err) {
+    console.error('[SQLite] Error deleting API key:', err);
+    return false;
+  }
+}
+
 export function validateApiKey(key: string): ApiKeyRecord | null {
   if (!key || typeof key !== 'string') return null;
   try {

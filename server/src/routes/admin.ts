@@ -10,7 +10,7 @@
 
 import { Router, Request, Response } from 'express';
 import os from 'os';
-import db, { insertAuditLog, getAllApiKeys, createNewApiKey, revokeApiKeyById } from '../db/database';
+import db, { insertAuditLog, getAllApiKeys, createNewApiKey, revokeApiKeyById, reactivateApiKeyById, deleteApiKeyById } from '../db/database';
 import callManager from '../services/callManager';
 import livekitService from '../services/livekit';
 
@@ -353,12 +353,24 @@ router.post('/api-keys', (req: Request, res: Response) => {
 
 /**
  * DELETE /api/admin/api-keys/:id
- * Revoke an existing API key
+ * Revoke or permanently delete an existing API key
  */
 router.delete('/api-keys/:id', (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const actorName = (req.body?.actorName as string) || 'Super Admin';
+    const isPermanent = req.query.permanent === 'true' || req.body?.permanent === true;
+
+    if (isPermanent) {
+      const deleted = deleteApiKeyById(id, actorName);
+      if (!deleted) {
+        res.status(404).json({ success: false, error: 'API key not found' });
+        return;
+      }
+      res.json({ success: true, message: 'API key permanently deleted successfully' });
+      return;
+    }
+
     const revoked = revokeApiKeyById(id, actorName);
     if (!revoked) {
       res.status(404).json({ success: false, error: 'API key not found' });
@@ -366,7 +378,46 @@ router.delete('/api-keys/:id', (req: Request, res: Response) => {
     }
     res.json({ success: true, message: 'API key revoked successfully' });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: 'Failed to revoke API key' });
+    res.status(500).json({ success: false, error: 'Failed to revoke/delete API key' });
+  }
+});
+
+/**
+ * POST /api/admin/api-keys/:id/reuse
+ * POST /api/admin/api-keys/:id/reactivate
+ * Reactivate / Reuse a revoked API key
+ */
+router.post(['/api-keys/:id/reuse', '/api-keys/:id/reactivate'], (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const actorName = (req.body?.actorName as string) || 'Super Admin';
+    const reactivated = reactivateApiKeyById(id, actorName);
+    if (!reactivated) {
+      res.status(404).json({ success: false, error: 'API key not found' });
+      return;
+    }
+    res.json({ success: true, message: 'API key reactivated/reused successfully' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to reactivate API key' });
+  }
+});
+
+/**
+ * DELETE /api/admin/api-keys/:id/permanent
+ * Permanently delete an API key from the database
+ */
+router.delete('/api-keys/:id/permanent', (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const actorName = (req.body?.actorName as string) || 'Super Admin';
+    const deleted = deleteApiKeyById(id, actorName);
+    if (!deleted) {
+      res.status(404).json({ success: false, error: 'API key not found' });
+      return;
+    }
+    res.json({ success: true, message: 'API key permanently deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to permanently delete API key' });
   }
 });
 

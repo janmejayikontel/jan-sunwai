@@ -779,6 +779,47 @@ export default function JanSunwaiPortalPage() {
     }
   };
 
+  const handleReuseApiKey = async (id: string, name: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/api-keys/${id}/reuse`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
+        body: JSON.stringify({ actorName: currentUser?.name || "Lead Developer" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setApiKeys((prev) => prev.map((k) => (k.id === id ? { ...k, status: "active" } : k)));
+        showToast(`♻️ Reactivated and restored key for "${name}"!`, "success");
+      } else {
+        showToast(data.error || "Failed to reuse key", "error");
+      }
+    } catch {
+      showToast("Network error reactivating key", "error");
+    }
+  };
+
+  const handleDeleteApiKey = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to permanently delete the API key for "${name}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/api-keys/${id}/permanent`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
+        body: JSON.stringify({ actorName: currentUser?.name || "Lead Developer" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setApiKeys((prev) => prev.filter((k) => k.id !== id));
+        showToast(`🗑️ Permanently deleted key for "${name}"`, "info");
+      } else {
+        showToast(data.error || "Failed to delete key", "error");
+      }
+    } catch {
+      showToast("Network error deleting key", "error");
+    }
+  };
+
   const handleCopyKey = (text: string, id: string) => {
     if (navigator?.clipboard) {
       navigator.clipboard.writeText(text);
@@ -1694,24 +1735,71 @@ export default function JanSunwaiPortalPage() {
                             </div>
                           </div>
 
-                          {k.status === "active" && (
-                            <button
-                              type="button"
-                              style={{
-                                background: "rgba(239, 68, 68, 0.15)",
-                                border: "1px solid rgba(239, 68, 68, 0.4)",
-                                color: "#ef4444",
-                                padding: "8px 16px",
-                                borderRadius: "8px",
-                                fontWeight: 700,
-                                fontSize: "0.82rem",
-                                cursor: "pointer",
-                              }}
-                              onClick={() => handleRevokeApiKey(k.id, k.name)}
-                            >
-                              Revoke Key
-                            </button>
-                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                            {k.status === "active" ? (
+                              <button
+                                type="button"
+                                style={{
+                                  background: "rgba(239, 68, 68, 0.15)",
+                                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                                  color: "#ef4444",
+                                  padding: "8px 16px",
+                                  borderRadius: "8px",
+                                  fontWeight: 700,
+                                  fontSize: "0.82rem",
+                                  cursor: "pointer",
+                                }}
+                                onClick={() => handleRevokeApiKey(k.id, k.name)}
+                              >
+                                Revoke Key
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  style={{
+                                    background: "rgba(37, 211, 102, 0.15)",
+                                    border: "1px solid rgba(37, 211, 102, 0.4)",
+                                    color: "#25D366",
+                                    padding: "8px 14px",
+                                    borderRadius: "8px",
+                                    fontWeight: 700,
+                                    fontSize: "0.82rem",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                  }}
+                                  onClick={() => handleReuseApiKey(k.id, k.name)}
+                                  title="Reactivate and reuse this API key"
+                                >
+                                  <span>♻️</span>
+                                  <span>Reuse Key</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  style={{
+                                    background: "rgba(239, 68, 68, 0.15)",
+                                    border: "1px solid rgba(239, 68, 68, 0.4)",
+                                    color: "#ef4444",
+                                    padding: "8px 14px",
+                                    borderRadius: "8px",
+                                    fontWeight: 700,
+                                    fontSize: "0.82rem",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                  }}
+                                  onClick={() => handleDeleteApiKey(k.id, k.name)}
+                                  title="Permanently remove this API key from database"
+                                >
+                                  <span>🗑️</span>
+                                  <span>Delete</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
                       ))
                     )}

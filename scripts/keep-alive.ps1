@@ -46,8 +46,9 @@ while ($true) {
         if (-not $cfProc) {
             Log "Cloudflared not running. Starting..."
             $cfLog = "$RootDir\scripts\cloudflared.log"
-            Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$CloudflaredPath`" tunnel --url http://localhost:8080 --protocol http2 --edge-ip-version 4 > `"$cfLog`" 2>&1" -WindowStyle Hidden
-            Start-Sleep -Seconds 6
+            if (Test-Path $cfLog) { Remove-Item $cfLog -Force -ErrorAction SilentlyContinue }
+            Start-Process -FilePath $CloudflaredPath -ArgumentList "tunnel --url http://localhost:8080" -RedirectStandardError $cfLog -WindowStyle Hidden
+            Start-Sleep -Seconds 8
 
             # Extract assigned quick tunnel URL and update server-url.txt
             if (Test-Path $cfLog) {
@@ -57,6 +58,10 @@ while ($true) {
                     $newUrl = $matches[1]
                     Log "New Cloudflare Tunnel URL: $newUrl"
                     Set-Content -Path "$RootDir\server-url.txt" -Value $newUrl
+                    $cfgFile = "$RootDir\mobile\src\config.ts"
+                    if (Test-Path $cfgFile) {
+                        (Get-Content $cfgFile) -replace "export const DEFAULT_SERVER_URL = '.*';", "export const DEFAULT_SERVER_URL = '$newUrl';" | Set-Content $cfgFile
+                    }
                 }
             }
         }
