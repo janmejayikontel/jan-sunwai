@@ -10,7 +10,7 @@
 
 import { Platform } from 'react-native';
 
-export const DEFAULT_SERVER_URL = 'https://coins-entered-buffer-toward.trycloudflare.com';
+export const DEFAULT_SERVER_URL = 'https://beauty-rogers-adopt-dui.trycloudflare.com';
 
 
 export const CONFIG = {
