@@ -53,30 +53,64 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
   React.useEffect(() => {
-    // Dynamically fetch live server endpoint from GitHub raw config with cache buster
-    fetch(`https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=${Date.now()}`)
-      .then((res) => res.text())
-      .then(async (txt) => {
-        const clean = txt.trim().replace(/\/+$/, '');
-        if (clean.startsWith('http')) {
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000);
-            const hRes = await fetch(`${clean}/api/health`, {
-              signal: controller.signal,
-              headers: { 'Bypass-Tunnel-Reminder': 'true' },
-            });
-            clearTimeout(timeoutId);
-            if (hRes.ok) {
-              console.log('[LoginScreen] Verified remote live server URL:', clean);
-              setServerBase(clean);
-            }
-          } catch (err) {
-            console.warn('[LoginScreen] Remote URL check failed, keeping default server:', clean);
+    const testAndSetServer = async (candidateUrl: string) => {
+      const clean = candidateUrl.trim().replace(/\/+$/, '');
+      if (!clean.startsWith('http')) return false;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const hRes = await fetch(`${clean}/api/health`, {
+          signal: controller.signal,
+          headers: { 'Bypass-Tunnel-Reminder': 'true' },
+        });
+        clearTimeout(timeoutId);
+        if (hRes.ok) {
+          console.log('[LoginScreen] Verified active live server URL:', clean);
+          setServerBase(clean);
+          return true;
+        }
+      } catch (err) {
+        console.warn('[LoginScreen] URL health check failed:', clean);
+      }
+      return false;
+    };
+
+    const fetchServerUrl = async () => {
+      // 1. Try raw GitHub file with timestamp cache-buster
+      try {
+        const res = await fetch(`https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=${Date.now()}`);
+        const txt = await res.text();
+        const success = await testAndSetServer(txt);
+        if (success) return;
+      } catch (e) {
+        console.log('[LoginScreen] Raw GitHub fetch error:', e);
+      }
+
+      // 2. Fallback to GitHub API (bypasses raw CDN cache)
+      try {
+        const apiRes = await fetch('https://api.github.com/repos/janmejayikontel/jan-sunwai/contents/server-url.txt', {
+          headers: { 'Accept': 'application/vnd.github.v3+json' },
+        });
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          if (apiData.content) {
+            // Base64 decode
+            const decoded = typeof atob === 'function' 
+              ? atob(apiData.content.replace(/\s/g, '')) 
+              : Buffer.from(apiData.content, 'base64').toString('utf-8');
+            const success = await testAndSetServer(decoded);
+            if (success) return;
           }
         }
-      })
-      .catch((e) => console.log('[LoginScreen] Using default server URL:', e.message));
+      } catch (apiErr) {
+        console.warn('[LoginScreen] GitHub API fetch error:', apiErr);
+      }
+
+      // 3. Fallback: test local default URL
+      testAndSetServer(DEFAULT_SERVER_URL);
+    };
+
+    fetchServerUrl();
   }, []);
 
   const handleVerifyAdminPin = () => {
