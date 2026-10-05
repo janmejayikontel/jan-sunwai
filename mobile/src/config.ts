@@ -10,7 +10,7 @@
 
 import { Platform } from 'react-native';
 
-export const DEFAULT_SERVER_URL = 'https://resource-bald-probe-optional.trycloudflare.com';
+export const DEFAULT_SERVER_URL = 'https://mood-qualify-abstract-tea.trycloudflare.com';
 
 
 export const CONFIG = {
