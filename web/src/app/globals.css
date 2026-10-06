@@ -766,9 +766,29 @@ h1, h2, h3, h4, h5, h6 {
   line-height: 1.25;
 }
 
-/* ─── Video Room Container ─────────────────────────────────── */
+/* ─── Dedicated Fullscreen Video Hearing Room Layout ───────── */
+.video-hearing-fullscreen-container {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 1000;
+  background: #050d1a;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ─── Video Room Container (Fallback / Inner) ─────────────── */
 .video-room-container {
-  height: calc(100vh - 60px);
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
   background: var(--navy-950);
   border-radius: var(--radius-xl);
   overflow: hidden;
@@ -784,10 +804,13 @@ h1, h2, h3, h4, h5, h6 {
   height: 100% !important;
   flex: 1 !important;
   min-height: 0 !important;
-  gap: 6px !important;
-  padding: 6px !important;
+  gap: 8px !important;
+  padding: 8px !important;
   box-sizing: border-box !important;
   overflow: hidden !important;
+  align-content: center !important;
+  justify-content: center !important;
+  place-items: center !important;
 }
 
 /* 1 participant */
@@ -809,7 +832,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-/* 3 or 4 participants: 2x2 grid so everyone is always visible on one screen */
+/* 3 or 4 participants: 2x2 balanced grid */
 .jan-sunwai-all-participants-grid[data-count="3"],
 .jan-sunwai-all-participants-grid[data-count="4"] {
   grid-template-columns: 1fr 1fr !important;
@@ -830,11 +853,61 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
-/* Permanent Horizontal Bottom Controls Bar (NEVER in a circle) */
+/* Participant tile styling inside grid */
+.jan-sunwai-all-participants-grid .lk-participant-tile {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  background-color: #0c1626 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45) !important;
+  position: relative !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-sizing: border-box !important;
+}
+
+/* On landscape screens (laptops & desktops), maintain a balanced aspect ratio so tiles don't turn into flat pancake strips */
+@media (min-width: 641px) {
+  .jan-sunwai-all-participants-grid .lk-participant-tile {
+    aspect-ratio: 16 / 9;
+    justify-self: center !important;
+    align-self: center !important;
+  }
+}
+
+/* Participant video element */
+.jan-sunwai-all-participants-grid video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center !important;
+  border-radius: 12px !important;
+  background-color: #050b14 !important;
+}
+
+/* Participant placeholder (audio-only, avatar) */
+.jan-sunwai-all-participants-grid .lk-participant-placeholder {
+  background: radial-gradient(circle at center, #1b263b 0%, #0a1120 100%) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.jan-sunwai-all-participants-grid .lk-participant-placeholder svg {
+  max-height: 64px !important;
+  max-width: 64px !important;
+  opacity: 0.7 !important;
+}
+
+/* Permanent Horizontal Bottom Controls Bar (NEVER cut off by taskbars) */
 #jan-sunwai-permanent-controls {
   position: relative !important;
   width: 100% !important;
-  height: 64px !important;
+  height: 56px !important;
   flex-shrink: 0 !important;
   background: rgba(10, 20, 38, 0.98) !important;
   backdrop-filter: blur(20px) !important;
@@ -844,8 +917,9 @@ h1, h2, h3, h4, h5, h6 {
   flex-wrap: nowrap !important;
   justify-content: center !important;
   align-items: center !important;
-  gap: 10px !important;
-  padding: 6px 12px !important;
+  gap: 8px !important;
+  padding: 4px 12px 6px 12px !important;
+  margin-bottom: max(2px, env(safe-area-inset-bottom)) !important;
   box-sizing: border-box !important;
   border-radius: 0 !important;
   transform: none !important;
@@ -870,14 +944,45 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center !important;
   justify-content: center !important;
   gap: 2px !important;
-  min-width: 64px !important;
-  max-width: 88px !important;
+  min-width: 60px !important;
+  max-width: 84px !important;
   flex: 1 !important;
-  height: 48px !important;
-  padding: 4px 8px !important;
+  height: 44px !important;
+  padding: 3px 6px !important;
   border-radius: 10px !important;
   white-space: nowrap !important;
-  font-size: 0.72rem !important;
+  font-size: 0.7rem !important;
+  box-sizing: border-box !important;
+}
+
+/* Laptops & screens with constrained vertical height (e.g. 1366x768 or 1080p @ 125%/150% scaling) */
+@media (max-height: 768px) {
+  #jan-sunwai-permanent-controls {
+    height: 48px !important;
+    padding: 2px 8px 4px 8px !important;
+    gap: 6px !important;
+  }
+
+  #jan-sunwai-permanent-controls button {
+    height: 38px !important;
+    min-width: 52px !important;
+    max-width: 76px !important;
+    font-size: 0.66rem !important;
+    padding: 2px 4px !important;
+  }
+
+  .dynacast-badge-desktop {
+    display: none !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .gov-badge-desktop {
+    display: none !important;
+  }
+  .dynacast-badge-desktop {
+    display: none !important;
+  }
 }
 
 .video-room-header {
@@ -886,7 +991,7 @@ h1, h2, h3, h4, h5, h6 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 18px;
+  padding: 8px 16px;
   background: rgba(10, 20, 38, 0.98);
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   color: white;
@@ -896,7 +1001,7 @@ h1, h2, h3, h4, h5, h6 {
 .video-room-header__title {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
 }
 
 .video-room-header__rec {
@@ -1296,16 +1401,16 @@ h1, h2, h3, h4, h5, h6 {
   }
 
   #jan-sunwai-permanent-controls {
-    height: 60px !important;
-    padding: 6px 8px !important;
-    gap: 8px !important;
+    height: 54px !important;
+    padding: 3px 6px max(4px, env(safe-area-inset-bottom)) 6px !important;
+    gap: 6px !important;
   }
 
   #jan-sunwai-permanent-controls button {
-    min-width: 60px !important;
-    height: 46px !important;
-    padding: 3px 6px !important;
-    font-size: 0.68rem !important;
+    min-width: 52px !important;
+    height: 40px !important;
+    padding: 2px 4px !important;
+    font-size: 0.66rem !important;
     border-radius: 8px !important;
     touch-action: manipulation !important;
   }

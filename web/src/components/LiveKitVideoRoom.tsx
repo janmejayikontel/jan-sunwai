@@ -307,6 +307,14 @@ interface LiveKitVideoRoomProps {
   callId?: string;
   /** Backend API base URL */
   apiBase?: string;
+  /** Auto recording enabled indicator */
+  autoRecord?: boolean;
+  /** Whether the user is an officer */
+  isOfficer?: boolean;
+  /** Hearing participants count */
+  hearingParticipantsCount?: number;
+  /** Callback when opening attendees list */
+  onOpenAttendees?: () => void;
 }
 
 // ─── Permanent Meeting Control Bar (Never Hides) ───────────────
@@ -1509,7 +1517,7 @@ function PermanentControlBar({
         id="jan-sunwai-permanent-controls"
         style={{
           width: "100%",
-          height: "64px",
+          height: "56px",
           flexShrink: 0,
           background: "rgba(10, 20, 38, 0.98)",
           backdropFilter: "blur(20px)",
@@ -1519,8 +1527,8 @@ function PermanentControlBar({
           flexWrap: "nowrap",
           justifyContent: "center",
           alignItems: "center",
-          gap: "10px",
-          padding: "6px 12px",
+          gap: "8px",
+          padding: "4px 12px",
           boxSizing: "border-box",
           zIndex: 50,
           boxShadow: "0 -4px 20px rgba(0, 0, 0, 0.5)",
@@ -2398,62 +2406,115 @@ function PermanentControlBar({
   );
 }
 
-// ─── Large 1000+ Participant Meeting Header Banner ────────────
+// ─── Unified Sleek Hearing Room Header Banner (Single 42px Row) ───
 
-function LargeMeetingTopBar({ roomName }: { roomName: string }) {
+function LargeMeetingTopBar({
+  roomName,
+  autoRecord,
+  isOfficer,
+  hearingParticipantsCount,
+  onOpenAttendees,
+}: {
+  roomName: string;
+  autoRecord?: boolean;
+  isOfficer?: boolean;
+  hearingParticipantsCount?: number;
+  onOpenAttendees?: () => void;
+}) {
   const participants = useParticipants();
   // Display dynamic connected count (base LiveKit participants + active multi-device count)
   const displayCount = Math.max(participants.length, 1);
 
   return (
     <div
+      className="video-hearing-unified-topbar"
       style={{
-        padding: "6px 14px",
-        background: "linear-gradient(90deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.92))",
+        height: "42px",
+        minHeight: "42px",
+        flexShrink: 0,
+        padding: "0 14px",
+        background: "rgba(10, 20, 38, 0.98)",
+        backdropFilter: "blur(20px)",
         borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
         display: "flex",
-        flexWrap: "wrap",
+        flexWrap: "nowrap",
         alignItems: "center",
         justifyContent: "space-between",
         gap: "10px",
-        zIndex: 30,
+        zIndex: 40,
         fontSize: "0.8rem",
         color: "#e2e8f0",
+        boxSizing: "border-box",
+        overflowX: "auto",
+        overflowY: "hidden",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 700, color: "#f8fafc" }}>
-          <span>🏛️ Hearing Room:</span>
-          <span style={{ color: "#38bdf8", fontFamily: "monospace" }}>{roomName}</span>
+      {/* Left: Emblem, Hearing Title & Case ID */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+        <span style={{ fontSize: "1.1rem" }}>🏛️</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <span style={{ fontWeight: 800, color: "#ffffff", fontSize: "0.86rem", letterSpacing: "0.2px" }}>
+            Jan Sunwai Hearing
+          </span>
+          <span
+            style={{
+              color: "#38bdf8",
+              fontFamily: "monospace",
+              fontWeight: 700,
+              fontSize: "0.8rem",
+              background: "rgba(56, 189, 248, 0.12)",
+              padding: "2px 7px",
+              borderRadius: "5px",
+              border: "1px solid rgba(56, 189, 248, 0.3)",
+            }}
+          >
+            {roomName}
+          </span>
         </div>
+        <span
+          className="gov-badge-desktop"
+          style={{
+            fontSize: "0.68rem",
+            color: "#94a3b8",
+            background: "rgba(255, 255, 255, 0.06)",
+            padding: "2px 7px",
+            borderRadius: "10px",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+          }}
+        >
+          राजस्थान सरकार
+        </span>
+      </div>
 
-        {/* 1000+ Concurrent Capacity Badge */}
+      {/* Center: Live Status & Security Badges */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+        {/* Connected Count Badge */}
         <div
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: "6px",
-            background: "rgba(16, 185, 129, 0.18)",
+            gap: "5px",
+            background: "rgba(16, 185, 129, 0.16)",
             border: "1px solid rgba(16, 185, 129, 0.4)",
             borderRadius: "20px",
-            padding: "2px 10px",
+            padding: "2px 9px",
             color: "#34d399",
             fontWeight: 700,
-            fontSize: "0.75rem",
+            fontSize: "0.74rem",
           }}
         >
           <span
             style={{
-              width: "8px",
-              height: "8px",
+              width: "7px",
+              height: "7px",
               borderRadius: "50%",
               background: "#10b981",
-              boxShadow: "0 0 8px #10b981",
+              boxShadow: "0 0 6px #10b981",
               display: "inline-block",
             }}
           />
-          <Users size={13} />
-          <span>{displayCount >= 1 ? `${displayCount.toLocaleString()} Connected (1,500 Max Cap)` : "1,000+ Capacity"}</span>
+          <Users size={12} />
+          <span>{displayCount} Connected (1,500 Max Cap)</span>
         </div>
 
         {/* E2EE Encryption Badge */}
@@ -2461,26 +2522,91 @@ function LargeMeetingTopBar({ roomName }: { roomName: string }) {
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: "5px",
-            background: "rgba(59, 130, 246, 0.15)",
+            gap: "4px",
+            background: "rgba(59, 130, 246, 0.14)",
             border: "1px solid rgba(59, 130, 246, 0.35)",
             borderRadius: "20px",
-            padding: "2px 10px",
+            padding: "2px 9px",
             color: "#93c5fd",
             fontWeight: 600,
-            fontSize: "0.74rem",
+            fontSize: "0.72rem",
           }}
         >
-          <Lock size={12} style={{ color: "#60a5fa" }} />
+          <Lock size={11} style={{ color: "#60a5fa" }} />
           <span>256-Bit E2EE Active</span>
+        </div>
+
+        {/* SFU Dynacast Badge */}
+        <div
+          className="dynacast-badge-desktop"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "4px",
+            fontSize: "0.72rem",
+            color: "#94a3b8",
+            padding: "2px 6px",
+          }}
+        >
+          <Sparkles size={11} style={{ color: "#fbbf24" }} />
+          <span>SFU Dynacast</span>
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.74rem", color: "#94a3b8" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-          <Sparkles size={12} style={{ color: "#fbbf24" }} />
-          <span>SFU Dynacast & Adaptive Bandwidth</span>
-        </span>
+      {/* Right: REC Indicator & Officer Attendees Button */}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+        {autoRecord && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              color: "#f87171",
+              fontSize: "0.74rem",
+              fontWeight: 700,
+              background: "rgba(239, 68, 68, 0.15)",
+              border: "1px solid rgba(239, 68, 68, 0.35)",
+              padding: "2px 8px",
+              borderRadius: "6px",
+            }}
+          >
+            <span
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                background: "#ef4444",
+                boxShadow: "0 0 6px #ef4444",
+                display: "inline-block",
+                animation: "pulse-dot 1.5s ease-in-out infinite",
+              }}
+            />
+            <span>REC</span>
+          </div>
+        )}
+
+        {isOfficer && onOpenAttendees && (
+          <button
+            type="button"
+            onClick={onOpenAttendees}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              background: "rgba(255, 255, 255, 0.08)",
+              border: "1px solid rgba(255, 255, 255, 0.2)",
+              color: "#f8fafc",
+              borderRadius: "6px",
+              padding: "3px 10px",
+              fontSize: "0.74rem",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            <Users size={13} />
+            <span>Attendees ({hearingParticipantsCount || displayCount})</span>
+          </button>
+        )}
       </div>
     </div>
   );
@@ -2499,6 +2625,10 @@ export default function LiveKitVideoRoom({
   currentUser,
   callId,
   apiBase,
+  autoRecord,
+  isOfficer,
+  hearingParticipantsCount,
+  onOpenAttendees,
 }: LiveKitVideoRoomProps) {
   const wsUrl = serverUrl.startsWith("http")
     ? serverUrl.replace("http://", "ws://").replace("https://", "wss://")
@@ -2536,8 +2666,14 @@ export default function LiveKitVideoRoom({
         }}
         onDisconnected={onDisconnected}
       >
-        {/* Top 1000+ Scale & Encryption Header */}
-        <LargeMeetingTopBar roomName={roomName} />
+        {/* Single Unified Sleek Top Bar (Only 42px, No Redundant Headers) */}
+        <LargeMeetingTopBar
+          roomName={roomName}
+          autoRecord={autoRecord}
+          isOfficer={isOfficer}
+          hearingParticipantsCount={hearingParticipantsCount}
+          onOpenAttendees={onOpenAttendees}
+        />
 
         {/* All participants displayed on ONE single screen without pagination */}
         <AllParticipantsGrid />
