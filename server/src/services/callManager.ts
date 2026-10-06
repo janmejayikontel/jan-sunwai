@@ -591,8 +591,10 @@ export async function addParticipantToCall(
  * and notify all participants.
  */
 export async function endCall(callId: string): Promise<CallSession | null> {
-  const call = activeCalls.get(callId);
+  const call = getCall(callId);
   if (!call) return null;
+
+  const actualCallId = call.id;
 
   // Stop recording if active
   if (call.egressId) {
@@ -648,7 +650,7 @@ export async function endCall(callId: string): Promise<CallSession | null> {
     if (p.phone) {
       sendToClient(p.phone, {
         type: 'call_ended',
-        callId,
+        callId: actualCallId,
         data: {
           grievanceId: call.grievanceId,
           duration: call.durationSeconds,
@@ -658,13 +660,16 @@ export async function endCall(callId: string): Promise<CallSession | null> {
   });
 
   // Clear ring timeout
-  const timeout = ringTimeouts.get(callId);
+  const timeout = ringTimeouts.get(actualCallId);
   if (timeout) {
     clearTimeout(timeout);
-    ringTimeouts.delete(callId);
+    ringTimeouts.delete(actualCallId);
   }
 
-  console.log(`[CallManager] Call ended: ${callId} (duration: ${call.durationSeconds}s)`);
+  // Delete call from activeCalls map so no future poll can match it
+  activeCalls.delete(actualCallId);
+
+  console.log(`[CallManager] Call ended: ${actualCallId} (duration: ${call.durationSeconds}s)`);
   return call;
 }
 

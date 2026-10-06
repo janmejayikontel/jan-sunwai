@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -88,9 +89,21 @@ class JanSunwaiVoIPService : Service() {
                 activeVibrator?.cancel()
             } catch (e: Throwable) {}
 
-            // 3. Immediately cancel NOTIFICATION_ID_CALL via NotificationManager
+            // 3. Immediately reset audio manager and abandon audio focus
             val ctx = context ?: instance?.applicationContext
             if (ctx != null) {
+                try {
+                    val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                    am?.mode = AudioManager.MODE_NORMAL
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).build()
+                        am?.abandonAudioFocusRequest(req)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        am?.abandonAudioFocus(null)
+                    }
+                } catch (e: Throwable) {}
+
                 try {
                     val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     nm.cancel(NOTIFICATION_ID_CALL)
@@ -124,12 +137,21 @@ class JanSunwaiVoIPService : Service() {
             }
         }
 
-        fun dismissCall(callId: String?) {
-            if (!callId.isNullOrBlank()) {
-                val c = callId.trim().uppercase()
-                recentlyDismissedCallIds[c] = System.currentTimeMillis()
-                Log.i(TAG, "Dismissed callId temporarily suppressed: $c")
+        fun dismissCall(callId: String?, grievanceId: String? = null, roomName: String? = null) {
+            val now = System.currentTimeMillis()
+            fun suppress(id: String?, durationMs: Long) {
+                if (!id.isNullOrBlank()) {
+                    val c = id.trim().uppercase()
+                    recentlyDismissedCallIds[c] = now + durationMs
+                    Log.i(TAG, "Dismissed ID suppressed for ${durationMs}ms: $c")
+                }
             }
+            // Suppress exact callId for 15 minutes (call session completed)
+            suppress(callId, 15 * 60 * 1000L)
+            // Suppress grievanceId and roomName for 60 seconds
+            suppress(grievanceId, 60 * 1000L)
+            suppress(roomName, 60 * 1000L)
+
             lastReceivedCallData = null
             // DO NOT set isInCall = false here! If user is in a call, isInCall must stay true!
             try {
@@ -149,14 +171,14 @@ class JanSunwaiVoIPService : Service() {
             stopActiveRinging()
         }
 
-        fun isCallDismissed(callId: String?, grievanceId: String? = null): Boolean {
+        fun isCallDismissed(callId: String?, grievanceId: String? = null, roomName: String? = null): Boolean {
             val now = System.currentTimeMillis()
             fun checkId(id: String?): Boolean {
                 if (id.isNullOrBlank()) return false
                 val c = id.trim().uppercase()
-                val ts = recentlyDismissedCallIds[c]
-                if (ts != null) {
-                    if (now - ts < 20000L) {
+                val expiry = recentlyDismissedCallIds[c]
+                if (expiry != null) {
+                    if (now < expiry) {
                         return true
                     } else {
                         recentlyDismissedCallIds.remove(c)
@@ -164,7 +186,7 @@ class JanSunwaiVoIPService : Service() {
                 }
                 return false
             }
-            return checkId(callId) || checkId(grievanceId)
+            return checkId(callId) || checkId(grievanceId) || checkId(roomName)
         }
 
         val sharedHttpClient: OkHttpClient by lazy {
@@ -456,21 +478,14 @@ class JanSunwaiVoIPService : Service() {
             }
             notificationManager.createNotificationChannel(standbyChannel)
 
-            // 2. Incoming call channel (high importance with ringtone and vibration for instant Heads-Up popup)
-            val ringtoneUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            val audioAttributes = AudioAttributes.Builder()
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                .build()
-
+            // 2. Incoming call channel (high importance for instant Heads-Up popup, silent audio so MediaPlayer has 100% clean stop control)
             val callChannel = NotificationChannel(
                 CALL_CHANNEL_ID,
                 "Incoming Video Hearings",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Alerts for incoming official video hearings from the District Collector"
-                setSound(ringtoneUri, audioAttributes)
+                setSound(null, null)
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 1000, 1000, 1000)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
@@ -694,8 +709,10 @@ class JanSunwaiVoIPService : Service() {
                     val callObj = json.optJSONObject("incomingCall")
                     if (callObj != null && !isCallRinging && !isInCall) {
                         val callId = callObj.optString("callId", "")
-                        if (callId.isNotEmpty() && isCallDismissed(callId)) {
-                            Log.i(TAG, "Ignoring incoming call in background poll — call $callId was already dismissed")
+                        val grievanceId = callObj.optString("grievanceId", "")
+                        val roomName = callObj.optString("roomName", "")
+                        if (isCallDismissed(callId, grievanceId, roomName)) {
+                            Log.i(TAG, "Ignoring incoming call in background poll — call was already dismissed ($callId / $grievanceId)")
                         } else {
                             handler.post {
                                 if (!isInCall) {
@@ -726,6 +743,7 @@ class JanSunwaiVoIPService : Service() {
             val callerName = json.optString("callerName", "District Collector")
             val callerDesig = json.optString("callerDesignation", "Presiding Officer")
             val title = json.optString("title", "Jan Sunwai Video Hearing")
+            val roomName = json.optString("roomName", "")
 
             if (isCallRinging && currentRingingCallId == callId && callId.isNotEmpty()) {
                 Log.i(TAG, "handleIncomingCall: Already ringing for call $callId")
@@ -737,8 +755,8 @@ class JanSunwaiVoIPService : Service() {
                 return
             }
 
-            if (callId.isNotEmpty() && isCallDismissed(callId)) {
-                Log.i(TAG, "handleIncomingCall: Aborting ring — call $callId was dismissed")
+            if (isCallDismissed(callId, grievanceId, roomName)) {
+                Log.i(TAG, "handleIncomingCall: Aborting ring — call $callId / $grievanceId was dismissed")
                 return
             }
 
@@ -902,7 +920,7 @@ class JanSunwaiVoIPService : Service() {
                 .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setSound(ringtoneUri)
+                .setSound(null)
                 .setFullScreenIntent(fullScreenPendingIntent, true)
                 .setContentIntent(fullScreenPendingIntent)
                 .setOngoing(true)
@@ -1011,6 +1029,13 @@ class JanSunwaiVoIPService : Service() {
         try {
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             audioManager?.mode = AudioManager.MODE_NORMAL
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT).build()
+                audioManager?.abandonAudioFocusRequest(req)
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager?.abandonAudioFocus(null)
+            }
         } catch (e: Throwable) {}
 
         // 2. Synchronously cancel vibrator immediately
@@ -1120,7 +1145,6 @@ class JanSunwaiVoIPService : Service() {
 
         try {
             webSocket?.close(1000, "Service stopped")
-            okHttpClient?.dispatcher?.executorService?.shutdown()
         } catch (e: Exception) {
             // ignore
         }

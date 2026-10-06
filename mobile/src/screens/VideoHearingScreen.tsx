@@ -239,15 +239,19 @@ const RoomContent: React.FC<{
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
-      NativeModules.JanSunwaiVoIP?.setInCall?.(false);
       if (callId) {
         NativeModules.JanSunwaiVoIP?.dismissCall?.(callId);
       }
       if (grievanceId) {
         NativeModules.JanSunwaiVoIP?.dismissCall?.(grievanceId);
       }
+      if (roomName) {
+        NativeModules.JanSunwaiVoIP?.dismissCall?.(roomName);
+      }
+      NativeModules.JanSunwaiVoIP?.stopRinging?.();
+      NativeModules.JanSunwaiVoIP?.setInCall?.(false);
     };
-  }, [callId, grievanceId]);
+  }, [callId, grievanceId, roomName]);
 
   // Sync live remote members list
   useEffect(() => {
@@ -705,14 +709,17 @@ const RoomContent: React.FC<{
   const handleExitCall = () => {
     isExitingRef.current = true;
     try {
-      NativeModules.JanSunwaiVoIP?.stopRinging?.();
-      NativeModules.JanSunwaiVoIP?.setInCall?.(false);
       if (effectiveCallId) {
         NativeModules.JanSunwaiVoIP?.dismissCall?.(effectiveCallId);
+      }
+      if (grievanceId) {
+        NativeModules.JanSunwaiVoIP?.dismissCall?.(grievanceId);
       }
       if (roomName) {
         NativeModules.JanSunwaiVoIP?.dismissCall?.(roomName);
       }
+      NativeModules.JanSunwaiVoIP?.stopRinging?.();
+      NativeModules.JanSunwaiVoIP?.setInCall?.(false);
     } catch (e) {}
     onLeave();
   };

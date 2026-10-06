@@ -70,6 +70,7 @@ object CallOverlayManager {
                 }
 
                 val grievanceId = json.optString("grievanceId", "Hearing")
+                val roomName = json.optString("roomName", "")
                 val effectiveCallId = if (callId.isNotEmpty() && callId != "undefined" && callId != "null") {
                     callId
                 } else {
@@ -298,9 +299,9 @@ object CallOverlayManager {
                             IncomingCallActivity.activeInstance?.finishAndRemoveTask()
                             IncomingCallActivity.activeInstance?.finish()
                         } catch (e: Exception) {}
-                        JanSunwaiVoIPService.dismissCall(callId)
-                        if (effectiveCallId.isNotEmpty() && effectiveCallId != callId) {
-                            JanSunwaiVoIPService.dismissCall(effectiveCallId)
+                        JanSunwaiVoIPService.dismissCall(effectiveCallId, grievanceId, roomName)
+                        if (callId.isNotEmpty() && callId != effectiveCallId) {
+                            JanSunwaiVoIPService.dismissCall(callId, grievanceId, roomName)
                         }
                         JanSunwaiVoIPService.stopActiveRinging()
 
@@ -359,7 +360,7 @@ object CallOverlayManager {
                             IncomingCallActivity.activeInstance?.finish()
                         } catch (e: Exception) {}
 
-                        JanSunwaiVoIPService.dismissCall(effectiveCallId)
+                        JanSunwaiVoIPService.dismissCall(effectiveCallId, grievanceId, roomName)
                         JanSunwaiVoIPService.setInCallState(true)
                         JanSunwaiVoIPService.stopActiveRinging(context)
                         JanSunwaiVoIPService.lastReceivedCallData = null

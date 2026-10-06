@@ -247,13 +247,18 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun dismissCall(callId: String?, promise: Promise) {
+        dismissCallWithDetails(callId, null, null, promise)
+    }
+
+    @ReactMethod
+    fun dismissCallWithDetails(callId: String?, grievanceId: String?, roomName: String?, promise: Promise) {
         try {
             CallOverlayManager.dismiss(reactContext)
             try {
                 IncomingCallActivity.activeInstance?.finishAndRemoveTask()
                 IncomingCallActivity.activeInstance?.finish()
             } catch (e: Exception) {}
-            JanSunwaiVoIPService.dismissCall(callId)
+            JanSunwaiVoIPService.dismissCall(callId, grievanceId, roomName)
             try {
                 val intent = Intent(reactContext, JanSunwaiVoIPService::class.java).apply {
                     action = JanSunwaiVoIPService.ACTION_DISMISS_CALL
@@ -290,9 +295,27 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
         // This prevents AppState.change triggering re-show of popup after user accepted
         val lastCall = if (JanSunwaiVoIPService.isInCall) null else JanSunwaiVoIPService.lastReceivedCallData
 
-        val callData = savedCall ?: pendingIncomingCallJson ?: lastCall
+        val rawCallData = savedCall ?: pendingIncomingCallJson ?: lastCall
         pendingIncomingCallJson = null
         JanSunwaiVoIPService.lastReceivedCallData = null // One-shot consumption
+
+        // Filter out if this call was already dismissed
+        val callData = if (rawCallData != null) {
+            try {
+                val j = org.json.JSONObject(rawCallData)
+                val cId = j.optString("callId", "")
+                val gId = j.optString("grievanceId", "")
+                val rName = j.optString("roomName", "")
+                if (JanSunwaiVoIPService.isCallDismissed(cId, gId, rName)) {
+                    null
+                } else {
+                    rawCallData
+                }
+            } catch (e: Exception) {
+                rawCallData
+            }
+        } else null
+
         promise.resolve(callData)
     }
 }

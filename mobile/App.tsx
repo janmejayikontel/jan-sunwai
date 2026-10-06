@@ -76,15 +76,22 @@ export default function App() {
   }, []);
 
   // ─── 0b. Silence Ringtone & Lock In-Call State when Entering or Leaving a Hearing ─
+  const prevInHearingRef = useRef<boolean>(false);
   useEffect(() => {
-    Vibration.cancel();
-    JanSunwaiVoIP?.stopRinging?.();
-    if (activeHearing) {
+    const isCurrentlyInCall = Boolean(activeHearing || isConnectingHearing);
+    if (isCurrentlyInCall) {
+      Vibration.cancel();
+      JanSunwaiVoIP?.stopRinging?.();
       JanSunwaiVoIP?.setInCall?.(true);
-    } else {
+      prevInHearingRef.current = true;
+    } else if (prevInHearingRef.current) {
+      // Only set inCall=false when user actually leaves an active hearing!
+      Vibration.cancel();
+      JanSunwaiVoIP?.stopRinging?.();
       JanSunwaiVoIP?.setInCall?.(false);
+      prevInHearingRef.current = false;
     }
-  }, [activeHearing]);
+  }, [activeHearing, isConnectingHearing]);
 
   // ─── 1. Persistent Session Restoration on App Launch ─────────
   useEffect(() => {
@@ -284,6 +291,26 @@ export default function App() {
     // If pre-fetched LiveKit token exists from IncomingCallActivity, enter room in 0ms!
     if (target.livekitToken && target.livekitRoomName) {
       console.log('[App] Entering meeting room immediately with pre-fetched LiveKit token');
+      // Fire-and-forget accept notification to server so backend marks participant ringStatus = 'accepted'
+      try {
+        const base = cleanServerUrl(serverUrl || target.serverUrl || DEFAULT_SERVER_URL);
+        const rawId = (target.callId || '').toString().trim();
+        const effectiveId = (rawId && rawId !== 'undefined' && rawId !== 'null') ? rawId : (target.grievanceId || target.roomName || 'respond');
+        fetch(`${base}/api/calls/${encodeURIComponent(effectiveId)}/respond`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
+          body: JSON.stringify({
+            phone: user?.phone || target.userPhone || target.phone,
+            action: 'accept',
+            callId: rawId && rawId !== 'undefined' ? rawId : undefined,
+            grievanceId: target.grievanceId,
+            roomName: target.livekitRoomName,
+          }),
+        }).catch((e) => console.warn('[App] Background accept notify error:', e));
+      } catch (err) {
+        // silent
+      }
+
       setIncomingCall(null);
       setIsConnectingHearingAndRef(false);
       setActiveHearingAndRef({
@@ -372,16 +399,13 @@ export default function App() {
   };
 
   const isDismissedCall = (callId?: string, grievanceId?: string, roomName?: string): boolean => {
-    // Check all keys — callId (with 15s TTL), grievanceId, and roomName — so the
-    // initiating officer never sees their own call ringing on their device.
     const keysToCheck = [callId, grievanceId, roomName].filter(Boolean) as string[];
+    const now = Date.now();
     for (const key of keysToCheck) {
-      // Check the permanent dismissed set (populated when officer initiates a call)
       if (dismissedCallIdsRef.current.has(key)) return true;
-      // Check the time-limited dismissed map (15s TTL for accepted/declined calls)
-      const ts = dismissedCallTimesRef.current.get(key);
-      if (ts) {
-        if (Date.now() - ts < 15000) return true;
+      const expiry = dismissedCallTimesRef.current.get(key);
+      if (expiry) {
+        if (now < expiry) return true;
         dismissedCallTimesRef.current.delete(key);
       }
     }
@@ -394,10 +418,20 @@ export default function App() {
     const grievanceId = incomingCall.grievanceId;
     const roomName = incomingCall.roomName;
 
-    if (targetCallId && !targetCallId.startsWith('JS-') && !targetCallId.startsWith('RAJ-')) {
-      dismissedCallTimesRef.current.set(targetCallId, Date.now());
+    const now = Date.now();
+    if (targetCallId) {
+      dismissedCallTimesRef.current.set(targetCallId, now + 15 * 60 * 1000);
+      JanSunwaiVoIP?.dismissCall?.(targetCallId);
     }
-    JanSunwaiVoIP?.dismissCall?.(targetCallId || null);
+    if (grievanceId) {
+      dismissedCallTimesRef.current.set(grievanceId, now + 60 * 1000);
+      JanSunwaiVoIP?.dismissCall?.(grievanceId);
+    }
+    if (roomName) {
+      dismissedCallTimesRef.current.set(roomName, now + 60 * 1000);
+      JanSunwaiVoIP?.dismissCall?.(roomName);
+    }
+
     Vibration.cancel();
     JanSunwaiVoIP?.stopRinging?.();
 
@@ -427,21 +461,31 @@ export default function App() {
     // 1. Immediately silence any ringing sound or vibration
     Vibration.cancel();
     JanSunwaiVoIP?.stopRinging?.();
-    JanSunwaiVoIP?.setInCall?.(false);
     setIncomingCall(null);
 
+    const callId = activeHearing?.callId;
+    const grievanceId = activeHearing?.grievanceId;
+    const roomName = activeHearing?.roomName;
+
+    const now = Date.now();
+    if (callId) {
+      dismissedCallTimesRef.current.set(callId, now + 15 * 60 * 1000);
+      JanSunwaiVoIP?.dismissCall?.(callId);
+    }
+    if (grievanceId) {
+      dismissedCallTimesRef.current.set(grievanceId, now + 60 * 1000);
+      JanSunwaiVoIP?.dismissCall?.(grievanceId);
+    }
+    if (roomName) {
+      dismissedCallTimesRef.current.set(roomName, now + 60 * 1000);
+      JanSunwaiVoIP?.dismissCall?.(roomName);
+    }
+
+    JanSunwaiVoIP?.stopRinging?.();
+    JanSunwaiVoIP?.setInCall?.(false);
+
     if (activeHearing) {
-      const callId = activeHearing.callId;
-      const grievanceId = activeHearing.grievanceId;
-      const roomName = activeHearing.roomName;
       const base = cleanServerUrl(serverUrl);
-
-      // Only suppress this specific call session ID for 15s, never grievanceId
-      if (callId && !callId.startsWith('JS-') && !callId.startsWith('RAJ-')) {
-        dismissedCallTimesRef.current.set(callId, Date.now());
-      }
-      JanSunwaiVoIP?.dismissCall?.(callId || null);
-
       const targetLeaveId = callId || grievanceId || roomName;
       if (targetLeaveId && currentUser?.phone) {
         console.log('[App] Participant left hearing. Leaving call session:', targetLeaveId);
@@ -460,6 +504,7 @@ export default function App() {
         }
       }
     }
+
     JanSunwaiVoIP?.stopRinging?.();
     setIncomingCall(null);
     setActiveHearingAndRef(null);

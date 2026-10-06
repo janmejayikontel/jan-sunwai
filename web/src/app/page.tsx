@@ -990,11 +990,45 @@ export default function JanSunwaiPortalPage() {
               callId={livekitConnection.callId}
               currentUser={currentUser}
               apiBase={API_BASE}
-              onDisconnected={() => {
+              onDisconnected={async () => {
+                const targetCallId = livekitConnection.callId || livekitConnection.roomName;
+                if (targetCallId) {
+                  try {
+                    const isOfficer = currentUser?.role === "officer" || currentUser?.role === "admin";
+                    const endpoint = isOfficer
+                      ? `${API_BASE}/api/calls/${encodeURIComponent(targetCallId)}/end`
+                      : `${API_BASE}/api/calls/${encodeURIComponent(targetCallId)}/leave`;
+                    await fetch(endpoint, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
+                      body: JSON.stringify({
+                        phone: currentUser?.phone,
+                        roomName: livekitConnection.roomName,
+                      }),
+                    });
+                  } catch (e) {
+                    console.warn("[Web] Error notifying server on disconnect:", e);
+                  }
+                }
                 setLivekitConnection(null);
                 showToast("Left the hearing room", "info");
               }}
-              onEndCall={() => {
+              onEndCall={async () => {
+                const targetCallId = livekitConnection.callId || livekitConnection.roomName;
+                if (targetCallId) {
+                  try {
+                    await fetch(`${API_BASE}/api/calls/${encodeURIComponent(targetCallId)}/end`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
+                      body: JSON.stringify({
+                        phone: currentUser?.phone,
+                        roomName: livekitConnection.roomName,
+                      }),
+                    });
+                  } catch (e) {
+                    console.warn("[Web] Error terminating hearing on server:", e);
+                  }
+                }
                 setLivekitConnection(null);
                 showToast("Hearing ended", "info");
               }}

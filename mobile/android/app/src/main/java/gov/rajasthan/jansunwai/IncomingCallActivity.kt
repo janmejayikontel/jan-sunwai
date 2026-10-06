@@ -44,6 +44,8 @@ class IncomingCallActivity : AppCompatActivity() {
     private var callDataStr: String = ""
     private var serverUrl: String = ""
     private var userPhone: String = ""
+    private var currentGrievanceId: String = ""
+    private var currentRoomName: String = ""
     private val handler = Handler(Looper.getMainLooper())
     private var isPulseActive = true
 
@@ -102,6 +104,8 @@ class IncomingCallActivity : AppCompatActivity() {
         }
 
         val grievanceId = json.optString("grievanceId", "Hearing")
+        currentGrievanceId = grievanceId
+        currentRoomName = json.optString("roomName", "")
         if (callId.isEmpty() || callId == "undefined" || callId == "null") {
             val fromJson = json.optString("callId", "")
             callId = if (fromJson.isNotEmpty() && fromJson != "undefined" && fromJson != "null") fromJson else grievanceId
@@ -366,7 +370,7 @@ class IncomingCallActivity : AppCompatActivity() {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             nm.cancel(JanSunwaiVoIPService.NOTIFICATION_ID_CALL)
         } catch (e: Throwable) {}
-        JanSunwaiVoIPService.dismissCall(callId)
+        JanSunwaiVoIPService.dismissCall(callId, currentGrievanceId, currentRoomName)
         JanSunwaiVoIPService.stopActiveRinging(this)
 
         // Send decline signal to backend in background thread
@@ -414,7 +418,7 @@ class IncomingCallActivity : AppCompatActivity() {
         } catch (e: Throwable) {}
         try { window.decorView.visibility = View.GONE } catch (e: Throwable) {}
         CallOverlayManager.dismiss(applicationContext)
-        JanSunwaiVoIPService.dismissCall(callId)
+        JanSunwaiVoIPService.dismissCall(callId, currentGrievanceId, currentRoomName)
         JanSunwaiVoIPService.setInCallState(true)
         JanSunwaiVoIPService.stopActiveRinging(this)
         JanSunwaiVoIPService.lastReceivedCallData = null
