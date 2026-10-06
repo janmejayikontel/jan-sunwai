@@ -54,7 +54,11 @@ import {
   Lock,
   Sparkles,
   SlidersHorizontal,
+  UserPlus,
+  PhoneCall,
+  Search,
 } from "lucide-react";
+import AddPersonModal from "./AddPersonModal";
 
 // Monkey-patch LocalParticipant prototype once so that:
 // 1. Microphone unmute works seamlessly with physical hardware audio capture.
@@ -511,6 +515,7 @@ function PermanentControlBar({
   roomName,
   apiBase,
   onEndCall,
+  onOpenAddPerson,
 }: {
   onLeave?: () => void;
   currentUser?: any;
@@ -518,6 +523,7 @@ function PermanentControlBar({
   roomName?: string;
   apiBase?: string;
   onEndCall?: () => void;
+  onOpenAddPerson?: () => void;
 }) {
   const room = useRoomContext();
   const allParticipants = useParticipants();
@@ -1747,6 +1753,39 @@ function PermanentControlBar({
         </button>
 
 
+        {/* 6. Officer Add Person / Participant Button */}
+        {(currentUser?.role === "officer" || currentUser?.role === "admin") && onOpenAddPerson && (
+          <button
+            type="button"
+            id="btn-control-add-person"
+            onClick={onOpenAddPerson}
+            style={{
+              display: "inline-flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "2px",
+              minWidth: "60px",
+              maxWidth: "84px",
+              flex: 1,
+              height: "44px",
+              padding: "3px 6px",
+              borderRadius: "10px",
+              background: "rgba(16, 185, 129, 0.2)",
+              border: "1px solid rgba(16, 185, 129, 0.5)",
+              color: "#34d399",
+              fontWeight: 700,
+              fontSize: "0.7rem",
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+            title="Add Officer / Citizen to Hearing (व्यक्ति जोड़ें)"
+          >
+            <UserPlus size={18} />
+            <span>Add Person</span>
+          </button>
+        )}
+
         {/* 7. Officer / Magistrate / Super Admin Moderation Button */}
         {(currentUser?.role === "officer" || currentUser?.role === "admin") && (
           <button
@@ -2214,6 +2253,37 @@ function PermanentControlBar({
               </button>
             </div>
 
+            {/* Add Person to Hearing Action */}
+            {onOpenAddPerson && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowModerationModal(false);
+                  onOpenAddPerson();
+                }}
+                style={{
+                  width: "100%",
+                  padding: "9px 12px",
+                  background: "rgba(16, 185, 129, 0.2)",
+                  border: "1px solid rgba(16, 185, 129, 0.5)",
+                  borderRadius: "8px",
+                  color: "#34d399",
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  marginTop: "8px",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <UserPlus size={15} />
+                <span>➕ Add Person to Hearing (व्यक्ति/अधिकारी जोड़ें)</span>
+              </button>
+            )}
+
             {/* Live Members Roster Header */}
             <div
               style={{
@@ -2414,12 +2484,14 @@ function LargeMeetingTopBar({
   isOfficer,
   hearingParticipantsCount,
   onOpenAttendees,
+  onOpenAddPerson,
 }: {
   roomName: string;
   autoRecord?: boolean;
   isOfficer?: boolean;
   hearingParticipantsCount?: number;
   onOpenAttendees?: () => void;
+  onOpenAddPerson?: () => void;
 }) {
   const participants = useParticipants();
   // Display dynamic connected count (base LiveKit participants + active multi-device count)
@@ -2553,7 +2625,7 @@ function LargeMeetingTopBar({
         </div>
       </div>
 
-      {/* Right: REC Indicator & Officer Attendees Button */}
+      {/* Right: REC Indicator, Add Person Button & Officer Attendees Button */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
         {autoRecord && (
           <div
@@ -2583,6 +2655,33 @@ function LargeMeetingTopBar({
             />
             <span>REC</span>
           </div>
+        )}
+
+        {/* Top Bar Add Person Button (Officer) */}
+        {isOfficer && onOpenAddPerson && (
+          <button
+            type="button"
+            id="btn-topbar-add-person"
+            onClick={onOpenAddPerson}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              background: "rgba(16, 185, 129, 0.22)",
+              border: "1px solid rgba(16, 185, 129, 0.5)",
+              color: "#34d399",
+              borderRadius: "6px",
+              padding: "3px 10px",
+              fontSize: "0.74rem",
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+            title="Add Officer / Citizen to Hearing (व्यक्ति जोड़ें)"
+          >
+            <UserPlus size={13} />
+            <span>➕ Add Person</span>
+          </button>
         )}
 
         {isOfficer && onOpenAttendees && (
@@ -2634,6 +2733,8 @@ export default function LiveKitVideoRoom({
     ? serverUrl.replace("http://", "ws://").replace("https://", "wss://")
     : serverUrl;
 
+  const [showAddPersonModal, setShowAddPersonModal] = React.useState(false);
+
   return (
     <div
       style={{
@@ -2673,6 +2774,7 @@ export default function LiveKitVideoRoom({
           isOfficer={isOfficer}
           hearingParticipantsCount={hearingParticipantsCount}
           onOpenAttendees={onOpenAttendees}
+          onOpenAddPerson={() => setShowAddPersonModal(true)}
         />
 
         {/* All participants displayed on ONE single screen without pagination */}
@@ -2683,6 +2785,16 @@ export default function LiveKitVideoRoom({
           onLeave={onDisconnected}
           onEndCall={onEndCall}
           currentUser={currentUser}
+          callId={callId}
+          roomName={roomName}
+          apiBase={apiBase}
+          onOpenAddPerson={() => setShowAddPersonModal(true)}
+        />
+
+        {/* Officer Add Participant Modal */}
+        <AddPersonModal
+          isOpen={showAddPersonModal}
+          onClose={() => setShowAddPersonModal(false)}
           callId={callId}
           roomName={roomName}
           apiBase={apiBase}
