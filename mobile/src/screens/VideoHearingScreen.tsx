@@ -97,8 +97,8 @@ const RoomContent: React.FC<{
   onLeave: () => void;
 }> = ({ serverUrl, apiBaseUrl, roomName, grievanceId, callId, role, userName, onLeave }) => {
   const room = useRoomContext();
-  const effectiveSeed = roomName || grievanceId || callId || room?.name || 'JAN-SUNWAI-HEARING';
-  const sasData = React.useMemo(() => generateSafetyNumbers(effectiveSeed), [effectiveSeed]);
+  const effectiveSeed = room?.name || roomName || grievanceId || callId || 'JAN-SUNWAI-HEARING';
+  const sasData = React.useMemo(() => generateSafetyNumbers(effectiveSeed), [room?.name, roomName, grievanceId, callId]);
   const {
     isMicrophoneEnabled,
     isCameraEnabled,

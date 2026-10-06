@@ -559,8 +559,8 @@ function PermanentControlBar({
   const [customSharingType, setCustomSharingType] = React.useState<"screen" | "camera" | "document" | null>(null);
 
   // ─── Chat & Security State ─────────────────────────────────────
-  const effectiveSeed = roomName || room?.name || callId || "JAN-SUNWAI-HEARING";
-  const sasData = React.useMemo(() => generateSafetyNumbers(effectiveSeed), [effectiveSeed]);
+  const effectiveSeed = room?.name || roomName || callId || "JAN-SUNWAI-HEARING";
+  const sasData = React.useMemo(() => generateSafetyNumbers(effectiveSeed), [room?.name, roomName, callId]);
 
   const [showChat, setShowChat] = React.useState(false);
   const [showSafetyModal, setShowSafetyModal] = React.useState(false);
