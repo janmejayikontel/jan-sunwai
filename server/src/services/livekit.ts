@@ -348,8 +348,34 @@ export async function disableAllParticipantsVideo(roomName: string, excludeIdent
  * Used when host ends the call or removes a specific participant.
  */
 export async function removeParticipant(roomName: string, identity: string) {
-  await roomService.removeParticipant(roomName, identity);
-  console.log(`[LiveKit] Removed participant ${identity} from ${roomName}`);
+  try {
+    await roomService.removeParticipant(roomName, identity);
+    console.log(`[LiveKit] Removed participant ${identity} from ${roomName}`);
+  } catch (err: any) {
+    // If exact identity lookup failed, check active participants in the room
+    try {
+      const participants = await roomService.listParticipants(roomName);
+      const cleanTarget = identity.replace(/\D/g, '').slice(-10);
+      const match = participants.find((p) => {
+        const pDigits = p.identity.replace(/\D/g, '').slice(-10);
+        return (
+          p.identity === identity ||
+          (cleanTarget && pDigits === cleanTarget) ||
+          p.identity.includes(identity) ||
+          identity.includes(p.identity) ||
+          p.name === identity
+        );
+      });
+      if (match) {
+        await roomService.removeParticipant(roomName, match.identity);
+        console.log(`[LiveKit] Removed participant ${match.identity} (matched from ${identity}) from ${roomName}`);
+        return;
+      }
+    } catch (innerErr) {
+      console.warn(`[LiveKit] Fallback listParticipants error:`, innerErr);
+    }
+    console.warn(`[LiveKit] Error removing participant ${identity} from ${roomName}:`, err?.message || err);
+  }
 }
 
 /**

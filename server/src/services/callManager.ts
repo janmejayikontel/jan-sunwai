@@ -704,13 +704,53 @@ function handleRingTimeout(callId: string) {
  */
 export async function removeParticipantFromCall(
   callId: string,
-  participantPhone: string
+  participantPhone: string,
+  roomName?: string
 ): Promise<boolean> {
-  const call = activeCalls.get(callId);
-  if (!call) return false;
+  let call = activeCalls.get(callId);
+  if (!call) {
+    const raw = (callId || '').trim();
+    const clean = raw.replace(/^(hearing_|JS-)/i, '').trim().toUpperCase();
+    const targetRoom = (roomName || raw).trim();
 
-  const participant = call.participants.find(
-    (p) => p.phone === participantPhone || p.id === participantPhone || p.name === participantPhone
+    for (const c of activeCalls.values()) {
+      if (
+        c.id === raw ||
+        c.grievanceId.toUpperCase() === clean ||
+        c.livekitRoomName === targetRoom ||
+        c.livekitRoomName === raw ||
+        c.livekitRoomName === `JS-${clean}` ||
+        c.livekitRoomName === `hearing_${clean}`
+      ) {
+        call = c;
+        break;
+      }
+    }
+  }
+
+  // Fallback: search activeCalls by participant phone/id
+  if (!call && participantPhone) {
+    for (const c of activeCalls.values()) {
+      if (
+        c.status !== 'completed' &&
+        c.participants.some(
+          (p) => matchPhone(p.phone, participantPhone) || p.id === participantPhone || p.phone === participantPhone
+        )
+      ) {
+        call = c;
+        break;
+      }
+    }
+  }
+
+  const effectiveRoomName = call?.livekitRoomName || roomName || callId;
+
+  const participant = call?.participants.find(
+    (p) =>
+      p.phone === participantPhone ||
+      p.id === participantPhone ||
+      p.name === participantPhone ||
+      matchPhone(p.phone, participantPhone)
   );
   if (participant) {
     participant.leftAt = new Date();
@@ -719,39 +759,44 @@ export async function removeParticipantFromCall(
 
   const identityToRemove = participant?.phone || participantPhone;
 
-  // Disconnect this specific participant from LiveKit SFU
-  try {
-    await livekitService.removeParticipant(call.livekitRoomName, identityToRemove);
-    console.log(`[CallManager] Removed ${identityToRemove} from room ${call.livekitRoomName}`);
-  } catch (err) {
-    console.warn(`[CallManager] LiveKit removeParticipant notice:`, err);
+  // 1. Disconnect this specific participant from LiveKit SFU (mandatory)
+  if (effectiveRoomName) {
+    try {
+      await livekitService.removeParticipant(effectiveRoomName, identityToRemove);
+      console.log(`[CallManager] Ejected ${identityToRemove} from room ${effectiveRoomName}`);
+    } catch (err) {
+      console.warn(`[CallManager] LiveKit removeParticipant notice:`, err);
+    }
   }
 
-  // Send dedicated notification to the ejected participant via WebSocket
+  // 2. Send dedicated notification to the ejected participant via WebSocket
   sendToClient(identityToRemove, {
     type: 'participant_removed',
-    callId,
+    callId: call?.id || callId,
     data: {
       message: 'You have been disconnected from the hearing by the Presiding Officer.',
-      callId,
+      callId: call?.id || callId,
+      roomName: effectiveRoomName,
       participantName: participant?.name || identityToRemove,
     },
   });
 
-  // Notify remaining participants in the hearing
-  call.participants.forEach((p) => {
-    if (p.phone && p.phone !== identityToRemove && !p.leftAt) {
-      sendToClient(p.phone, {
-        type: 'participant_left',
-        callId,
-        data: {
-          participantName: participant?.name || identityToRemove,
-          phone: identityToRemove,
-          wasRemovedByHost: true,
-        },
-      });
-    }
-  });
+  // 3. Notify remaining participants in the hearing session
+  if (call) {
+    call.participants.forEach((p) => {
+      if (p.phone && p.phone !== identityToRemove && !p.leftAt) {
+        sendToClient(p.phone, {
+          type: 'participant_left',
+          callId: call!.id,
+          data: {
+            participantName: participant?.name || identityToRemove,
+            phone: identityToRemove,
+            wasRemovedByHost: true,
+          },
+        });
+      }
+    });
+  }
 
   return true;
 }

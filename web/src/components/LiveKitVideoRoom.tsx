@@ -650,6 +650,21 @@ function PermanentControlBar({
                   },
                 })
               );
+            } else if (data.action === "eject" || data.action === "disconnect" || data.action === "remove") {
+              try {
+                room.disconnect();
+              } catch (e) {
+                console.warn("Room disconnect on eject:", e);
+              }
+              window.dispatchEvent(
+                new CustomEvent("jan-sunwai-toast", {
+                  detail: {
+                    message: "⛔ You have been disconnected from the hearing by the Presiding Officer.",
+                    type: "error",
+                  },
+                })
+              );
+              if (onLeave) onLeave();
             }
           }
         }
@@ -910,26 +925,58 @@ function PermanentControlBar({
     }
   };
 
-  const handleOfficerEject = async (phone: string) => {
-    if (!callId || !apiBase) return;
-    try {
-      await fetch(`${apiBase}/api/calls/${callId}/remove-participant`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          participantPhone: phone,
-          actorName: currentUser?.name,
-          actorRole: currentUser?.role,
-        }),
-      });
-      window.dispatchEvent(
-        new CustomEvent("jan-sunwai-toast", {
-          detail: { message: `⛔ Disconnected participant ${phone}`, type: "info" },
-        })
-      );
-    } catch (e) {
-      console.warn("Eject error:", e);
+  const handleOfficerEject = async (identity: string, name?: string) => {
+    const displayName = name || identity;
+    if (typeof window !== "undefined" && !window.confirm(`Are you sure you want to disconnect ${displayName} from this hearing? (क्या आप इस प्रतिभागी को हटाना चाहते हैं?)`)) {
+      return;
     }
+
+    // 1. Instant client-side eject via WebRTC reliable moderation packet
+    try {
+      if (room?.localParticipant) {
+        const pkt = new TextEncoder().encode(
+          JSON.stringify({
+            type: "moderation",
+            action: "eject",
+            target: identity,
+            targetPhone: identity,
+            targetIdentity: identity,
+            senderName: currentUser?.name || "Presiding Officer",
+            senderRole: currentUser?.role || "officer",
+          })
+        );
+        await room.localParticipant.publishData(pkt, { reliable: true });
+      }
+    } catch (e) {
+      console.warn("Send eject WebRTC packet error:", e);
+    }
+
+    // 2. Server-side disconnection from LiveKit SFU & Session State
+    const targetId = callId || roomName || "";
+    const cleanApi = (apiBase || "").replace(/\/+$/, "");
+    if (targetId) {
+      try {
+        await fetch(`${cleanApi}/api/calls/${encodeURIComponent(targetId)}/remove-participant`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
+          body: JSON.stringify({
+            participantPhone: identity,
+            participantIdentity: identity,
+            roomName: roomName || callId,
+            actorName: currentUser?.name || "Officer",
+            actorRole: currentUser?.role || "officer",
+          }),
+        });
+      } catch (e) {
+        console.warn("Server eject error:", e);
+      }
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("jan-sunwai-toast", {
+        detail: { message: `⛔ Disconnected participant ${displayName}`, type: "info" },
+      })
+    );
   };
 
   // Listen for global open share modal events
@@ -2413,7 +2460,7 @@ function PermanentControlBar({
 
                         <button
                           type="button"
-                          onClick={() => handleOfficerEject(p.identity)}
+                          onClick={() => handleOfficerEject(p.identity, p.name)}
                           style={{
                             background: "rgba(239, 68, 68, 0.3)",
                             border: "1px solid #ef4444",

@@ -726,15 +726,16 @@ router.post('/:id/disable-video', async (req: Request, res: Response) => {
  */
 router.post('/:id/remove-participant', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { participantPhone, actorName, actorRole } = req.body;
+  const { participantPhone, participantIdentity, roomName, actorName, actorRole } = req.body;
+  const target = (participantPhone || participantIdentity || '').trim();
 
-  if (!participantPhone) {
-    res.status(400).json({ error: 'participantPhone is required' });
+  if (!target) {
+    res.status(400).json({ error: 'participantPhone or participantIdentity is required' });
     return;
   }
 
   try {
-    const success = await callManager.removeParticipantFromCall(id, participantPhone);
+    const success = await callManager.removeParticipantFromCall(id, target, roomName);
     if (!success) {
       res.status(404).json({ error: 'Call or participant not found' });
       return;
@@ -744,12 +745,12 @@ router.post('/:id/remove-participant', async (req: Request, res: Response) => {
       eventType: 'PARTICIPANT_EJECTED',
       actorName: actorName || 'Officer',
       actorRole: actorRole || 'officer',
-      targetId: participantPhone,
-      targetName: participantPhone,
-      details: `Ejected participant ${participantPhone} from hearing ${id}`,
+      targetId: target,
+      targetName: target,
+      details: `Ejected participant ${target} from hearing ${id}`,
     });
 
-    res.json({ success: true, message: `Disconnected participant ${participantPhone}` });
+    res.json({ success: true, message: `Disconnected participant ${target}` });
   } catch (error) {
     console.error('[Calls] Error removing participant:', error);
     res.status(500).json({ error: 'Failed to remove participant' });
