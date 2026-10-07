@@ -139,18 +139,13 @@ class JanSunwaiVoIPService : Service() {
 
         fun dismissCall(callId: String?, grievanceId: String? = null, roomName: String? = null) {
             val now = System.currentTimeMillis()
-            fun suppress(id: String?, durationMs: Long) {
-                if (!id.isNullOrBlank()) {
-                    val c = id.trim().uppercase()
-                    recentlyDismissedCallIds[c] = now + durationMs
-                    Log.i(TAG, "Dismissed ID suppressed for ${durationMs}ms: $c")
-                }
+            // CRITICAL FIX: Only suppress the specific completed callId UUID!
+            // NEVER suppress grievanceId or roomName, otherwise repeated calls for the same grievance will be blocked!
+            if (!callId.isNullOrBlank() && !callId.startsWith("JS-") && !callId.startsWith("RAJ-") && !callId.startsWith("hearing_")) {
+                val c = callId.trim().uppercase()
+                recentlyDismissedCallIds[c] = now + 15 * 60 * 1000L
+                Log.i(TAG, "Dismissed callId suppressed for 15m: $c")
             }
-            // Suppress exact callId for 15 minutes (call session completed)
-            suppress(callId, 15 * 60 * 1000L)
-            // Suppress grievanceId and roomName for 60 seconds
-            suppress(grievanceId, 60 * 1000L)
-            suppress(roomName, 60 * 1000L)
 
             lastReceivedCallData = null
             // DO NOT set isInCall = false here! If user is in a call, isInCall must stay true!
@@ -172,21 +167,22 @@ class JanSunwaiVoIPService : Service() {
         }
 
         fun isCallDismissed(callId: String?, grievanceId: String? = null, roomName: String? = null): Boolean {
-            val now = System.currentTimeMillis()
-            fun checkId(id: String?): Boolean {
-                if (id.isNullOrBlank()) return false
-                val c = id.trim().uppercase()
-                val expiry = recentlyDismissedCallIds[c]
-                if (expiry != null) {
-                    if (now < expiry) {
-                        return true
-                    } else {
-                        recentlyDismissedCallIds.remove(c)
-                    }
-                }
+            // CRITICAL FIX: Only check the specific completed callId UUID!
+            // NEVER check grievanceId or roomName, otherwise repeat calls for the same case will be blocked!
+            if (callId.isNullOrBlank() || callId.startsWith("JS-") || callId.startsWith("RAJ-") || callId.startsWith("hearing_")) {
                 return false
             }
-            return checkId(callId) || checkId(grievanceId) || checkId(roomName)
+            val now = System.currentTimeMillis()
+            val c = callId.trim().uppercase()
+            val expiry = recentlyDismissedCallIds[c]
+            if (expiry != null) {
+                if (now < expiry) {
+                    return true
+                } else {
+                    recentlyDismissedCallIds.remove(c)
+                }
+            }
+            return false
         }
 
         val sharedHttpClient: OkHttpClient by lazy {
@@ -243,8 +239,9 @@ class JanSunwaiVoIPService : Service() {
         if (userPhone.isEmpty()) {
             userPhone = prefs.getString("phone", "") ?: ""
         }
-        if (serverUrl.isEmpty()) {
-            serverUrl = prefs.getString("server_url", "") ?: ""
+        if (serverUrl.isEmpty() || serverUrl.contains("trycloudflare.com") || serverUrl.contains(":9090") || serverUrl == "http://172.21.77.111") {
+            serverUrl = "https://rajbot.rajasthan.gov.in/sampark-lite"
+            prefs.edit().putString("server_url", serverUrl).apply()
         }
 
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -432,6 +429,63 @@ class JanSunwaiVoIPService : Service() {
                         Log.e(TAG, "startActivity also failed for accept: ${e2.message}")
                     }
                 }
+
+                // Also pre-fetch LiveKit token in background worker thread and save to SharedPreferences
+                Thread {
+                    try {
+                        var cleanBase = serverUrl.trim().trimEnd('/')
+                        if (cleanBase.isEmpty() || cleanBase.contains("trycloudflare.com") || cleanBase.contains(":9090") || cleanBase == "http://172.21.77.111") {
+                            cleanBase = "https://rajbot.rajasthan.gov.in/sampark-lite"
+                        }
+                        val effectiveCallId = callId ?: JSONObject(updatedCallData).optString("callId", "")
+                        if (effectiveCallId.isNotEmpty() && userPhone.isNotEmpty()) {
+                            val url = "${cleanBase}/api/calls/${effectiveCallId}/respond"
+                            val body = JSONObject().apply {
+                                put("phone", userPhone)
+                                put("action", "accept")
+                                put("callId", effectiveCallId)
+                            }.toString()
+
+                            val client = OkHttpClient.Builder()
+                                .connectTimeout(6, TimeUnit.SECONDS)
+                                .readTimeout(6, TimeUnit.SECONDS)
+                                .build()
+                            val req = Request.Builder()
+                                .url(url)
+                                .addHeader("Bypass-Tunnel-Reminder", "true")
+                                .post(body.toRequestBody("application/json".toMediaTypeOrNull()))
+                                .build()
+                            val resp = client.newCall(req).execute()
+                            val respBody = resp.body?.string() ?: ""
+                            resp.close()
+
+                            if (resp.isSuccessful && respBody.isNotEmpty()) {
+                                val json = JSONObject(respBody)
+                                if (json.optBoolean("success", false)) {
+                                    val lk = json.optJSONObject("livekit")
+                                    if (lk != null) {
+                                        val token = lk.optString("token", "")
+                                        val roomName = lk.optString("roomName", "")
+                                        val lkUrl = lk.optString("url", "")
+                                        val withToken = JSONObject(updatedCallData).apply {
+                                            put("livekitToken", token)
+                                            put("livekitRoomName", roomName)
+                                            put("livekitUrl", lkUrl)
+                                            put("serverUrl", cleanBase)
+                                        }.toString()
+
+                                        prefs.edit().putString("pending_accepted_call", withToken).commit()
+                                        JanSunwaiVoIPModule.pendingIncomingCallJson = withToken
+                                        JanSunwaiVoIPModule.emitIncomingCall(withToken)
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "ACTION_ACCEPT background token fetch error: ${e.message}")
+                    }
+                }.start()
+
                 return START_STICKY
             }
             ACTION_START -> {
@@ -663,6 +717,10 @@ class JanSunwaiVoIPService : Service() {
     }
 
     private fun fetchLatestServerUrl() {
+        // Never override a working deployed server URL with a temporary Cloudflare tunnel!
+        if (serverUrl.startsWith("http://172.") || serverUrl.startsWith("http://192.") || serverUrl.startsWith("http://10.") || serverUrl.contains("rajbot.rajasthan.gov.in")) {
+            return
+        }
         try {
             val req = Request.Builder()
                 .url("https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=" + System.currentTimeMillis())
@@ -671,7 +729,7 @@ class JanSunwaiVoIPService : Service() {
             val res = sharedHttpClient.newCall(req).execute()
             if (res.isSuccessful) {
                 val newUrl = res.body?.string()?.trim() ?: ""
-                if (newUrl.startsWith("http") && newUrl != serverUrl) {
+                if (newUrl.startsWith("http") && newUrl != serverUrl && !newUrl.contains("trycloudflare.com")) {
                     Log.i(TAG, "Discovered updated server URL from GitHub: $newUrl (old: $serverUrl)")
                     serverUrl = newUrl
                     val prefs = getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)

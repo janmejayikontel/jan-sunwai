@@ -142,7 +142,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [showActiveMeetingsModal, setShowActiveMeetingsModal] = useState(false);
   const [isJoiningMeeting, setIsJoiningMeeting] = useState<string | null>(null);
 
-  const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
+  const cleanServerUrl = (url: string) => {
+    let clean = (url || '').trim().replace(/\/+$/, '');
+    if (clean.includes(':9090')) {
+      clean = clean.replace(':9090', ':3001');
+    }
+    if (clean.includes('172.21.77.111') && !clean.includes(':3001') && !clean.includes(':3000')) {
+      clean = clean.replace('172.21.77.111', '172.21.77.111:3001');
+    }
+    return clean;
+  };
 
   const filteredGrievances = inspectGrievanceId.trim()
     ? grievances.filter(
@@ -1074,20 +1083,67 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 {isLoadingAdmin ? (
                   <ActivityIndicator color="#ef4444" style={{ marginVertical: 20 }} />
                 ) : adminAuditLogs.length > 0 ? (
-                  adminAuditLogs.map((log) => (
-                    <View key={log.id} style={styles.auditItem}>
-                      <View style={styles.queueHeaderRow}>
-                        <View style={styles.auditActionBadge}>
-                          <Text style={styles.auditActionText}>{log.action}</Text>
+                  adminAuditLogs.map((log) => {
+                    const formatSafeTime = (val: any) => {
+                      if (!val) return 'N/A';
+                      try {
+                        let d = new Date(val);
+                        if (isNaN(d.getTime()) && typeof val === 'string') {
+                          d = new Date(val.replace(' ', 'T'));
+                        }
+                        if (isNaN(d.getTime())) return String(val);
+                        return d.toLocaleString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        });
+                      } catch {
+                        return String(val || '');
+                      }
+                    };
+
+                    const actionName = log.action || log.event_type || 'SYSTEM_EVENT';
+                    const grievanceId = log.grievance_id || log.target_id;
+                    const officerName = log.officer_name || (log.actor_role === 'officer' ? log.actor_name : log.actor_name);
+                    const durFormatted = log.duration_formatted || (log.duration_seconds ? `${Math.floor(log.duration_seconds / 60)}m ${log.duration_seconds % 60}s` : null);
+
+                    return (
+                      <View key={log.id} style={styles.auditItem}>
+                        <View style={styles.queueHeaderRow}>
+                          <View style={styles.auditActionBadge}>
+                            <Text style={styles.auditActionText}>{actionName}</Text>
+                          </View>
+                          <Text style={styles.auditTimeText}>
+                            {formatSafeTime(log.created_at || log.timestamp)}
+                          </Text>
                         </View>
-                        <Text style={styles.auditTimeText}>
-                          {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
+
+                        {(grievanceId || officerName || durFormatted) && (
+                          <View style={{ marginVertical: 4, padding: 6, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 6 }}>
+                            {grievanceId ? (
+                              <Text style={{ color: '#38bdf8', fontSize: 12, fontWeight: '700' }}>
+                                📋 Grievance ID: {grievanceId}
+                              </Text>
+                            ) : null}
+                            {officerName ? (
+                              <Text style={{ color: '#FACC15', fontSize: 12, fontWeight: '700', marginTop: 2 }}>
+                                👤 Officer: {officerName}
+                              </Text>
+                            ) : null}
+                            {durFormatted ? (
+                              <Text style={{ color: '#4ade80', fontSize: 12, fontWeight: '700', marginTop: 2 }}>
+                                ⏱️ Duration: {durFormatted}
+                              </Text>
+                            ) : null}
+                          </View>
+                        )}
+
+                        <Text style={styles.auditActorText}>Actor: {log.actor_name || 'System'} ({log.actor_role || 'system'})</Text>
+                        {log.details && <Text style={styles.auditDetailsText}>{log.details}</Text>}
                       </View>
-                      <Text style={styles.auditActorText}>Actor: {log.actor_name} ({log.actor_role})</Text>
-                      {log.details && <Text style={styles.auditDetailsText}>{log.details}</Text>}
-                    </View>
-                  ))
+                    );
+                  })
                 ) : (
                   <View style={styles.emptyCardSmall}>
                     <Text style={styles.emptyDesc}>No audit logs logged yet.</Text>

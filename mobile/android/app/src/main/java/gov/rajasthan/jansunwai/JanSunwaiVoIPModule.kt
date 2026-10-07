@@ -299,17 +299,22 @@ class JanSunwaiVoIPModule(private val reactContext: ReactApplicationContext) :
         pendingIncomingCallJson = null
         JanSunwaiVoIPService.lastReceivedCallData = null // One-shot consumption
 
-        // Filter out if this call was already dismissed
+        // Filter out if this call was already dismissed (unless explicitly accepted by user!)
         val callData = if (rawCallData != null) {
             try {
                 val j = org.json.JSONObject(rawCallData)
-                val cId = j.optString("callId", "")
-                val gId = j.optString("grievanceId", "")
-                val rName = j.optString("roomName", "")
-                if (JanSunwaiVoIPService.isCallDismissed(cId, gId, rName)) {
-                    null
-                } else {
+                val isAutoAccept = j.optBoolean("autoAccept", false)
+                if (isAutoAccept) {
                     rawCallData
+                } else {
+                    val cId = j.optString("callId", "")
+                    val gId = j.optString("grievanceId", "")
+                    val rName = j.optString("roomName", "")
+                    if (JanSunwaiVoIPService.isCallDismissed(cId, gId, rName)) {
+                        null
+                    } else {
+                        rawCallData
+                    }
                 }
             } catch (e: Exception) {
                 rawCallData

@@ -118,6 +118,17 @@ export const JoinHearingScreen: React.FC<JoinHearingScreenProps> = ({ onJoin }) 
     setGrievanceId(persona.grievanceId);
   };
 
+  const cleanServerUrl = (url: string) => {
+    let clean = (url || '').trim().replace(/\/+$/, '');
+    if (clean.includes(':9090')) {
+      clean = clean.replace(':9090', ':3001');
+    }
+    if (clean.includes('172.21.77.111') && !clean.includes(':3001') && !clean.includes(':3000')) {
+      clean = clean.replace('172.21.77.111', '172.21.77.111:3001');
+    }
+    return clean;
+  };
+
   const handleConnect = async () => {
     if (role === 'admin' && !adminVerified) {
       setAdminPinInput('');
@@ -133,7 +144,7 @@ export const JoinHearingScreen: React.FC<JoinHearingScreenProps> = ({ onJoin }) 
 
     setIsLoading(true);
     try {
-      const cleanBase = serverBase.replace(/\/+$/, '');
+      const cleanBase = cleanServerUrl(serverBase);
       const tokenUrl = `${cleanBase}/api/livekit/token`;
 
       const response = await fetch(tokenUrl, {

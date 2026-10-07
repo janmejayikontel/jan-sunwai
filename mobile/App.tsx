@@ -49,7 +49,16 @@ export default function App() {
   // Refs that shadow state — used in WebSocket/polling closures to avoid stale captures
   const activeHearingRef = useRef<ActiveHearingState | null>(null);
   const isConnectingHearingRef = useRef<boolean>(false);
-  const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
+  const cleanServerUrl = (url: string) => {
+    let clean = (url || '').trim().replace(/\/+$/, '');
+    if (!clean || clean.includes('trycloudflare.com')) {
+      return DEFAULT_SERVER_URL;
+    }
+    if (clean.includes('172.21.77.111') && !clean.includes(':9090') && !clean.includes(':3001') && !clean.includes(':3000')) {
+      clean = clean.replace('172.21.77.111', '172.21.77.111:9090');
+    }
+    return clean;
+  };
 
   // ─── 0. Request Notification Permissions on Android 13+ ──────
   useEffect(() => {
@@ -101,7 +110,7 @@ export default function App() {
         try {
           const liveRes = await fetch(`https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=${Date.now()}`);
           const liveTxt = (await liveRes.text()).trim().replace(/\/+$/, '');
-          if (liveTxt.startsWith('http')) {
+          if (liveTxt.startsWith('http') && !liveTxt.includes('trycloudflare.com')) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 3000);
             const hRes = await fetch(`${liveTxt}/api/health`, {
@@ -125,8 +134,9 @@ export default function App() {
             console.log('[App/Session] Restored saved login for:', parsed.user.name, parsed.user.phone);
             setCurrentUser(parsed.user);
             let targetSrv = parsed.serverUrl || activeSrv;
-            // Always prioritize the latest active server URL from server-url.txt
-            if (activeSrv && activeSrv.startsWith('http')) {
+            if (!targetSrv || targetSrv.includes('trycloudflare.com')) {
+              targetSrv = DEFAULT_SERVER_URL;
+            } else if (activeSrv && activeSrv.startsWith('http') && !activeSrv.includes('trycloudflare.com') && activeSrv !== DEFAULT_SERVER_URL) {
               targetSrv = activeSrv;
             }
             setServerUrl(targetSrv);
@@ -146,7 +156,7 @@ export default function App() {
             }
           }
         } else {
-          setServerUrl(activeSrv);
+          setServerUrl(cleanServerUrl(activeSrv));
         }
       } catch (e) {
         console.warn('[App/Session] Failed to restore session from AsyncStorage:', e);
@@ -247,39 +257,38 @@ export default function App() {
     const target = overrideCall || incomingCall;
     if (!target) return;
 
-    // Only suppress this specific call session ID for 15s so duplicate notifications don't re-prompt
-    // NEVER blacklist grievanceId so subsequent calls for this grievance ring properly
-    if (target.callId && !target.callId.startsWith('JS-') && !target.callId.startsWith('RAJ-')) {
-      dismissedCallTimesRef.current.set(target.callId, Date.now());
-    }
-
     // IMMEDIATELY HIDE THE INCOMING CALL MODAL and mark as connecting
     setIncomingCall(null);
     setIsConnectingHearingAndRef(true);
     setConnectingCaseInfo(target.grievanceId || target.roomName || 'Hearing');
 
     Vibration.cancel();
-    // dismissCall kills both IncomingCallActivity and CallOverlay immediately
-    // This is the most reliable way to ensure native UI is gone before meeting room opens
-    JanSunwaiVoIP?.dismissCall?.(target.callId || target.grievanceId || null);
+    // Stop active ringing and mark in-call without blacklisting or dismissing the call!
     JanSunwaiVoIP?.stopRinging?.();
     JanSunwaiVoIP?.setInCall?.(true);
 
     let user = userOverride || currentUser;
-    if (!user) {
-      try {
-        const saved = await AsyncStorage.getItem(STORAGE_SESSION_KEY);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (parsed?.user) {
+    let effectiveServerUrl = serverUrl;
+
+    try {
+      const saved = await AsyncStorage.getItem(STORAGE_SESSION_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.user) {
+          if (!user) {
             user = parsed.user;
             setCurrentUser(parsed.user);
           }
         }
-      } catch (e) {
-        // ignore
+        if (parsed?.serverUrl && parsed.serverUrl.startsWith('http')) {
+          effectiveServerUrl = parsed.serverUrl;
+          setServerUrl(parsed.serverUrl);
+        }
       }
+    } catch (e) {
+      // ignore
     }
+
     if (!user && (target.userPhone || target.phone)) {
       user = {
         phone: target.userPhone || target.phone,
@@ -288,12 +297,16 @@ export default function App() {
       } as UserProfile;
     }
 
-    // If pre-fetched LiveKit token exists from IncomingCallActivity, enter room in 0ms!
+    // Determine clean API base
+    let base = cleanServerUrl(target.serverUrl || effectiveServerUrl || DEFAULT_SERVER_URL);
+    if (!base.startsWith('http')) {
+      base = 'http://172.21.77.111:9090';
+    }
+
+    // If pre-fetched LiveKit token exists from native VoIP service, enter room immediately!
     if (target.livekitToken && target.livekitRoomName) {
       console.log('[App] Entering meeting room immediately with pre-fetched LiveKit token');
-      // Fire-and-forget accept notification to server so backend marks participant ringStatus = 'accepted'
       try {
-        const base = cleanServerUrl(serverUrl || target.serverUrl || DEFAULT_SERVER_URL);
         const rawId = (target.callId || '').toString().trim();
         const effectiveId = (rawId && rawId !== 'undefined' && rawId !== 'null') ? rawId : (target.grievanceId || target.roomName || 'respond');
         fetch(`${base}/api/calls/${encodeURIComponent(effectiveId)}/respond`, {
@@ -313,11 +326,12 @@ export default function App() {
 
       setIncomingCall(null);
       setIsConnectingHearingAndRef(false);
+      setIsRestoringSession(false);
       setActiveHearingAndRef({
-        serverUrl: target.livekitUrl || cleanServerUrl(serverUrl || target.serverUrl || DEFAULT_SERVER_URL),
+        serverUrl: target.livekitUrl || base,
         token: target.livekitToken,
         roomName: target.livekitRoomName,
-        grievanceId: target.grievanceId,
+        grievanceId: target.grievanceId || target.caseId || (target.livekitRoomName ? target.livekitRoomName.replace(/^(JS|hearing|room)[_-]/i, '') : ''),
         userName: user?.name || `User (${user?.phone ? user.phone.slice(-4) : 'Citizen'})`,
         role: user?.role || 'citizen',
         callId: target.callId,
@@ -333,7 +347,6 @@ export default function App() {
     }
 
     try {
-      const base = cleanServerUrl(serverUrl || target.serverUrl || DEFAULT_SERVER_URL);
       const rawId = (target.callId || '').toString().trim();
       const effectiveCallId = (rawId && rawId !== 'undefined' && rawId !== 'null')
         ? rawId
@@ -364,8 +377,12 @@ export default function App() {
       try {
         data = JSON.parse(rawText);
       } catch {
-        console.warn('[App] Non-JSON response received:', rawText.slice(0, 150));
-        throw new Error('Hearing call session ended or unavailable.');
+        console.warn('[App] Non-JSON response received:', res.status, rawText.slice(0, 150));
+        throw new Error(
+          res.status === 404
+            ? 'Call session not found on server or expired.'
+            : `Server returned HTTP ${res.status}. Please check server port 3001.`
+        );
       }
 
       console.log('[App] Accept response:', data);
@@ -373,11 +390,12 @@ export default function App() {
       if (data.success && data.livekit) {
         setIncomingCall(null);
         setIsConnectingHearingAndRef(false);
+        setIsRestoringSession(false);
         setActiveHearingAndRef({
           serverUrl: data.livekit.url || base,
           token: data.livekit.token,
           roomName: data.livekit.roomName,
-          grievanceId: target.grievanceId,
+          grievanceId: target.grievanceId || data.call?.grievanceId || target.caseId || (data.livekit.roomName ? data.livekit.roomName.replace(/^(JS|hearing|room)[_-]/i, '') : ''),
           userName: user.name || `User (${user.phone.slice(-4)})`,
           role: user.role || 'citizen',
           callId: target.callId || effectiveCallId,
@@ -399,15 +417,18 @@ export default function App() {
   };
 
   const isDismissedCall = (callId?: string, grievanceId?: string, roomName?: string): boolean => {
-    const keysToCheck = [callId, grievanceId, roomName].filter(Boolean) as string[];
+    // CRITICAL FIX: Only check the specific completed callId UUID!
+    // NEVER blacklist grievanceId or roomName, otherwise repeated calls for the same grievance will be blocked!
+    if (!callId) return false;
+    if (callId.startsWith('JS-') || callId.startsWith('RAJ-') || callId.startsWith('hearing_')) {
+      return false;
+    }
     const now = Date.now();
-    for (const key of keysToCheck) {
-      if (dismissedCallIdsRef.current.has(key)) return true;
-      const expiry = dismissedCallTimesRef.current.get(key);
-      if (expiry) {
-        if (now < expiry) return true;
-        dismissedCallTimesRef.current.delete(key);
-      }
+    if (dismissedCallIdsRef.current.has(callId)) return true;
+    const expiry = dismissedCallTimesRef.current.get(callId);
+    if (expiry) {
+      if (now < expiry) return true;
+      dismissedCallTimesRef.current.delete(callId);
     }
     return false;
   };
@@ -419,17 +440,9 @@ export default function App() {
     const roomName = incomingCall.roomName;
 
     const now = Date.now();
-    if (targetCallId) {
+    if (targetCallId && !targetCallId.startsWith('JS-') && !targetCallId.startsWith('RAJ-')) {
       dismissedCallTimesRef.current.set(targetCallId, now + 15 * 60 * 1000);
       JanSunwaiVoIP?.dismissCall?.(targetCallId);
-    }
-    if (grievanceId) {
-      dismissedCallTimesRef.current.set(grievanceId, now + 60 * 1000);
-      JanSunwaiVoIP?.dismissCall?.(grievanceId);
-    }
-    if (roomName) {
-      dismissedCallTimesRef.current.set(roomName, now + 60 * 1000);
-      JanSunwaiVoIP?.dismissCall?.(roomName);
     }
 
     Vibration.cancel();
@@ -468,17 +481,9 @@ export default function App() {
     const roomName = activeHearing?.roomName;
 
     const now = Date.now();
-    if (callId) {
+    if (callId && !callId.startsWith('JS-') && !callId.startsWith('RAJ-')) {
       dismissedCallTimesRef.current.set(callId, now + 15 * 60 * 1000);
       JanSunwaiVoIP?.dismissCall?.(callId);
-    }
-    if (grievanceId) {
-      dismissedCallTimesRef.current.set(grievanceId, now + 60 * 1000);
-      JanSunwaiVoIP?.dismissCall?.(grievanceId);
-    }
-    if (roomName) {
-      dismissedCallTimesRef.current.set(roomName, now + 60 * 1000);
-      JanSunwaiVoIP?.dismissCall?.(roomName);
     }
 
     JanSunwaiVoIP?.stopRinging?.();
@@ -555,6 +560,7 @@ export default function App() {
               setIncomingCall(null);
               setIsConnectingHearingAndRef(true);
               setConnectingCaseInfo(data.grievanceId || data.roomName || 'Hearing');
+              setIsRestoringSession(false);
               handleAcceptIncomingCall(data, currentUser);
             } else {
               if (!activeHearingRef.current && !isConnectingHearingRef.current) {
@@ -579,17 +585,18 @@ export default function App() {
         console.log('[App] Received onIncomingCall event from native VoIP module:', callJson);
         const data = typeof callJson === 'string' ? JSON.parse(callJson) : callJson;
         if (data?.callId || data?.grievanceId || data?.roomName) {
-          if (isDismissedCall(data.callId, data.grievanceId, data.roomName)) {
-            console.log('[App] Ignoring incoming event for dismissed callId:', data.callId || data.grievanceId);
-            JanSunwaiVoIP?.stopRinging?.();
-            return;
-          }
           if (data.autoAccept) {
             setIncomingCall(null);
             setIsConnectingHearingAndRef(true);
             setConnectingCaseInfo(data.grievanceId || data.roomName || 'Hearing');
+            setIsRestoringSession(false);
             handleAcceptIncomingCall(data, currentUser);
           } else {
+            if (isDismissedCall(data.callId, data.grievanceId, data.roomName)) {
+              console.log('[App] Ignoring incoming event for dismissed callId:', data.callId || data.grievanceId);
+              JanSunwaiVoIP?.stopRinging?.();
+              return;
+            }
             if (!activeHearingRef.current && !isConnectingHearingRef.current) {
               setIncomingCall(data as IncomingCallData);
             }
@@ -687,6 +694,7 @@ export default function App() {
               }
             } else if (msg.type === 'call_ended' || msg.type === 'call_declined') {
               JanSunwaiVoIP?.stopRinging?.();
+              JanSunwaiVoIP?.setInCall?.(false);
               setIncomingCall(null);
             } else if (msg.type === 'moderation' && msg.data) {
               DeviceEventEmitter.emit('onModeration', msg.data);

@@ -360,7 +360,8 @@ object CallOverlayManager {
                             IncomingCallActivity.activeInstance?.finish()
                         } catch (e: Exception) {}
 
-                        JanSunwaiVoIPService.dismissCall(effectiveCallId, grievanceId, roomName)
+                        // DO NOT call JanSunwaiVoIPService.dismissCall! Dismissing marks the call as dismissed for 15m.
+                        // Instead only mark in-call and stop active ringing.
                         JanSunwaiVoIPService.setInCallState(true)
                         JanSunwaiVoIPService.stopActiveRinging(context)
                         JanSunwaiVoIPService.lastReceivedCallData = null
@@ -404,8 +405,8 @@ object CallOverlayManager {
                                     val prefs = context.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
                                     cleanBase = (prefs.getString("server_url", "") ?: "").trim().trimEnd('/')
                                 }
-                                if (cleanBase.isEmpty()) {
-                                    cleanBase = "https://organisms-issues-pounds-horizontal.trycloudflare.com"
+                                if (cleanBase.isEmpty() || cleanBase.contains(":9090") || cleanBase == "http://172.21.77.111") {
+                                    cleanBase = "http://172.21.77.111:3001"
                                 }
 
                                 if (effectiveCallId.isNotEmpty() && userPhone.isNotEmpty()) {
@@ -417,8 +418,8 @@ object CallOverlayManager {
                                     }.toString()
 
                                     val client = OkHttpClient.Builder()
-                                        .connectTimeout(4, TimeUnit.SECONDS)
-                                        .readTimeout(4, TimeUnit.SECONDS)
+                                        .connectTimeout(6, TimeUnit.SECONDS)
+                                        .readTimeout(6, TimeUnit.SECONDS)
                                         .build()
                                     val req = Request.Builder()
                                         .url(url)
@@ -441,7 +442,16 @@ object CallOverlayManager {
                                                     put("livekitToken", token)
                                                     put("livekitRoomName", roomName)
                                                     put("livekitUrl", lkUrl)
+                                                    put("serverUrl", cleanBase)
                                                 }.toString()
+
+                                                // Save pre-fetched token to SharedPreferences so cold-starting React Native picks it up immediately!
+                                                try {
+                                                    val prefs = context.getSharedPreferences("jansunwai_voip_prefs", Context.MODE_PRIVATE)
+                                                    prefs.edit().putString("pending_accepted_call", withToken).commit()
+                                                } catch (e: Exception) {}
+                                                JanSunwaiVoIPModule.pendingIncomingCallJson = withToken
+
                                                 JanSunwaiVoIPModule.emitIncomingCall(withToken)
                                             }
                                         }

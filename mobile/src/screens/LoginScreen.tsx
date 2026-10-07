@@ -50,12 +50,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [adminPinError, setAdminPinError] = useState('');
   const [adminVerified, setAdminVerified] = useState(false);
 
-  const cleanServerUrl = (url: string) => url.trim().replace(/\/+$/, '');
+  const cleanServerUrl = (url: string) => {
+    let clean = (url || '').trim().replace(/\/+$/, '');
+    if (!clean || clean.includes('trycloudflare.com')) {
+      return DEFAULT_SERVER_URL;
+    }
+    if (clean.includes('172.21.77.111') && !clean.includes(':9090') && !clean.includes(':3001') && !clean.includes(':3000')) {
+      clean = clean.replace('172.21.77.111', '172.21.77.111:9090');
+    }
+    return clean;
+  };
 
   React.useEffect(() => {
     const testAndSetServer = async (candidateUrl: string) => {
-      const clean = candidateUrl.trim().replace(/\/+$/, '');
-      if (!clean.startsWith('http')) return false;
+      const clean = cleanServerUrl(candidateUrl);
+      if (!clean.startsWith('http') || clean.includes('trycloudflare.com')) return false;
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3500);
@@ -79,9 +88,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       // 1. Try raw GitHub file with timestamp cache-buster
       try {
         const res = await fetch(`https://raw.githubusercontent.com/janmejayikontel/jan-sunwai/main/server-url.txt?nocache=${Date.now()}`);
-        const txt = await res.text();
-        const success = await testAndSetServer(txt);
-        if (success) return;
+        const txt = (await res.text()).trim();
+        if (txt && !txt.includes('trycloudflare.com')) {
+          const success = await testAndSetServer(txt);
+          if (success) return;
+        }
       } catch (e) {
         console.log('[LoginScreen] Raw GitHub fetch error:', e);
       }
@@ -95,11 +106,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           const apiData = await apiRes.json();
           if (apiData.content) {
             // Base64 decode
-            const decoded = typeof atob === 'function' 
+            const decoded = (typeof atob === 'function' 
               ? atob(apiData.content.replace(/\s/g, '')) 
-              : Buffer.from(apiData.content, 'base64').toString('utf-8');
-            const success = await testAndSetServer(decoded);
-            if (success) return;
+              : Buffer.from(apiData.content, 'base64').toString('utf-8')).trim();
+            if (decoded && !decoded.includes('trycloudflare.com')) {
+              const success = await testAndSetServer(decoded);
+              if (success) return;
+            }
           }
         }
       } catch (apiErr) {

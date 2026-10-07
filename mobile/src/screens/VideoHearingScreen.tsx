@@ -68,6 +68,36 @@ const RoomContent: React.FC<{
   const room = useRoomContext();
   const effectiveSeed = room?.name || roomName || grievanceId || callId || 'JAN-SUNWAI-HEARING';
   const sasData = React.useMemo(() => generateSafetyNumbers(effectiveSeed), [room?.name, roomName, grievanceId, callId]);
+
+  // Robust case number resolution: never displays an empty "Case: #"
+  const displayCaseNumber = useMemo(() => {
+    // 1. Explicit grievanceId if valid
+    const cleanGrievance = (grievanceId || '').toString().trim();
+    if (
+      cleanGrievance &&
+      cleanGrievance !== 'Hearing' &&
+      cleanGrievance !== 'undefined' &&
+      cleanGrievance !== 'null'
+    ) {
+      return cleanGrievance.startsWith('#') ? cleanGrievance : `#${cleanGrievance}`;
+    }
+    // 2. Extract from room.name or roomName (e.g. JS-RAJ-2024-88421 or hearing_RAJ-2024-88421)
+    const rName = (room?.name || roomName || '').toString().trim();
+    if (rName && rName !== 'undefined' && rName !== 'null') {
+      const match = rName.match(/(?:JS|RAJ|hearing|room)[-_](.+)/i);
+      if (match && match[1]) {
+        const sub = match[1].trim();
+        return sub.startsWith('#') ? sub : `#${sub}`;
+      }
+      return rName.startsWith('#') ? rName : `#${rName}`;
+    }
+    // 3. Fallback to callId if available
+    const cId = (callId || '').toString().trim();
+    if (cId && cId !== 'undefined' && cId !== 'null') {
+      return cId.startsWith('#') ? cId : `#${cId}`;
+    }
+    return 'Live Session';
+  }, [grievanceId, roomName, room?.name, callId]);
   const {
     isMicrophoneEnabled,
     isCameraEnabled,
@@ -215,7 +245,16 @@ const RoomContent: React.FC<{
     isSpeaking: boolean;
   }>>([]);
 
-  const cleanServerUrl = (url: string) => (url || '').trim().replace(/\/+$/, '');
+  const cleanServerUrl = (url: string) => {
+    let clean = (url || '').trim().replace(/\/+$/, '');
+    if (clean.includes(':9090')) {
+      clean = clean.replace(':9090', ':3001');
+    }
+    if (clean.includes('172.21.77.111') && !clean.includes(':3001') && !clean.includes(':3000')) {
+      clean = clean.replace('172.21.77.111', '172.21.77.111:3001');
+    }
+    return clean;
+  };
 
   // Stop any ongoing native VoIP ringtone/beep sound immediately on room entry and lock inCall state
   useEffect(() => {
@@ -735,7 +774,7 @@ const RoomContent: React.FC<{
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>🏛️ Jan Sunwai Hearing</Text>
           <Text style={styles.headerSub}>
-            Case: #{grievanceId}
+            {displayCaseNumber.startsWith('#') ? `Case: ${displayCaseNumber}` : displayCaseNumber}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
