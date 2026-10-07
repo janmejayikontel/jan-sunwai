@@ -1934,4 +1934,20 @@ h1, h2, h3, h4, h5, h6 {
   margin-top: 6px;
 }
 
+/* Responsive Login Card for Mobile & Desktop */
+.app-login-card {
+  background-color: #1f2c34;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 2rem;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  box-sizing: border-box;
+}
 
+@media (max-width: 480px) {
+  .app-login-card {
+    padding: 1.5rem 1.15rem;
+    border-radius: 16px;
+  }
+}

@@ -137,10 +137,17 @@ const TIME_OPTIONS = [
 
 // ─── Configuration ────────────────────────────────────────────
 
-const API_BASE =
-  typeof window !== "undefined" && window.location.port === "3000"
-    ? `${window.location.protocol}//${window.location.hostname}:3001`
-    : (process.env.NEXT_PUBLIC_API_URL || "");
+const API_BASE = (() => {
+  if (typeof window !== "undefined") {
+    if (window.location.port === "3000") {
+      return `${window.location.protocol}//${window.location.hostname}:3001`;
+    }
+    if (window.location.pathname.startsWith("/sampark-lite")) {
+      return "/sampark-lite";
+    }
+  }
+  return process.env.NEXT_PUBLIC_API_URL || (process.env.NEXT_PUBLIC_BASE_PATH ?? "/sampark-lite");
+})();
 
 function getWsUrl(phone: string): string {
   if (process.env.NEXT_PUBLIC_WS_URL) {
@@ -152,7 +159,8 @@ function getWsUrl(phone: string): string {
     }
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
-    return `${proto}//${host}/ws?phone=${encodeURIComponent(phone)}`;
+    const subpath = window.location.pathname.startsWith("/sampark-lite") ? "/sampark-lite" : "";
+    return `${proto}//${host}${subpath}/ws?phone=${encodeURIComponent(phone)}`;
   }
   return `ws://localhost:3001/ws?phone=${encodeURIComponent(phone)}`;
 }
@@ -167,6 +175,7 @@ export default function JanSunwaiPortalPage() {
   const [detectedRole, setDetectedRole] = useState<string | null>(null);
   const [detectedName, setDetectedName] = useState<string | null>(null);
   const [authError, setAuthError] = useState("");
+  const [isPhoneFocused, setIsPhoneFocused] = useState(false);
 
   // ─── Navigation & Views ──────────────────────────────────────
   const [currentTab, setCurrentTab] = useState<"hearings" | "cases">("hearings");
@@ -225,6 +234,8 @@ export default function JanSunwaiPortalPage() {
   const [adminTab, setAdminTab] = useState<"diagnostics" | "audit" | "security">("diagnostics");
   const [adminDiagnostics, setAdminDiagnostics] = useState<any | null>(null);
   const [adminAuditLogs, setAdminAuditLogs] = useState<any[]>([]);
+  const [auditSearchQuery, setAuditSearchQuery] = useState("");
+  const [auditFilterType, setAuditFilterType] = useState<"all" | "meetings" | "moderation" | "security">("all");
   const [activeMeetings, setActiveMeetings] = useState<any[]>([]);
   const [apiKeys, setApiKeys] = useState<any[]>([]);
   const [newKeyName, setNewKeyName] = useState("");
@@ -698,7 +709,7 @@ export default function JanSunwaiPortalPage() {
     try {
       const [diagRes, auditRes, settingsRes, meetingsRes, keysRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/diagnostics`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
-        fetch(`${API_BASE}/api/admin/audit-logs?limit=25`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
+        fetch(`${API_BASE}/api/admin/audit-logs?limit=150`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
         fetch(`${API_BASE}/api/admin/settings`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
         fetch(`${API_BASE}/api/admin/active-meetings`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
         fetch(`${API_BASE}/api/admin/api-keys`, { headers: { "Bypass-Tunnel-Reminder": "true" } }).catch(() => null),
@@ -1068,15 +1079,7 @@ export default function JanSunwaiPortalPage() {
           </div>
 
           {/* Login Card */}
-          <div
-            style={{
-              backgroundColor: "#1f2c34",
-              borderRadius: "20px",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              padding: "2rem",
-              boxShadow: "0 16px 40px rgba(0, 0, 0, 0.5)",
-            }}
-          >
+          <div className="app-login-card">
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "1.5rem" }}>
               <div
                 style={{
@@ -1089,6 +1092,7 @@ export default function JanSunwaiPortalPage() {
                   alignItems: "center",
                   justifyContent: "center",
                   color: "#FACC15",
+                  flexShrink: 0,
                 }}
               >
                 <Lock size={20} />
@@ -1109,15 +1113,46 @@ export default function JanSunwaiPortalPage() {
                   <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 700, color: "#E9EDEF", marginBottom: "8px" }}>
                     मोबाइल नंबर (Mobile Number)
                   </label>
-                  <div style={{ display: "flex", alignItems: "center", background: "#111b21", border: "1.5px solid #2a3942", borderRadius: "12px", overflow: "hidden" }}>
-                    <div style={{ padding: "12px 14px", background: "#1f2c34", borderRight: "1px solid #2a3942", color: "#FACC15", fontWeight: 800, fontSize: "0.95rem" }}>
-                      +91
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "stretch",
+                      background: "#111b21",
+                      border: isPhoneFocused ? "1.5px solid #FACC15" : "1.5px solid #2a3942",
+                      boxShadow: isPhoneFocused ? "0 0 0 3px rgba(250, 204, 21, 0.15)" : "none",
+                      borderRadius: "12px",
+                      overflow: "hidden",
+                      height: "50px",
+                      transition: "border-color 0.2s, box-shadow 0.2s",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        padding: "0 14px",
+                        background: "rgba(0, 0, 0, 0.35)",
+                        borderRight: "1px solid #2a3942",
+                        color: "#FACC15",
+                        fontWeight: 800,
+                        fontSize: "0.95rem",
+                        flexShrink: 0,
+                        whiteSpace: "nowrap",
+                        userSelect: "none",
+                      }}
+                    >
+                      <span style={{ fontSize: "1.05rem", lineHeight: 1 }}>🇮🇳</span>
+                      <span>+91</span>
                     </div>
                     <input
                       type="tel"
                       placeholder="10-digit mobile number"
                       value={loginPhone.replace(/^\+91/, "")}
                       maxLength={10}
+                      onFocus={() => setIsPhoneFocused(true)}
+                      onBlur={() => setIsPhoneFocused(false)}
                       onChange={(e) => {
                         const val = e.target.value.replace(/[^0-9]/g, "").slice(0, 10);
                         setLoginPhone(val ? `+91${val}` : "");
@@ -1126,13 +1161,19 @@ export default function JanSunwaiPortalPage() {
                       onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
                       style={{
                         flex: 1,
+                        minWidth: 0,
+                        width: "100%",
+                        height: "100%",
                         background: "transparent",
                         border: "none",
-                        padding: "12px 14px",
+                        padding: "0 14px",
                         color: "#ffffff",
                         fontSize: "1.05rem",
                         letterSpacing: "0.05em",
                         outline: "none",
+                        boxShadow: "none",
+                        WebkitAppearance: "none",
+                        boxSizing: "border-box",
                       }}
                       autoFocus
                     />
@@ -1273,7 +1314,7 @@ export default function JanSunwaiPortalPage() {
           {/* Android App Link */}
           <div style={{ marginTop: "1.5rem", textAlign: "center" }}>
             <a
-              href="/download"
+              href="/sampark-lite/download"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -2023,16 +2064,317 @@ export default function JanSunwaiPortalPage() {
 
                 {adminTab === "audit" && (
                   <div>
-                    <h3 style={{ fontSize: "1.05rem", fontWeight: 800, margin: "0 0 1rem" }}>System Audit Trail</h3>
-                    {adminAuditLogs.length === 0 ? (
-                      <p style={{ color: "#8696a0" }}>No audit records found.</p>
-                    ) : (
-                      adminAuditLogs.map((log) => (
-                        <div key={log.id} style={{ padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", fontSize: "0.85rem" }}>
-                          <span style={{ color: "#EAB308", fontWeight: 700 }}>{log.action}</span> by {log.actor_name} • {new Date(log.created_at).toLocaleTimeString()}
+                    {/* Header with Stats & Actions */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "1rem" }}>
+                      <div>
+                        <h3 style={{ fontSize: "1.15rem", fontWeight: 800, margin: 0, color: "#ffffff", display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span>📜</span> System Audit Trail & Judicial Meeting Records
+                        </h3>
+                        <p style={{ margin: "4px 0 0", fontSize: "0.82rem", color: "#8696a0" }}>
+                          Official verifiable records of video hearings, presiding officers, session durations, and administrative actions.
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "0.75rem", background: "rgba(234, 179, 8, 0.15)", color: "#FACC15", padding: "4px 10px", borderRadius: "12px", fontWeight: 700 }}>
+                          {adminAuditLogs.length} Total Records
+                        </span>
+                        <button
+                          type="button"
+                          className="app-btn-outline-gold"
+                          style={{ padding: "5px 12px", fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "5px" }}
+                          onClick={fetchAdminData}
+                        >
+                          <span>🔄</span> Refresh
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Filter and Search Bar */}
+                    <div style={{ background: "#202c33", padding: "12px 14px", borderRadius: "10px", marginBottom: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                        <div style={{ flex: 1, minWidth: "240px", position: "relative" }}>
+                          <input
+                            type="text"
+                            placeholder="🔍 Search by Grievance ID, Officer Name, Action, or details..."
+                            value={auditSearchQuery}
+                            onChange={(e) => setAuditSearchQuery(e.target.value)}
+                            style={{
+                              width: "100%",
+                              background: "#111b21",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: "8px",
+                              padding: "8px 12px",
+                              fontSize: "0.85rem",
+                              color: "#e9edef",
+                              outline: "none",
+                            }}
+                          />
+                          {auditSearchQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setAuditSearchQuery("")}
+                              style={{
+                                position: "absolute",
+                                right: "10px",
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                background: "transparent",
+                                border: "none",
+                                color: "#8696a0",
+                                cursor: "pointer",
+                                fontSize: "0.85rem",
+                              }}
+                            >
+                              ✕
+                            </button>
+                          )}
                         </div>
-                      ))
-                    )}
+                      </div>
+
+                      {/* Filter category chips */}
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                        {[
+                          { id: "all", label: `All Logs (${adminAuditLogs.length})` },
+                          {
+                            id: "meetings",
+                            label: `📹 Video Hearings & Meetings (${adminAuditLogs.filter((l) => (l.action || l.event_type || "").includes("HEARING") || l.grievance_id || l.duration_seconds).length})`,
+                          },
+                          {
+                            id: "moderation",
+                            label: `🛡️ Moderation Actions (${adminAuditLogs.filter((l) => (l.action || l.event_type || "").includes("MUTED") || (l.action || l.event_type || "").includes("EJECTED") || (l.action || l.event_type || "").includes("DISABLED")).length})`,
+                          },
+                          {
+                            id: "security",
+                            label: `🔐 Security (${adminAuditLogs.filter((l) => (l.action || l.event_type || "").includes("SECURITY") || (l.action || l.event_type || "").includes("API_KEY") || (l.action || l.event_type || "").includes("POLICY")).length})`,
+                          },
+                        ].map((chip) => (
+                          <button
+                            key={chip.id}
+                            type="button"
+                            onClick={() => setAuditFilterType(chip.id as any)}
+                            style={{
+                              background: auditFilterType === chip.id ? "#EAB308" : "rgba(255,255,255,0.06)",
+                              color: auditFilterType === chip.id ? "#000000" : "#d1d5db",
+                              border: "none",
+                              borderRadius: "6px",
+                              padding: "4px 10px",
+                              fontSize: "0.78rem",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            {chip.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Audit Logs List */}
+                    {(() => {
+                      const filteredLogs = adminAuditLogs.filter((log) => {
+                        if (auditFilterType === "meetings") {
+                          const isMeeting =
+                            (log.action || log.event_type || "").includes("HEARING") ||
+                            (log.action || log.event_type || "").includes("MEETING") ||
+                            Boolean(log.grievance_id) ||
+                            Boolean(log.duration_seconds);
+                          if (!isMeeting) return false;
+                        } else if (auditFilterType === "moderation") {
+                          const isMod =
+                            (log.action || log.event_type || "").includes("MUTED") ||
+                            (log.action || log.event_type || "").includes("EJECTED") ||
+                            (log.action || log.event_type || "").includes("DISABLED");
+                          if (!isMod) return false;
+                        } else if (auditFilterType === "security") {
+                          const isSec =
+                            (log.action || log.event_type || "").includes("SECURITY") ||
+                            (log.action || log.event_type || "").includes("API_KEY") ||
+                            (log.action || log.event_type || "").includes("POLICY");
+                          if (!isSec) return false;
+                        }
+
+                        if (auditSearchQuery.trim()) {
+                          const q = auditSearchQuery.trim().toLowerCase();
+                          const str = `${log.action || ""} ${log.event_type || ""} ${log.actor_name || ""} ${log.officer_name || ""} ${log.grievance_id || ""} ${log.target_id || ""} ${log.details || ""}`.toLowerCase();
+                          return str.includes(q);
+                        }
+                        return true;
+                      });
+
+                      const formatAuditDate = (val: any) => {
+                        if (!val) return "Just now";
+                        try {
+                          let d = new Date(val);
+                          if (isNaN(d.getTime()) && typeof val === "string") {
+                            d = new Date(val.replace(" ", "T"));
+                          }
+                          if (isNaN(d.getTime())) return String(val);
+                          return d.toLocaleString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                            hour12: true,
+                          });
+                        } catch {
+                          return String(val || "");
+                        }
+                      };
+
+                      if (filteredLogs.length === 0) {
+                        return (
+                          <div style={{ textAlign: "center", padding: "3rem 1rem", color: "#8696a0", background: "#202c33", borderRadius: "10px" }}>
+                            <div style={{ fontSize: "2rem", marginBottom: "8px" }}>🔍</div>
+                            <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>No matching audit records found</div>
+                            <div style={{ fontSize: "0.8rem", marginTop: "4px" }}>Try adjusting your search query or category filter.</div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                          {filteredLogs.map((log) => {
+                            const actionName = log.action || log.event_type || "SYSTEM_EVENT";
+                            const isHearingCompleted = actionName === "HEARING_MEETING_COMPLETED" || actionName === "HEARING_COMPLETED";
+                            const isHearingStarted = actionName === "HEARING_MEETING_STARTED" || actionName === "HEARING_CALL_INITIATED";
+                            const isHearingScheduled = actionName === "HEARING_SCHEDULED";
+                            const isParticipantAction = actionName.includes("PARTICIPANT");
+                            const isSecurityAction = actionName.includes("SECURITY") || actionName.includes("API_KEY");
+
+                            // Officer name resolution
+                            const officerName = log.officer_name || (log.actor_role === "officer" ? log.actor_name : log.actor_name || "Presiding Officer");
+                            const grievanceId = log.grievance_id || log.target_id || "";
+                            const durSeconds = log.duration_seconds;
+                            const durFormatted =
+                              log.duration_formatted ||
+                              (durSeconds ? `${Math.floor(durSeconds / 60)}m ${durSeconds % 60}s` : "");
+
+                            return (
+                              <div
+                                key={log.id}
+                                style={{
+                                  background: "#202c33",
+                                  borderRadius: "10px",
+                                  border: "1px solid rgba(255,255,255,0.07)",
+                                  padding: "12px 16px",
+                                  transition: "all 0.15s ease",
+                                }}
+                              >
+                                {/* Header Row: Action Badge + Formatted Date */}
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    {isHearingCompleted ? (
+                                      <span style={{ background: "rgba(34, 197, 94, 0.15)", color: "#4ade80", border: "1px solid rgba(34, 197, 94, 0.35)", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 800 }}>
+                                        ✅ HEARING CONCLUDED
+                                      </span>
+                                    ) : isHearingStarted ? (
+                                      <span style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.35)", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 800 }}>
+                                        📹 HEARING STARTED
+                                      </span>
+                                    ) : isHearingScheduled ? (
+                                      <span style={{ background: "rgba(234, 179, 8, 0.15)", color: "#facc15", border: "1px solid rgba(234, 179, 8, 0.35)", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 800 }}>
+                                        📅 HEARING SCHEDULED
+                                      </span>
+                                    ) : isParticipantAction ? (
+                                      <span style={{ background: "rgba(244, 63, 94, 0.15)", color: "#fb7185", border: "1px solid rgba(244, 63, 94, 0.35)", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 800 }}>
+                                        🛡️ {actionName.replace(/_/g, " ")}
+                                      </span>
+                                    ) : isSecurityAction ? (
+                                      <span style={{ background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", border: "1px solid rgba(168, 85, 247, 0.35)", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 800 }}>
+                                        🔐 {actionName.replace(/_/g, " ")}
+                                      </span>
+                                    ) : (
+                                      <span style={{ background: "rgba(148, 163, 184, 0.15)", color: "#cbd5e1", border: "1px solid rgba(148, 163, 184, 0.35)", padding: "2px 8px", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 800 }}>
+                                        ⚙️ {actionName.replace(/_/g, " ")}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div style={{ fontSize: "0.78rem", color: "#94a3b8", display: "flex", alignItems: "center", gap: "4px" }}>
+                                    <span>🕒</span>
+                                    <span>{formatAuditDate(log.created_at || log.timestamp)}</span>
+                                  </div>
+                                </div>
+
+                                {/* Prominent Meeting Details Bar */}
+                                {(grievanceId || officerName || durFormatted) && (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexWrap: "wrap",
+                                      gap: "8px",
+                                      alignItems: "center",
+                                      background: "rgba(0, 0, 0, 0.25)",
+                                      padding: "8px 12px",
+                                      borderRadius: "8px",
+                                      margin: "6px 0 8px",
+                                      border: "1px solid rgba(255, 255, 255, 0.04)",
+                                    }}
+                                  >
+                                    {grievanceId && (
+                                      <div style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "0.82rem" }}>
+                                        <span style={{ color: "#8696a0" }}>Grievance ID:</span>
+                                        <span style={{ color: "#38bdf8", fontWeight: 800, background: "rgba(56, 189, 248, 0.12)", padding: "1px 6px", borderRadius: "4px" }}>
+                                          {grievanceId}
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {officerName && (
+                                      <div style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "0.82rem" }}>
+                                        <span style={{ color: "#8696a0" }}>Presiding Officer:</span>
+                                        <span style={{ color: "#FACC15", fontWeight: 800, background: "rgba(250, 204, 21, 0.12)", padding: "1px 6px", borderRadius: "4px" }}>
+                                          👤 {officerName}
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    {durFormatted && (
+                                      <div style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "0.82rem" }}>
+                                        <span style={{ color: "#8696a0" }}>Meeting Duration:</span>
+                                        <span style={{ color: "#4ade80", fontWeight: 800, background: "rgba(34, 197, 94, 0.12)", padding: "1px 6px", borderRadius: "4px" }}>
+                                          ⏱️ {durFormatted}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Log Details Body */}
+                                {log.details && (
+                                  <div
+                                    style={{
+                                      fontSize: "0.82rem",
+                                      color: "#cbd5e1",
+                                      lineHeight: "1.4",
+                                      marginTop: "4px",
+                                      paddingLeft: "8px",
+                                      borderLeft: "2px solid rgba(234, 179, 8, 0.5)",
+                                    }}
+                                  >
+                                    {log.details}
+                                  </div>
+                                )}
+
+                                {/* Card Footer: Actor and IP */}
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px", paddingTop: "6px", borderTop: "1px solid rgba(255,255,255,0.04)", fontSize: "0.73rem", color: "#64748b" }}>
+                                  <div>
+                                    Actor: <strong style={{ color: "#94a3b8" }}>{log.actor_name || "System"}</strong> ({log.actor_role || "system"})
+                                    {log.target_name && log.target_name !== log.target_id && ` • Target: ${log.target_name}`}
+                                  </div>
+                                  <div>
+                                    IP: {log.ip_address || "127.0.0.1"}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
