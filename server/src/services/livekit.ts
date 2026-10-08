@@ -24,6 +24,13 @@ const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'devsecret';
  * WebSocket URLs (ws:// / wss://) must be converted to http:// / https://.
  */
 function getLiveKitHttpUrl(): string {
+  if (process.env.LIVEKIT_INTERNAL_URL) {
+    return process.env.LIVEKIT_INTERNAL_URL.replace('ws://', 'http://').replace('wss://', 'https://');
+  }
+  // For self-hosted instances, talk directly to local LiveKit server over HTTP
+  if (!LIVEKIT_URL.includes('livekit.cloud')) {
+    return 'http://127.0.0.1:7880';
+  }
   return LIVEKIT_URL.replace('ws://', 'http://').replace('wss://', 'https://');
 }
 

@@ -15,7 +15,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { WebSocket } from 'ws';
 import livekitService from './livekit';
-import db, { lookupUserByPhone } from '../db/database';
+import db, { lookupUserByPhone, insertAuditLog } from '../db/database';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -324,6 +324,21 @@ export async function initiateCall(input: InitiateCallInput): Promise<{
   ringTimeouts.set(callId, timeoutId);
 
   console.log(`[CallManager] Call initiated: ${callId} for grievance ${input.grievanceId}`);
+
+  try {
+    insertAuditLog({
+      eventType: 'HEARING_MEETING_STARTED',
+      actorId: hostPhone || input.hostUserId || 'officer',
+      actorName: input.hostName || 'Presiding Officer',
+      actorRole: 'officer',
+      targetId: input.grievanceId,
+      targetName: input.title || `Grievance #${input.grievanceId}`,
+      details: `Hearing video session started for Grievance #${input.grievanceId}. Presiding Officer: ${input.hostName} (${input.hostDesignation || 'Officer'}). Participants: Citizen (${input.citizenName} - ${input.citizenPhone}), Field Officer (${input.employeeName} - ${input.employeePhone}). Room: ${roomName}.`,
+    });
+  } catch (auditErr) {
+    console.warn('[CallManager] Failed to insert audit log for initiated call:', auditErr);
+  }
+
   return { callSession, hostToken };
 }
 
@@ -471,6 +486,21 @@ export async function respondToCall(
     }
 
     console.log(`[CallManager] ${participant.name} accepted call ${call.id} (room: ${call.livekitRoomName})`);
+
+    try {
+      insertAuditLog({
+        eventType: 'PARTICIPANT_JOINED_HEARING',
+        actorId: phone,
+        actorName: participant.name,
+        actorRole: participant.role,
+        targetId: call.grievanceId,
+        targetName: `Grievance #${call.grievanceId}`,
+        details: `${participant.name} (${participant.role}${participant.designation ? ` - ${participant.designation}` : ''}) joined hearing room for Grievance #${call.grievanceId}. Room: ${call.livekitRoomName}.`,
+      });
+    } catch (auditErr) {
+      console.warn('[CallManager] Failed to insert audit log for participant accept:', auditErr);
+    }
+
     return {
       token,
       livekitUrl: livekitService.getLiveKitUrl(),
@@ -633,6 +663,26 @@ export async function endCall(callId: string): Promise<CallSession | null> {
     console.log(`[SQLite] Persisted call record ${call.id} for grievance ${call.grievanceId}`);
   } catch (dbErr) {
     console.error('[SQLite] Failed to persist call record:', dbErr);
+  }
+
+  // Record completed meeting audit log
+  try {
+    const durSec = call.durationSeconds || 0;
+    const durMin = Math.floor(durSec / 60);
+    const durRem = durSec % 60;
+    const durFormatted = durMin > 0 ? `${durMin}m ${durRem}s` : `${durSec}s`;
+
+    insertAuditLog({
+      eventType: 'HEARING_MEETING_COMPLETED',
+      actorId: call.hostPhone || 'officer',
+      actorName: call.hostName || 'Presiding Officer',
+      actorRole: 'officer',
+      targetId: call.grievanceId,
+      targetName: `Grievance #${call.grievanceId}`,
+      details: `Official video hearing concluded for Grievance #${call.grievanceId}. Presiding Officer: ${call.hostName}. Duration: ${durFormatted} (${durSec} seconds). Participants: ${call.participants.map((p) => `${p.name} [${p.role}]`).join(', ')}. Status: ${call.status}.`,
+    });
+  } catch (auditErr) {
+    console.warn('[CallManager] Failed to insert audit log for completed call:', auditErr);
   }
 
   // Mark all active participants as left
@@ -855,27 +905,19 @@ export async function participantLeaveCall(
       participant.leftAt = new Date();
       participant.ringStatus = 'left';
       console.log(`[CallManager] Participant ${participant.name} (${participantPhone}) marked as 'left' in call ${call.id}`);
-
-      // If the HOST (presiding officer / collector) leaves the call, end the entire hearing session!
-      if (participant.role === 'host' || matchPhone(call.hostPhone, participantPhone)) {
-        console.log(`[CallManager] Host ${participant.name} left the hearing. Terminating call ${call.id} for all participants.`);
-        await endCall(call.id);
-        return true;
-      }
     }
 
-    // Clear ring timeout for this call
-    const timeout = ringTimeouts.get(call.id);
-    if (timeout) {
-      clearTimeout(timeout);
-      ringTimeouts.delete(call.id);
-    }
-
-    // If all participants have left the call, terminate the session
+    // Only terminate session if NO participants remain active AND nobody is currently ringing
     const hasActiveMembers = call.participants.some(
-      (p) => !p.leftAt && (p.ringStatus === 'accepted' || p.role === 'host')
+      (p) => !p.leftAt && (p.ringStatus === 'accepted' || p.ringStatus === 'ringing')
     );
-    if (!hasActiveMembers) {
+    if (!hasActiveMembers && call.status !== 'completed') {
+      // Clear ring timeout for this call
+      const timeout = ringTimeouts.get(call.id);
+      if (timeout) {
+        clearTimeout(timeout);
+        ringTimeouts.delete(call.id);
+      }
       console.log(`[CallManager] No active members remain in call ${call.id}. Terminating session.`);
       await endCall(call.id);
       return true;

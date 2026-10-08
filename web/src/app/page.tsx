@@ -982,11 +982,7 @@ export default function JanSunwaiPortalPage() {
             const targetCallId = livekitConnection.callId || livekitConnection.roomName;
             if (targetCallId) {
               try {
-                const isOfficer = currentUser?.role === "officer" || currentUser?.role === "admin";
-                const endpoint = isOfficer
-                  ? `${API_BASE}/api/calls/${encodeURIComponent(targetCallId)}/end`
-                  : `${API_BASE}/api/calls/${encodeURIComponent(targetCallId)}/leave`;
-                await fetch(endpoint, {
+                await fetch(`${API_BASE}/api/calls/${encodeURIComponent(targetCallId)}/leave`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Bypass-Tunnel-Reminder": "true" },
                   body: JSON.stringify({
@@ -999,7 +995,7 @@ export default function JanSunwaiPortalPage() {
               }
             }
             setLivekitConnection(null);
-            showToast("Left the hearing room", "info");
+            showToast("Disconnected from hearing room", "info");
           }}
           onEndCall={async () => {
             const targetCallId = livekitConnection.callId || livekitConnection.roomName;
