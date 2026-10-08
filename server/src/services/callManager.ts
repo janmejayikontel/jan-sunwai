@@ -480,9 +480,13 @@ export async function respondToCall(
       data: { participantName: participant.name, role: participant.role },
     });
 
-    // Start recording if auto-record is enabled
+    // Start recording if auto-record is enabled (gracefully handle missing Egress service)
     if (call.autoRecord && !call.egressId) {
-      call.egressId = (await livekitService.startRecording(call.livekitRoomName, call.grievanceId)) ?? undefined;
+      try {
+        call.egressId = (await livekitService.startRecording(call.livekitRoomName, call.grievanceId)) ?? undefined;
+      } catch (recErr) {
+        console.warn('[CallManager] Auto-record skipped (Egress service not deployed):', recErr);
+      }
     }
 
     console.log(`[CallManager] ${participant.name} accepted call ${call.id} (room: ${call.livekitRoomName})`);

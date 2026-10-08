@@ -243,24 +243,134 @@ router.post('/join-meeting', async (req: Request, res: Response) => {
  */
 router.get('/audit-logs', (req: Request, res: Response) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-    const filter = (req.query.filter as string) || '';
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 300);
+    const filter = ((req.query.filter as string) || '').trim().toLowerCase();
 
-    let rows: any[];
-    if (filter) {
-      rows = db.prepare(`
-        SELECT * FROM audit_logs 
-        WHERE event_type LIKE ? OR actor_name LIKE ? OR details LIKE ?
-        ORDER BY timestamp DESC LIMIT ?
-      `).all(`%${filter}%`, `%${filter}%`, `%${filter}%`, limit);
-    } else {
-      rows = db.prepare(`
-        SELECT * FROM audit_logs 
-        ORDER BY timestamp DESC LIMIT ?
-      `).all(limit);
+    const toIsoDate = (val: any): string => {
+      if (!val) return new Date().toISOString();
+      if (typeof val === 'string') {
+        if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(val)) {
+          return new Date(val.replace(' ', 'T') + 'Z').toISOString();
+        }
+      }
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+    };
+
+    const formatSeconds = (sec: number): string => {
+      if (!sec || sec <= 0) return '0s';
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      if (m === 0) return `${s}s`;
+      return `${m}m ${s > 0 ? `${s}s` : ''}`;
+    };
+
+    // 1. Fetch audit logs from SQLite
+    const auditRows = (db.prepare(`
+      SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ?
+    `).all(limit) || []) as any[];
+
+    // 2. Fetch call records from SQLite (completed / active hearings)
+    const callRecords = (db.prepare(`
+      SELECT * FROM call_records ORDER BY created_at DESC LIMIT ?
+    `).all(limit) || []) as any[];
+
+    // Convert call records into audit log items
+    const meetingLogs: any[] = [];
+    for (const cr of callRecords) {
+      const durSec = cr.duration_seconds || 0;
+      const durFormatted = formatSeconds(durSec);
+      const isoTime = toIsoDate(cr.ended_at || cr.created_at || cr.started_at);
+
+      meetingLogs.push({
+        id: `call-rec-${cr.id}`,
+        timestamp: isoTime,
+        created_at: isoTime,
+        event_type: 'HEARING_MEETING_COMPLETED',
+        action: 'HEARING_MEETING_COMPLETED',
+        actor_id: 'officer',
+        actor_name: cr.host_name || 'Presiding Officer',
+        officer_name: cr.host_name || 'Presiding Officer',
+        actor_role: 'officer',
+        target_id: cr.grievance_id,
+        grievance_id: cr.grievance_id,
+        target_name: `Grievance #${cr.grievance_id}`,
+        duration_seconds: durSec,
+        duration_formatted: durFormatted,
+        status: cr.status || 'completed',
+        details: `Official video hearing concluded for Grievance #${cr.grievance_id} by Presiding Officer ${cr.host_name}. Session duration: ${durFormatted} (${durSec} seconds). Status: ${cr.status}.`,
+        ip_address: '127.0.0.1',
+      });
     }
 
-    res.json({ success: true, count: rows.length, logs: rows });
+    // 3. Normalize audit rows
+    const normalizedAuditRows = auditRows.map((r: any) => {
+      const isoTime = toIsoDate(r.timestamp);
+
+      // Extract grievance ID if present in target_id or details
+      let gid = r.target_id || '';
+      if (!gid && r.details) {
+        const m = r.details.match(/RAJ-\d+-\d+/i) || r.details.match(/JS-[\w-]+/i);
+        if (m) gid = m[0];
+      }
+
+      // Extract duration from details if present
+      let durSec: number | null = null;
+      let durFormatted = '';
+      if (r.details) {
+        const dm = r.details.match(/Duration:\s*([^\(]+)(?:\((\d+)\s*seconds\))?/i);
+        if (dm) {
+          durFormatted = dm[1].trim();
+          if (dm[2]) durSec = parseInt(dm[2], 10);
+        }
+      }
+
+      return {
+        ...r,
+        action: r.event_type,
+        timestamp: isoTime,
+        created_at: isoTime,
+        officer_name: r.actor_role === 'officer' ? r.actor_name : (r.actor_name || ''),
+        grievance_id: gid,
+        duration_seconds: durSec,
+        duration_formatted: durFormatted,
+      };
+    });
+
+    // 4. Merge, deduplicate and sort
+    const seen = new Set<string>();
+    const merged: any[] = [];
+
+    for (const item of [...meetingLogs, ...normalizedAuditRows]) {
+      // Use clean composite key to avoid duplicate completed calls
+      const dedupeKey = item.event_type === 'HEARING_MEETING_COMPLETED' && item.grievance_id
+        ? `${item.event_type}_${item.grievance_id}_${item.duration_seconds}`
+        : item.id;
+
+      if (!seen.has(dedupeKey)) {
+        seen.add(dedupeKey);
+        merged.push(item);
+      }
+    }
+
+    // Sort descending by date
+    merged.sort((a, b) => {
+      const ta = new Date(a.created_at || a.timestamp).getTime() || 0;
+      const tb = new Date(b.created_at || b.timestamp).getTime() || 0;
+      return tb - ta;
+    });
+
+    // Apply optional filter
+    let results = merged;
+    if (filter) {
+      results = merged.filter((item) => {
+        const str = `${item.event_type} ${item.action} ${item.actor_name} ${item.officer_name} ${item.target_id} ${item.grievance_id} ${item.details}`.toLowerCase();
+        return str.includes(filter);
+      });
+    }
+
+    const finalLogs = results.slice(0, limit);
+    res.json({ success: true, count: finalLogs.length, logs: finalLogs });
   } catch (error: any) {
     console.error('[Admin] Error querying audit logs:', error);
     res.status(500).json({ error: 'Failed to query audit logs' });

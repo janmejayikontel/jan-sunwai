@@ -81,17 +81,18 @@ app.use((req, _res, next) => {
   next();
 });
 
-// ─── API Routes ───────────────────────────────────────────────
-
-app.use('/api/auth', authRoutes);
-app.use('/api/sampark', samparkRoutes);
-app.use('/api/calls', callRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/call-center', callCenterRoutes);
-app.use('/api/v1/hearings', externalApiRoutes);
+// Mount API routes for both standard and /sampark-lite paths
+['', '/sampark-lite'].forEach((prefix) => {
+  app.use(`${prefix}/api/auth`, authRoutes);
+  app.use(`${prefix}/api/sampark`, samparkRoutes);
+  app.use(`${prefix}/api/calls`, callRoutes);
+  app.use(`${prefix}/api/admin`, adminRoutes);
+  app.use(`${prefix}/api/call-center`, callCenterRoutes);
+  app.use(`${prefix}/api/v1/hearings`, externalApiRoutes);
+});
 
 // ─── LiveKit Token Endpoint (Web & Mobile Apps) ───────────────
-app.post('/api/livekit/token', async (req, res) => {
+app.post(['/api/livekit/token', '/sampark-lite/api/livekit/token'], async (req, res) => {
   try {
     const { roomName, participantName, participantRole, identity } = req.body;
     if (!roomName || !participantName) {
@@ -151,7 +152,7 @@ app.post('/api/livekit/token', async (req, res) => {
 
 
 // Health check
-app.get('/api/health', (_req, res) => {
+app.get(['/api/health', '/sampark-lite/api/health', '/health'], (_req, res) => {
   res.json({
     status: 'ok',
     service: 'Jan Sunwai Video Call Platform — Backend',
@@ -165,7 +166,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 // API documentation
-app.get('/api', (_req, res) => {
+app.get(['/api', '/sampark-lite/api'], (_req, res) => {
   res.json({
     name: 'Jan Sunwai Video Call Platform API',
     version: '1.0.0',
@@ -206,7 +207,7 @@ app.get('/api', (_req, res) => {
 });
 
 // 404 Not Found JSON Handler for API
-app.use('/api', (_req, res) => {
+app.use(['/api', '/sampark-lite/api'], (_req, res) => {
   res.status(404).json({ error: 'API endpoint not found' });
 });
 
@@ -221,8 +222,22 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 const server = http.createServer(app);
 
 const wss = new WebSocketServer({
-  server,
-  path: '/ws',
+  noServer: true,
+});
+
+server.on('upgrade', (request, socket, head) => {
+  try {
+    const pathname = new URL(request.url || '', `http://${request.headers.host || 'localhost'}`).pathname;
+    if (pathname === '/ws' || pathname === '/sampark-lite/ws') {
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  } catch (err) {
+    socket.destroy();
+  }
 });
 
 /**
